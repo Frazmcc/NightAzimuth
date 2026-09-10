@@ -22,7 +22,9 @@ class TrackingConfig:
 
 @dataclass(frozen=True, slots=True)
 class DataConfig:
-    celestrak_group: str = "ACTIVE"
+    # VISUAL is CelesTrak's curated "100 (or so) Brightest" set. It is a
+    # better default for NightAzimuth than downloading every active satellite.
+    celestrak_group: str = "VISUAL"
     cache_directory: Path = Path("data/cache")
     cache_max_age_minutes: int = 120
 
@@ -58,7 +60,7 @@ def load_config(path: str | Path) -> AppConfig:
             darkness_threshold_deg=float(tracking.get("darkness_threshold_deg", -6.0)),
         ),
         data=DataConfig(
-            celestrak_group=str(data.get("celestrak_group", "ACTIVE")).upper(),
+            celestrak_group=str(data.get("celestrak_group", "VISUAL")).upper(),
             cache_directory=Path(data.get("cache_directory", "data/cache")),
             cache_max_age_minutes=int(data.get("cache_max_age_minutes", 120)),
         ),
