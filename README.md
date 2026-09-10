@@ -10,9 +10,9 @@ Location-based live satellite tracking with directional sky identification and n
 
 The released build includes saved locations, live satellite tracking, pass prediction, the all-sky radar-style Sky map, and the forward-looking Live view.
 
-Current development has progressed through Stage 9. The Live view now uses a practical 0–60° observing range, supports zoom, and can draw a short predicted path showing where each satellite is expected to move over the next three minutes.
+Current development has progressed through Stage 10. The Live view now uses a practical 0–60° observing range, supports zoom, draws a short predicted satellite path, and can place the satellites against a real star-field background calculated for the selected location and current time.
 
-Weather/cloud analysis, directional cloud estimation, brightness/magnitude modelling, camera support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
+Weather/cloud analysis, directional cloud estimation, satellite brightness/magnitude modelling, camera support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
 
 See [`RELEASE_NOTES_v0.1.0-alpha.1.md`](RELEASE_NOTES_v0.1.0-alpha.1.md) for release details.
 
@@ -32,6 +32,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 - [`docs/STAGE_7_IMPLEMENTATION.md`](docs/STAGE_7_IMPLEMENTATION.md) — all-sky and forward-looking Live view work.
 - [`docs/STAGE_8_IMPLEMENTATION.md`](docs/STAGE_8_IMPLEMENTATION.md) — practical 0–60° Live view and zoom controls.
 - [`docs/STAGE_9_IMPLEMENTATION.md`](docs/STAGE_9_IMPLEMENTATION.md) — short projected tracks and direction of travel.
+- [`docs/STAGE_10_IMPLEMENTATION.md`](docs/STAGE_10_IMPLEMENTATION.md) — real Hipparcos star field and constellation reference layer.
 - [`CREDITS.md`](CREDITS.md) — creator and third-party credits.
 
 ## Windows GUI
@@ -39,7 +40,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 From `C:\git\NightAzimuth`:
 
 ```powershell
-git checkout stage-9-projected-tracks
+git checkout stage-10-star-field
 git pull
 .\build_windows.ps1
 .\dist\NightAzimuth.exe
@@ -61,6 +62,12 @@ The GUI provides:
 - Reset view control
 - short 3-minute projected satellite paths
 - arrowed direction of travel
+- real Hipparcos star-field background
+- star brightness represented by marker size
+- selectively labelled named bright stars
+- optional Stellarium constellation lines
+- Stars On/Off control
+- Constellations On/Off control
 - clickable satellite markers
 - selected satellite details including projected azimuth/elevation movement
 - live satellites above the horizon
@@ -82,7 +89,7 @@ Location profiles are stored under:
 %APPDATA%\NightAzimuth\locations.json
 ```
 
-Orbital and Skyfield cache data are stored under:
+Orbital, Skyfield, Hipparcos, and constellation cache data are stored under:
 
 ```text
 %APPDATA%\NightAzimuth\cache\
@@ -92,7 +99,7 @@ Orbital and Skyfield cache data are stored under:
 
 `Potential` means the satellite is illuminated by the Sun while the observer's sky is sufficiently dark. It does **not** mean guaranteed naked-eye visibility.
 
-Cloud, haze, brightness/magnitude, local obstructions, moonlight, and camera sensitivity are not yet included in the result.
+Cloud, haze, satellite brightness/magnitude, local obstructions, moonlight, and camera sensitivity are not yet included in the result.
 
 ## Development principles
 
@@ -107,7 +114,7 @@ Cloud, haze, brightness/magnitude, local obstructions, moonlight, and camera sen
 
 ## Technology baseline
 
-The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite propagation and astronomy calculations, HTTPX for orbital-data retrieval, and PyInstaller for Windows EXE packaging.
+The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite and stellar astronomy calculations, Pandas for Hipparcos catalogue loading, HTTPX for orbital-data retrieval, and PyInstaller for Windows EXE packaging.
 
 ## Credits
 
