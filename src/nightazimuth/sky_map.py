@@ -5,6 +5,8 @@ import math
 import tkinter as tk
 from typing import Callable
 
+from .track_prediction import TrackPoint
+
 
 @dataclass(frozen=True, slots=True)
 class SkySatellite:
@@ -16,6 +18,7 @@ class SkySatellite:
     satellite_sunlit: bool
     sky_dark: bool
     potentially_visible: bool
+    future_track: tuple[TrackPoint, ...] = ()
 
 
 def project_sky_position(
