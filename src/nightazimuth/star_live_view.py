@@ -19,6 +19,17 @@ def star_marker_radius(magnitude: float) -> float:
     return 1.0
 
 
+def automatic_star_label_limit(horizontal_fov_deg: float) -> float:
+    """Reveal progressively more named stars as the observer narrows the view."""
+    if horizontal_fov_deg > 120.0:
+        return 2.0
+    if horizontal_fov_deg > 60.0:
+        return 3.0
+    if horizontal_fov_deg > 30.0:
+        return 4.0
+    return 5.0
+
+
 class StarLiveSkyView(LiveSkyView):
     """LiveSkyView with real stellar and planetary reference layers."""
 
@@ -154,9 +165,10 @@ class StarLiveSkyView(LiveSkyView):
             tags=(tag, "star-field"),
         )
 
-        # Only the brightest named stars are labelled automatically. Fainter
-        # stars reveal their identity when clicked so the display stays clean.
-        label_limit = 1.5 if self.horizontal_fov_deg > 45.0 else 2.5
+        # Named stars provide the observer with useful visual landmarks. At a
+        # wide view we keep only the brighter names; zooming in progressively
+        # reveals more. Unnamed/fainter objects remain click-to-identify.
+        label_limit = automatic_star_label_limit(self.horizontal_fov_deg)
         automatic_label = bool(star.name and star.magnitude <= label_limit)
         if automatic_label or selected:
             name = star.name or f"HIP {star.hip_id}"
