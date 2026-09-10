@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+import tkinter as tk
+
 from .live_view import LiveSkyView, project_live_view
 from .star_field import PlanetPoint, StarFieldSnapshot, StarPoint
 
@@ -20,12 +23,14 @@ def star_marker_radius(magnitude: float) -> float:
 
 
 def automatic_star_label_limit(horizontal_fov_deg: float) -> float:
-    """Reveal progressively more named stars as the observer narrows the view."""
+    """Return the faintest named-star magnitude labelled at the current zoom."""
     if horizontal_fov_deg > 120.0:
         return 2.0
-    if horizontal_fov_deg > 60.0:
+    if horizontal_fov_deg > 75.0:
         return 3.0
-    if horizontal_fov_deg > 30.0:
+    if horizontal_fov_deg > 45.0:
+        return 3.5
+    if horizontal_fov_deg > 25.0:
         return 4.0
     return 5.0
 
@@ -40,7 +45,11 @@ class StarLiveSkyView(LiveSkyView):
         self._show_constellations = False
         self._selected_star_hip: int | None = None
         self._selected_planet: str | None = None
+        self._celestial_press: tuple[float, float] | None = None
+        self._drawn_star_positions: list[tuple[StarPoint, float, float]] = []
         super().__init__(*args, **kwargs)
+        self.bind("<ButtonPress-1>", self._remember_celestial_press, add="+")
+        self.bind("<ButtonRelease-1>", self._handle_celestial_click, add="+")
 
     def _current_profile_name(self) -> str | None:
         """Return the currently selected observer profile from the owning app."""
@@ -48,20 +57,24 @@ class StarLiveSkyView(LiveSkyView):
         return str(selected) if selected else None
 
     def set_star_field(self, snapshot: StarFieldSnapshot | None) -> None:
-        self._star_snapshot = snapshot
-        self._star_snapshot_profile = self._current_profile_name() if snapshot is not None else None
-        if snapshot is None:
+        incoming_profile = self._current_profile_name() if snapshot is not None else None
+        if incoming_profile != self._star_snapshot_profile:
             self._selected_star_hip = None
             self._selected_planet = None
+        self._star_snapshot = snapshot
+        self._star_snapshot_profile = incoming_profile
         self.redraw()
 
     def set_star_visibility(self, *, stars: bool, constellations: bool) -> None:
         self._show_stars = stars
         self._show_constellations = constellations
+        if not stars:
+            self._selected_star_hip = None
         self.redraw()
 
     def redraw(self) -> None:
         super().redraw()
+        self._drawn_star_positions = []
         snapshot = self._star_snapshot
         if snapshot is None:
             return
@@ -117,22 +130,25 @@ class StarLiveSkyView(LiveSkyView):
                     continue
                 x = left + projection.x_fraction * plot_width
                 y = top + projection.y_fraction * plot_height
+                self._drawn_star_positions.append((star, x, y))
                 self._draw_star(star, x, y)
 
-            for planet in snapshot.planets:
-                projection = project_live_view(
-                    planet.azimuth_deg,
-                    planet.elevation_deg,
-                    self.facing_deg,
-                    self.horizontal_fov_deg,
-                    minimum_elevation_deg=self.minimum_elevation_deg,
-                    maximum_elevation_deg=self.maximum_elevation_deg,
-                )
-                if not projection.visible:
-                    continue
-                x = left + projection.x_fraction * plot_width
-                y = top + projection.y_fraction * plot_height
-                self._draw_planet(planet, x, y)
+        # Planets are intentionally independent of the Stars checkbox. Major
+        # planets remain visible and labelled whenever they are inside the view.
+        for planet in snapshot.planets:
+            projection = project_live_view(
+                planet.azimuth_deg,
+                planet.elevation_deg,
+                self.facing_deg,
+                self.horizontal_fov_deg,
+                minimum_elevation_deg=self.minimum_elevation_deg,
+                maximum_elevation_deg=self.maximum_elevation_deg,
+            )
+            if not projection.visible:
+                continue
+            x = left + projection.x_fraction * plot_width
+            y = top + projection.y_fraction * plot_height
+            self._draw_planet(planet, x, y)
 
         # Keep celestial reference layers underneath satellites and their tracks.
         self.tag_lower("planet-field")
@@ -143,17 +159,7 @@ class StarLiveSkyView(LiveSkyView):
         radius = star_marker_radius(star.magnitude)
         selected = star.hip_id == self._selected_star_hip
         tag = f"star:{star.hip_id}"
-        hit_radius = max(radius + 4.0, 6.0)
 
-        self.create_oval(
-            x - hit_radius,
-            y - hit_radius,
-            x + hit_radius,
-            y + hit_radius,
-            fill="",
-            outline="",
-            tags=(tag, "star-field"),
-        )
         self.create_oval(
             x - radius,
             y - radius,
@@ -165,9 +171,6 @@ class StarLiveSkyView(LiveSkyView):
             tags=(tag, "star-field"),
         )
 
-        # Named stars provide the observer with useful visual landmarks. At a
-        # wide view we keep only the brighter names; zooming in progressively
-        # reveals more. Unnamed/fainter objects remain click-to-identify.
         label_limit = automatic_star_label_limit(self.horizontal_fov_deg)
         automatic_label = bool(star.name and star.magnitude <= label_limit)
         if automatic_label or selected:
@@ -184,10 +187,6 @@ class StarLiveSkyView(LiveSkyView):
                 font=("Segoe UI", 8 if selected else 7, "bold" if selected else "normal"),
                 tags=(tag, "star-field"),
             )
-
-        self.tag_bind(tag, "<Button-1>", lambda _event, item=star: self._select_star(item))
-        self.tag_bind(tag, "<Enter>", lambda _event: self.config(cursor="hand2"))
-        self.tag_bind(tag, "<Leave>", lambda _event: self.config(cursor=""))
 
     def _draw_planet(self, planet: PlanetPoint, x: float, y: float) -> None:
         selected = planet.name == self._selected_planet
@@ -215,6 +214,32 @@ class StarLiveSkyView(LiveSkyView):
         self.tag_bind(tag, "<Button-1>", lambda _event, item=planet: self._select_planet(item))
         self.tag_bind(tag, "<Enter>", lambda _event: self.config(cursor="hand2"))
         self.tag_bind(tag, "<Leave>", lambda _event: self.config(cursor=""))
+
+    def _remember_celestial_press(self, event: tk.Event) -> None:
+        self._celestial_press = (float(event.x), float(event.y))
+
+    def _handle_celestial_click(self, event: tk.Event) -> None:
+        press = self._celestial_press
+        self._celestial_press = None
+        if press is None:
+            return
+        if math.hypot(float(event.x) - press[0], float(event.y) - press[1]) > 6.0:
+            return
+
+        current_tags = self.gettags("current") if self.find_withtag("current") else ()
+        if any(tag.startswith("live-sat:") or tag.startswith("planet:") for tag in current_tags):
+            return
+        if not self._show_stars:
+            return
+
+        nearest: tuple[StarPoint, float] | None = None
+        for star, x, y in self._drawn_star_positions:
+            distance = math.hypot(float(event.x) - x, float(event.y) - y)
+            if distance <= 8.0 and (nearest is None or distance < nearest[1]):
+                nearest = (star, distance)
+
+        if nearest is not None:
+            self._select_star(nearest[0])
 
     def _select_star(self, star: StarPoint) -> None:
         self._selected_star_hip = None if self._selected_star_hip == star.hip_id else star.hip_id
