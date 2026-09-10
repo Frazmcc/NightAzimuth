@@ -5,6 +5,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from . import COPYRIGHT, __version__
 from .celestrak import CelestrakClient, CelestrakError
 from .config import ObserverConfig
 from .location_profiles import LocationProfile, LocationProfileStore
@@ -37,7 +38,10 @@ class NightAzimuthApp(tk.Tk):
         header = ttk.Frame(self, padding=12)
         header.pack(fill="x")
 
-        ttk.Label(header, text="NightAzimuth", font=("Segoe UI", 18, "bold")).pack(side="left")
+        branding = ttk.Frame(header)
+        branding.pack(side="left")
+        ttk.Label(branding, text="NightAzimuth", font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        ttk.Label(branding, text=COPYRIGHT, font=("Segoe UI", 8)).pack(anchor="w")
 
         ttk.Label(header, text="Location:").pack(side="left", padx=(30, 6))
         self.location_var = tk.StringVar()
@@ -52,7 +56,8 @@ class NightAzimuthApp(tk.Tk):
 
         self.refresh_button = ttk.Button(header, text="Refresh", command=self.refresh_data)
         self.refresh_button.pack(side="right", padx=(8, 0))
-        ttk.Button(header, text="Settings", command=self.open_settings).pack(side="right")
+        ttk.Button(header, text="Settings", command=self.open_settings).pack(side="right", padx=(8, 0))
+        ttk.Button(header, text="Credits", command=self.open_credits).pack(side="right")
 
         body = ttk.Frame(self, padding=(12, 0, 12, 12))
         body.pack(fill="both", expand=True)
@@ -82,6 +87,8 @@ class NightAzimuthApp(tk.Tk):
             ),
             wraplength=1120,
         ).pack(anchor="w", pady=(8, 0))
+        ttk.Separator(body, orient="horizontal").pack(fill="x", pady=(8, 4))
+        ttk.Label(body, text=COPYRIGHT, font=("Segoe UI", 8)).pack(anchor="e")
 
     def _build_live_table(self, parent: ttk.Frame) -> None:
         columns = ("name", "norad", "az", "el", "range", "sunlit", "dark", "potential")
@@ -304,6 +311,13 @@ class NightAzimuthApp(tk.Tk):
 
     def open_settings(self) -> None:
         SettingsWindow(self)
+
+    def open_credits(self) -> None:
+        messagebox.showinfo(
+            "NightAzimuth Credits",
+            f"NightAzimuth {__version__}\n\n{COPYRIGHT}\n\nSatellite tracking and observing utility.",
+            parent=self,
+        )
 
 
 class SettingsWindow(tk.Toplevel):

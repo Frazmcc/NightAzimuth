@@ -1,5 +1,7 @@
 # NightAzimuth
 
+**Created by Logic Lurker © 2026**
+
 Location-based live satellite tracking with directional sky identification and near-real-time cloud awareness.
 
 ## Project status
@@ -25,13 +27,14 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 - [`docs/STAGE_4_IMPLEMENTATION.md`](docs/STAGE_4_IMPLEMENTATION.md) — astronomical visibility, pass prediction, CelesTrak behaviour, and Windows EXE build support.
 - [`docs/STAGE_5_IMPLEMENTATION.md`](docs/STAGE_5_IMPLEMENTATION.md) — Windows GUI shell and saved location profiles.
 - [`docs/STAGE_6_IMPLEMENTATION.md`](docs/STAGE_6_IMPLEMENTATION.md) — live satellite and pass data inside the GUI.
+- [`CREDITS.md`](CREDITS.md) — creator and third-party credits.
 
 ## Windows GUI
 
 From `C:\git\NightAzimuth`:
 
 ```powershell
-git checkout stage-6-gui-live-data
+git checkout main
 git pull
 .\build_windows.ps1
 .\dist\NightAzimuth.exe
@@ -85,6 +88,12 @@ Cloud, haze, brightness/magnitude, local obstructions, moonlight, and camera sen
 ## Technology baseline
 
 The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite propagation and astronomy calculations, HTTPX for orbital-data retrieval, and PyInstaller for Windows EXE packaging.
+
+## Credits
+
+**Created by Logic Lurker © 2026**
+
+See [`CREDITS.md`](CREDITS.md) for project and third-party attribution information.
 
 ## Licence
 
