@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .live_view import LiveSkyView, project_live_view
-from .star_field import StarFieldSnapshot, StarPoint
+from .star_field import PlanetPoint, StarFieldSnapshot, StarPoint
 
 
 def star_marker_radius(magnitude: float) -> float:
@@ -20,13 +20,15 @@ def star_marker_radius(magnitude: float) -> float:
 
 
 class StarLiveSkyView(LiveSkyView):
-    """LiveSkyView with a real stellar reference layer underneath satellites."""
+    """LiveSkyView with real stellar and planetary reference layers."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         self._star_snapshot: StarFieldSnapshot | None = None
         self._star_snapshot_profile: str | None = None
         self._show_stars = True
         self._show_constellations = False
+        self._selected_star_hip: int | None = None
+        self._selected_planet: str | None = None
         super().__init__(*args, **kwargs)
 
     def _current_profile_name(self) -> str | None:
@@ -37,6 +39,9 @@ class StarLiveSkyView(LiveSkyView):
     def set_star_field(self, snapshot: StarFieldSnapshot | None) -> None:
         self._star_snapshot = snapshot
         self._star_snapshot_profile = self._current_profile_name() if snapshot is not None else None
+        if snapshot is None:
+            self._selected_star_hip = None
+            self._selected_planet = None
         self.redraw()
 
     def set_star_visibility(self, *, stars: bool, constellations: bool) -> None:
@@ -50,9 +55,6 @@ class StarLiveSkyView(LiveSkyView):
         if snapshot is None:
             return
 
-        # A star snapshot belongs to the observer profile that was selected when
-        # it was installed. If the user changes location, suppress that old sky
-        # immediately while the replacement snapshot is being calculated.
         if self._star_snapshot_profile != self._current_profile_name():
             return
 
@@ -106,33 +108,108 @@ class StarLiveSkyView(LiveSkyView):
                 y = top + projection.y_fraction * plot_height
                 self._draw_star(star, x, y)
 
-        # The stellar layer is reference scenery. Keep it behind the Live view
-        # grid, satellite tracks, labels, and clickable satellite markers.
+            for planet in snapshot.planets:
+                projection = project_live_view(
+                    planet.azimuth_deg,
+                    planet.elevation_deg,
+                    self.facing_deg,
+                    self.horizontal_fov_deg,
+                    minimum_elevation_deg=self.minimum_elevation_deg,
+                    maximum_elevation_deg=self.maximum_elevation_deg,
+                )
+                if not projection.visible:
+                    continue
+                x = left + projection.x_fraction * plot_width
+                y = top + projection.y_fraction * plot_height
+                self._draw_planet(planet, x, y)
+
+        # Keep celestial reference layers underneath satellites and their tracks.
+        self.tag_lower("planet-field")
         self.tag_lower("star-field")
         self.tag_lower("constellation-line")
 
     def _draw_star(self, star: StarPoint, x: float, y: float) -> None:
         radius = star_marker_radius(star.magnitude)
+        selected = star.hip_id == self._selected_star_hip
+        tag = f"star:{star.hip_id}"
+        hit_radius = max(radius + 4.0, 6.0)
+
+        self.create_oval(
+            x - hit_radius,
+            y - hit_radius,
+            x + hit_radius,
+            y + hit_radius,
+            fill="",
+            outline="",
+            tags=(tag, "star-field"),
+        )
         self.create_oval(
             x - radius,
             y - radius,
             x + radius,
             y + radius,
             fill="#e2e8f0",
-            outline="",
-            tags=("star-field",),
+            outline="#ffffff" if selected else "",
+            width=1,
+            tags=(tag, "star-field"),
         )
 
-        # Avoid a wall of labels at wide FOV. Zooming in progressively reveals
-        # more named stars, which makes the layer useful as an observing guide.
-        label_limit = 1.5 if self.horizontal_fov_deg > 45.0 else 3.0
-        if star.name and star.magnitude <= label_limit:
+        # Only the brightest named stars are labelled automatically. Fainter
+        # stars reveal their identity when clicked so the display stays clean.
+        label_limit = 1.5 if self.horizontal_fov_deg > 45.0 else 2.5
+        automatic_label = bool(star.name and star.magnitude <= label_limit)
+        if automatic_label or selected:
+            name = star.name or f"HIP {star.hip_id}"
+            label = name
+            if selected:
+                label += f"  (mag {star.magnitude:.2f})"
             self.create_text(
                 x + 5,
                 y - 5,
-                text=star.name,
-                fill="#94a3b8",
+                text=label,
+                fill="#cbd5e1" if selected else "#94a3b8",
                 anchor="sw",
-                font=("Segoe UI", 7),
-                tags=("star-field",),
+                font=("Segoe UI", 8 if selected else 7, "bold" if selected else "normal"),
+                tags=(tag, "star-field"),
             )
+
+        self.tag_bind(tag, "<Button-1>", lambda _event, item=star: self._select_star(item))
+        self.tag_bind(tag, "<Enter>", lambda _event: self.config(cursor="hand2"))
+        self.tag_bind(tag, "<Leave>", lambda _event: self.config(cursor=""))
+
+    def _draw_planet(self, planet: PlanetPoint, x: float, y: float) -> None:
+        selected = planet.name == self._selected_planet
+        radius = 5.0 if selected else 4.0
+        tag = f"planet:{planet.name}"
+        self.create_oval(
+            x - radius,
+            y - radius,
+            x + radius,
+            y + radius,
+            fill="#f8fafc",
+            outline="#ffffff",
+            width=2 if selected else 1,
+            tags=(tag, "planet-field"),
+        )
+        self.create_text(
+            x + 7,
+            y - 6,
+            text=planet.name,
+            fill="#f8fafc",
+            anchor="sw",
+            font=("Segoe UI", 8, "bold"),
+            tags=(tag, "planet-field"),
+        )
+        self.tag_bind(tag, "<Button-1>", lambda _event, item=planet: self._select_planet(item))
+        self.tag_bind(tag, "<Enter>", lambda _event: self.config(cursor="hand2"))
+        self.tag_bind(tag, "<Leave>", lambda _event: self.config(cursor=""))
+
+    def _select_star(self, star: StarPoint) -> None:
+        self._selected_star_hip = None if self._selected_star_hip == star.hip_id else star.hip_id
+        self._selected_planet = None
+        self.redraw()
+
+    def _select_planet(self, planet: PlanetPoint) -> None:
+        self._selected_planet = None if self._selected_planet == planet.name else planet.name
+        self._selected_star_hip = None
+        self.redraw()
