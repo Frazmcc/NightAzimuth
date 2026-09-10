@@ -8,7 +8,9 @@ Location-based live satellite tracking with directional sky identification and n
 
 **v0.1.0-alpha.1 — first alpha pre-release**
 
-This release includes the Stage 7 Windows GUI with saved locations, live satellite tracking, pass prediction, the all-sky radar-style Sky map, and the forward-looking Live view.
+The released build includes saved locations, live satellite tracking, pass prediction, the all-sky radar-style Sky map, and the forward-looking Live view.
+
+Stage 8 development refines the Live view for practical observing with a 0–60° elevation range and zoom controls while keeping the all-sky Sky map unchanged.
 
 Weather/cloud analysis, directional cloud estimation, brightness/magnitude modelling, camera support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
 
@@ -27,7 +29,8 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 - [`docs/STAGE_4_IMPLEMENTATION.md`](docs/STAGE_4_IMPLEMENTATION.md) — astronomical visibility, pass prediction, CelesTrak behaviour, and Windows EXE build support.
 - [`docs/STAGE_5_IMPLEMENTATION.md`](docs/STAGE_5_IMPLEMENTATION.md) — Windows GUI shell and saved location profiles.
 - [`docs/STAGE_6_IMPLEMENTATION.md`](docs/STAGE_6_IMPLEMENTATION.md) — live satellite and pass data inside the GUI.
-- [`docs/STAGE_7_IMPLEMENTATION.md`](docs/STAGE_7_IMPLEMENTATION.md) — live sky-map work.
+- [`docs/STAGE_7_IMPLEMENTATION.md`](docs/STAGE_7_IMPLEMENTATION.md) — all-sky and forward-looking Live view work.
+- [`docs/STAGE_8_IMPLEMENTATION.md`](docs/STAGE_8_IMPLEMENTATION.md) — practical 0–60° Live view and zoom controls.
 - [`CREDITS.md`](CREDITS.md) — creator and third-party credits.
 
 ## Windows GUI
@@ -35,7 +38,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 From `C:\git\NightAzimuth`:
 
 ```powershell
-git checkout stage-7-live-sky-map
+git checkout stage-8-live-view-refinement
 git pull
 .\build_windows.ps1
 .\dist\NightAzimuth.exe
@@ -48,8 +51,13 @@ The GUI provides:
 - live radar-style all-sky map
 - horizon, zenith, cardinal directions, and elevation rings
 - separate forward-looking Live view
+- practical 0–60° Live view elevation range
 - facing direction by compass point or 0–359° bearing
 - selectable horizontal field of view from 30° to 180°
+- mouse-wheel zoom
+- + / − zoom buttons
+- drag-to-select rectangular zoom
+- Reset view control
 - clickable satellite markers
 - selected satellite details
 - live satellites above the horizon
@@ -59,7 +67,7 @@ The GUI provides:
 - upcoming passes for the next 24 hours
 - rise, peak, set time, and maximum elevation
 - manual refresh
-- automatic live refresh in the Stage 7 GUI
+- automatic live refresh
 
 Changing the selected location refreshes the calculations for that observer position.
 
@@ -106,4 +114,4 @@ See [`CREDITS.md`](CREDITS.md) for project and third-party attribution informati
 
 ## Licence
 
-No licence has been selected yet. The repository remains private while the project is under initial development.
+No licence has been selected yet.
