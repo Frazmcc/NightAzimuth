@@ -10,7 +10,7 @@ Location-based live satellite tracking with directional sky identification and n
 
 The released build includes saved locations, live satellite tracking, pass prediction, the all-sky radar-style Sky map, and the forward-looking Live view.
 
-Current development has progressed through Stage 10. The Live view now uses a practical 0–60° observing range, supports zoom, draws a short predicted satellite path, and can place the satellites against a real star-field background calculated for the selected location and current time.
+Current development has progressed through Stage 11. The Live view now uses a practical 0–60° observing range, supports zoom, draws a short predicted satellite path, places satellites against a real star-field background, identifies major planets, keeps bright reference stars labelled, and reveals fainter star names when clicked.
 
 Weather/cloud analysis, directional cloud estimation, satellite brightness/magnitude modelling, camera support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
 
@@ -33,6 +33,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 - [`docs/STAGE_8_IMPLEMENTATION.md`](docs/STAGE_8_IMPLEMENTATION.md) — practical 0–60° Live view and zoom controls.
 - [`docs/STAGE_9_IMPLEMENTATION.md`](docs/STAGE_9_IMPLEMENTATION.md) — short projected tracks and direction of travel.
 - [`docs/STAGE_10_IMPLEMENTATION.md`](docs/STAGE_10_IMPLEMENTATION.md) — real Hipparcos star field and constellation reference layer.
+- [`docs/STAGE_11_IMPLEMENTATION.md`](docs/STAGE_11_IMPLEMENTATION.md) — major planet labels and click-to-reveal fainter star names.
 - [`CREDITS.md`](CREDITS.md) — creator and third-party credits.
 
 ## Windows GUI
@@ -40,7 +41,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 From `C:\git\NightAzimuth`:
 
 ```powershell
-git checkout stage-10-star-field
+git checkout stage-11-celestial-labels
 git pull
 .\build_windows.ps1
 .\dist\NightAzimuth.exe
@@ -64,7 +65,9 @@ The GUI provides:
 - arrowed direction of travel
 - real Hipparcos star-field background
 - star brightness represented by marker size
-- selectively labelled named bright stars
+- major planets positioned from the Skyfield ephemeris and permanently labelled when in view
+- bright named reference stars labelled automatically
+- fainter stars labelled only when clicked
 - optional Stellarium constellation lines
 - Stars On/Off control
 - Constellations On/Off control
@@ -114,7 +117,7 @@ Cloud, haze, satellite brightness/magnitude, local obstructions, moonlight, and 
 
 ## Technology baseline
 
-The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite and stellar astronomy calculations, Pandas for Hipparcos catalogue loading, HTTPX for orbital-data retrieval, and PyInstaller for Windows EXE packaging.
+The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite, stellar, and planetary astronomy calculations, Pandas for Hipparcos catalogue loading, HTTPX for orbital-data retrieval, and PyInstaller for Windows EXE packaging.
 
 ## Credits
 
