@@ -35,7 +35,13 @@ class VisibilityEngine:
     ) -> None:
         self.observer = observer
         self.darkness_threshold_deg = darkness_threshold_deg
-        self._loader = Loader(str(cache_directory / "skyfield"))
+
+        # NightAzimuth.exe is built as a windowed application with no console.
+        # Skyfield's default download progress output expects a writable stderr
+        # stream, which PyInstaller intentionally removes in windowed mode.
+        # Disable Loader verbosity so first-run ephemeris downloads are silent
+        # and safe inside the GUI executable.
+        self._loader = Loader(str(cache_directory / "skyfield"), verbose=False)
         self._timescale = self._loader.timescale()
         self._ephemeris = self._loader("de421.bsp")
         self._earth = self._ephemeris["earth"]
