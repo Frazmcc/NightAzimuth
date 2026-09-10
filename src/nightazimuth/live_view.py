@@ -144,7 +144,9 @@ class LiveSkyView(tk.Canvas):
             )
             if not projection.visible:
                 continue
+
             visible_count += 1
+            self._draw_track(satellite, left, top, right, bottom)
             x = left + projection.x_fraction * plot_width
             y = top + projection.y_fraction * plot_height
             self._draw_satellite(satellite, x, y)
@@ -166,6 +168,75 @@ class LiveSkyView(tk.Canvas):
                 fill="#94a3b8",
                 anchor="e",
                 font=("Segoe UI", 8),
+            )
+
+    def _draw_track(
+        self,
+        satellite: SkySatellite,
+        left: float,
+        top: float,
+        right: float,
+        bottom: float,
+    ) -> None:
+        """Draw the visible portions of a satellite's short future path."""
+        if len(satellite.future_track) < 2:
+            return
+
+        plot_width = max(right - left, 1.0)
+        plot_height = max(bottom - top, 1.0)
+        selected = satellite.norad_id == self._selected_norad
+        colour = "#fbbf24" if satellite.potentially_visible else "#60a5fa"
+        line_width = 2 if selected else 1
+        segments: list[list[tuple[float, float]]] = []
+        current_segment: list[tuple[float, float]] = []
+
+        for point in satellite.future_track:
+            projection = project_live_view(
+                point.azimuth_deg,
+                point.elevation_deg,
+                self._facing_deg,
+                self._horizontal_fov_deg,
+                minimum_elevation_deg=self._minimum_elevation_deg,
+                maximum_elevation_deg=self._maximum_elevation_deg,
+            )
+            if projection.visible:
+                current_segment.append(
+                    (
+                        left + projection.x_fraction * plot_width,
+                        top + projection.y_fraction * plot_height,
+                    )
+                )
+            elif current_segment:
+                if len(current_segment) >= 2:
+                    segments.append(current_segment)
+                current_segment = []
+
+        if len(current_segment) >= 2:
+            segments.append(current_segment)
+
+        for index, segment in enumerate(segments):
+            flattened = [coordinate for point in segment for coordinate in point]
+            is_last = index == len(segments) - 1
+            self.create_line(
+                *flattened,
+                fill=colour,
+                width=line_width,
+                dash=(4, 3),
+                arrow=tk.LAST if is_last else tk.NONE,
+                arrowshape=(8, 10, 4),
+                tags=("projected-track",),
+            )
+
+        if selected and segments:
+            end_x, end_y = segments[-1][-1]
+            duration = satellite.future_track[-1].seconds_from_now
+            self.create_text(
+                end_x + 6,
+                end_y + 6,
+                text=f"+{duration // 60}m",
+                fill=colour,
+                anchor="nw",
+                font=("Segoe UI", 8, "bold"),
             )
 
     def _draw_grid(self, left: float, top: float, right: float, bottom: float) -> None:
