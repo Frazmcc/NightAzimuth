@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from dataclasses import replace
 import threading
+import time
 import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .celestrak import CelestrakClient
 from .gui import NightAzimuthApp
-from .live_view import LiveSkyView
 from .sky_map import SkySatellite
+from .star_field import StarFieldEngine, StarFieldSnapshot
+from .star_live_view import StarLiveSkyView
 from .track_prediction import TrackPredictor
 
 
@@ -28,17 +30,22 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
     """Current GUI: all-sky radar plus practical forward-looking Live view."""
 
     def __init__(self) -> None:
-        # Regular Python state can be created before the Tk root. Tk variables
-        # are intentionally created later in _build_ui().
         self._track_load_in_progress = False
         self._track_generation = 0
         self._pending_track_request: tuple[str, list[SkySatellite], int] | None = None
+        self._star_load_in_progress = False
+        self._pending_star_profile: str | None = None
+        self._star_snapshot: StarFieldSnapshot | None = None
+        self._star_snapshot_profile: str | None = None
+        self._star_loaded_monotonic = 0.0
         super().__init__()
         self._auto_refresh_ms = 5_000
 
     def _build_ui(self) -> None:
         self.facing_var = tk.StringVar(master=self, value="N")
         self.fov_var = tk.StringVar(master=self, value="90")
+        self.show_stars_var = tk.BooleanVar(master=self, value=True)
+        self.show_constellations_var = tk.BooleanVar(master=self, value=False)
         self.live_detail_var = tk.StringVar(
             master=self,
             value="Click a satellite in the live view to see details.",
@@ -93,12 +100,26 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         ttk.Button(controls, text="+", width=3, command=self._zoom_live_in).pack(side="left", padx=2)
         ttk.Button(controls, text="Reset view", command=self._reset_live_zoom).pack(side="left", padx=(4, 0))
 
+        ttk.Separator(controls, orient="vertical").pack(side="left", fill="y", padx=10)
+        ttk.Checkbutton(
+            controls,
+            text="Stars",
+            variable=self.show_stars_var,
+            command=self._on_star_layer_changed,
+        ).pack(side="left")
+        ttk.Checkbutton(
+            controls,
+            text="Constellations",
+            variable=self.show_constellations_var,
+            command=self._on_star_layer_changed,
+        ).pack(side="left", padx=(8, 0))
+
         content = ttk.Frame(parent)
         content.grid(row=1, column=0, sticky="nsew")
         content.columnconfigure(0, weight=1)
         content.rowconfigure(0, weight=1)
 
-        self.live_view = LiveSkyView(content, on_select=self._on_live_satellite_selected)
+        self.live_view = StarLiveSkyView(content, on_select=self._on_live_satellite_selected)
         self.live_view.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
         details = ttk.LabelFrame(content, text="Current view", padding=12, width=280)
@@ -116,15 +137,15 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
             details,
             text=(
                 "The practical live view covers 0–60° elevation. "
-                "Dashed lines show the next three minutes of predicted movement; "
-                "the arrow points in the direction of travel. "
-                "Use the mouse wheel, +/− buttons, or drag a rectangle to zoom."
+                "Stars are plotted from the Hipparcos catalogue for the selected location and current time. "
+                "Dashed lines show the next three minutes of satellite movement."
             ),
             wraplength=250,
             justify="left",
         ).pack(side="bottom", anchor="sw")
 
         self._apply_live_view_direction(show_error=False)
+        self._on_star_layer_changed()
 
     def _parse_facing(self) -> float:
         raw = self.facing_var.get().strip().upper()
@@ -159,12 +180,25 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         self.live_view.reset_zoom()
         self._update_live_view_summary()
 
+    def _on_star_layer_changed(self) -> None:
+        if not hasattr(self, "live_view"):
+            return
+        self.live_view.set_star_visibility(
+            stars=self.show_stars_var.get(),
+            constellations=self.show_constellations_var.get(),
+        )
+        if self.show_stars_var.get() or self.show_constellations_var.get():
+            self._ensure_star_field(self.selected_name, force=True)
+
     def _update_live_view_summary(self) -> None:
+        star_status = "On" if self.show_stars_var.get() else "Off"
+        constellation_status = "On" if self.show_constellations_var.get() else "Off"
         self.live_detail_var.set(
             f"Facing {self.live_view.facing_deg:.0f}°\n"
             f"Horizontal FOV: {self.live_view.horizontal_fov_deg:.0f}°\n"
-            f"Elevation: {self.live_view.minimum_elevation_deg:.0f}–{self.live_view.maximum_elevation_deg:.0f}°\n\n"
-            "Yellow = potentially visible. Blue = other tracked satellites.\n"
+            f"Elevation: {self.live_view.minimum_elevation_deg:.0f}–{self.live_view.maximum_elevation_deg:.0f}°\n"
+            f"Stars: {star_status}  |  Constellations: {constellation_status}\n\n"
+            "Yellow = potentially visible satellite. Blue = other tracked satellite.\n"
             "Dashed arrow = predicted movement for the next 3 minutes."
         )
 
@@ -181,12 +215,71 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
 
         self._track_generation += 1
         generation = self._track_generation
-
-        # Show current positions immediately. The worker returns only prediction
-        # tracks; they are merged into the latest live positions later so an old
-        # snapshot can never overwrite a newer five-second refresh.
         self.live_view.set_satellites(sky_satellites)
         self._start_track_prediction(profile_name, sky_satellites, generation)
+        self._ensure_star_field(profile_name)
+
+    def _ensure_star_field(self, profile_name: str, *, force: bool = False) -> None:
+        if not profile_name or not (self.show_stars_var.get() or self.show_constellations_var.get()):
+            return
+
+        age = time.monotonic() - self._star_loaded_monotonic
+        if (
+            not force
+            and self._star_snapshot is not None
+            and self._star_snapshot_profile == profile_name
+            and age < 60.0
+        ):
+            return
+
+        if self._star_load_in_progress:
+            self._pending_star_profile = profile_name
+            return
+
+        profile = next((item for item in self.profiles if item.name == profile_name), None)
+        if profile is None:
+            return
+
+        self._star_load_in_progress = True
+        self._pending_star_profile = None
+        observer = self._observer_for_profile(profile)
+        threading.Thread(
+            target=self._load_star_field,
+            args=(profile_name, observer),
+            daemon=True,
+        ).start()
+
+    def _load_star_field(self, profile_name: str, observer: object) -> None:
+        try:
+            snapshot = StarFieldEngine(
+                observer,
+                self.cache_directory,
+                limiting_magnitude=5.5,
+            ).snapshot()
+            self.after(0, self._apply_star_field, profile_name, snapshot)
+        except Exception as exc:  # noqa: BLE001
+            self.after(0, self._star_field_failed, profile_name, str(exc))
+
+    def _apply_star_field(self, profile_name: str, snapshot: StarFieldSnapshot) -> None:
+        self._star_load_in_progress = False
+        if profile_name == self.selected_name:
+            self._star_snapshot = snapshot
+            self._star_snapshot_profile = profile_name
+            self._star_loaded_monotonic = time.monotonic()
+            self.live_view.set_star_field(snapshot)
+        self._start_pending_star_field()
+
+    def _star_field_failed(self, profile_name: str, error: str) -> None:
+        self._star_load_in_progress = False
+        if profile_name == self.selected_name:
+            self.status_var.set(f"Satellite tracking active; star field unavailable: {error}")
+        self._start_pending_star_field()
+
+    def _start_pending_star_field(self) -> None:
+        pending = self._pending_star_profile
+        self._pending_star_profile = None
+        if pending and pending == self.selected_name:
+            self._ensure_star_field(pending, force=True)
 
     def _start_track_prediction(
         self,
@@ -259,8 +352,6 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
             self._sky_satellites = updated
             self.live_view.set_satellites(updated)
 
-            # If the user selected a marker while the prediction was running,
-            # refresh its detail panel now that the future path is available.
             if selected_norad is not None:
                 selected = next(
                     (satellite for satellite in updated if satellite.norad_id == selected_norad),
@@ -272,8 +363,6 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         self._start_pending_track_prediction()
 
     def _projected_track_failed(self, _generation: int, _error: str) -> None:
-        # Track prediction is an enhancement to the current-position display.
-        # A failure here must not take down or obscure the working live tracker.
         self._track_load_in_progress = False
         self._start_pending_track_prediction()
 
