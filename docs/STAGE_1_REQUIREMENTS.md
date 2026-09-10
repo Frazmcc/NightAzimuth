@@ -17,6 +17,12 @@ NightAzimuth will:
 - Use a saved observer latitude, longitude, and altitude.
 - Use the current date and time automatically for live tracking.
 - Allow the observer location to be configured precisely rather than relying on coarse IP geolocation.
+- Provide an in-app Settings area where observer coordinates can be entered and edited without manually changing configuration files.
+- Support multiple saved observer/location profiles, each with a friendly name such as `Home`, `Garden`, or `Dark Sky Site`.
+- Allow the active observer location to be changed quickly from within the app.
+- Remember the last selected observer profile between launches.
+- Allow latitude, longitude, and altitude to be stored per saved profile.
+- Keep observer/location data local to the user's installation unless a future explicitly approved feature adds synchronisation.
 
 ## Satellite tracking
 

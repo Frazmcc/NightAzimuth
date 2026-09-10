@@ -37,6 +37,20 @@ class CelestrakClient:
 
         try:
             data = self._download_group(normalized_group)
+        except httpx.HTTPStatusError as exc:
+            # CelesTrak deliberately returns 403 when its one-download-per-update
+            # policy is triggered. Never retry automatically. If we have an older
+            # successful cache, use it; otherwise stop and surface the server message.
+            if cache_path.exists():
+                return self._read_cache(cache_path)
+
+            response_text = exc.response.text.strip()
+            detail = response_text[:500] if response_text else str(exc)
+            raise CelestrakError(
+                f"CelesTrak returned HTTP {exc.response.status_code} for group "
+                f"{normalized_group}. NightAzimuth will not retry automatically. "
+                f"Server message: {detail}"
+            ) from exc
         except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
             if cache_path.exists():
                 return self._read_cache(cache_path)
@@ -53,7 +67,10 @@ class CelestrakClient:
             params={"GROUP": group, "FORMAT": "JSON"},
             timeout=self.timeout_seconds,
             follow_redirects=True,
-            headers={"User-Agent": "NightAzimuth/0.1"},
+            headers={
+                "User-Agent": "NightAzimuth/0.1 (+https://github.com/Frazmcc/NightAzimuth)",
+                "Accept": "application/json",
+            },
         )
         response.raise_for_status()
         payload = response.json()

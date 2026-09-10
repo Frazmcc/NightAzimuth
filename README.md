@@ -4,62 +4,82 @@ Location-based live satellite tracking with directional sky identification and n
 
 ## Project status
 
-**Stage 3 — Core satellite tracking implementation**
+**Stage 4 — Astronomical visibility and pass prediction**
 
 NightAzimuth is being developed using a stage-gated process. Work only progresses to the next stage after the current stage has been reviewed and approved.
 
-Stage 3 adds the first functional tracking layer: observer coordinates, current time, CelesTrak OMM JSON orbital data, local caching, SGP4 propagation through Skyfield, and calculation of satellites geometrically above the observer's horizon.
+Stage 4 extends the geometric tracker with astronomical visibility checks, upcoming pass prediction, safer CelesTrak handling, and reproducible Windows EXE builds.
 
-Weather, cloud analysis, true visual visibility, pass prediction, graphical sky maps, and camera support are not implemented in this stage.
+Weather/cloud analysis, graphical sky maps, saved-location settings UI, camera support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
 
 ## Initial goal
 
-NightAzimuth will become a local application that uses an observer's location and current time to determine which satellites are above the horizon, where they are in the sky, and which are realistically likely to be visible.
+NightAzimuth is a local application that uses an observer's location and current time to determine which satellites are above the horizon, where they are in the sky, and which are realistically likely to be visible.
 
 Visibility will eventually combine orbital geometry, solar illumination, astronomical darkness, and the freshest practical directional cloud information available for the part of the sky being viewed.
 
 ## Documentation
 
 - [`docs/STAGE_1_REQUIREMENTS.md`](docs/STAGE_1_REQUIREMENTS.md) — approved product requirements.
-- [`docs/STAGE_3_IMPLEMENTATION.md`](docs/STAGE_3_IMPLEMENTATION.md) — current core-tracking implementation and acceptance condition.
+- [`docs/STAGE_3_IMPLEMENTATION.md`](docs/STAGE_3_IMPLEMENTATION.md) — core-tracking implementation.
+- [`docs/STAGE_4_IMPLEMENTATION.md`](docs/STAGE_4_IMPLEMENTATION.md) — visibility, pass prediction, CelesTrak behaviour, and Windows EXE build instructions.
 
-## Stage 3 command-line verification
+## Current command-line verification
 
-Copy the example configuration to a local file, enter the observer coordinates, install the project, and run:
+From `C:\git\NightAzimuth`:
 
-```bash
-python -m pip install -e .
-nightazimuth --config config/nightazimuth.toml
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+python -m nightazimuth.cli --config config\nightazimuth.toml
 ```
 
-The output is sorted by elevation and includes satellite name, NORAD catalogue ID, azimuth, elevation, and range.
+Potentially visible satellites only:
 
-Being above the horizon does **not** mean the satellite is actually visible. That distinction is intentionally preserved for later stages.
+```powershell
+python -m nightazimuth.cli --config config\nightazimuth.toml --visible-only
+```
 
-## Project layout
+Upcoming passes:
+
+```powershell
+python -m nightazimuth.cli --config config\nightazimuth.toml --passes
+```
+
+## Windows EXE
+
+Build the current application with:
+
+```powershell
+.\build_windows.ps1
+```
+
+The executable is written to:
 
 ```text
-NightAzimuth/
-├── config/
-│   └── nightazimuth.example.toml
-├── docs/
-│   ├── STAGE_1_REQUIREMENTS.md
-│   └── STAGE_3_IMPLEMENTATION.md
-├── src/
-│   └── nightazimuth/
-│       ├── __init__.py
-│       ├── celestrak.py
-│       ├── cli.py
-│       ├── config.py
-│       └── tracker.py
-├── tests/
-│   ├── __init__.py
-│   ├── test_celestrak.py
-│   └── test_config.py
-├── .gitignore
-├── pyproject.toml
-└── README.md
+C:\git\NightAzimuth\dist\NightAzimuth.exe
 ```
+
+Run it with:
+
+```powershell
+.\dist\NightAzimuth.exe --config config\nightazimuth.toml
+```
+
+or:
+
+```powershell
+.\dist\NightAzimuth.exe --config config\nightazimuth.toml --visible-only
+.\dist\NightAzimuth.exe --config config\nightazimuth.toml --passes
+```
+
+## Current behaviour
+
+The live satellite list includes name, NORAD catalogue ID, azimuth, elevation, range, whether the satellite is sunlit, whether the observer's sky is sufficiently dark, and whether the geometry is potentially favourable for visual observation.
+
+`potentially visible` does **not** mean guaranteed naked-eye visibility. Cloud, haze, brightness/magnitude, local obstructions, moonlight, and other factors are not yet included.
+
+Pass prediction provides rise, culmination, set time, and maximum elevation for upcoming passes within the configured prediction window.
 
 ## Development principles
 
@@ -74,7 +94,7 @@ NightAzimuth/
 
 ## Technology baseline
 
-The Stage 3 implementation uses Python 3.11+, Skyfield for satellite propagation/coordinate calculations, and HTTPX for orbital-data retrieval.
+The current implementation uses Python 3.11+, Skyfield for satellite propagation and astronomy calculations, HTTPX for orbital-data retrieval, and PyInstaller for Windows EXE packaging.
 
 ## Licence
 
