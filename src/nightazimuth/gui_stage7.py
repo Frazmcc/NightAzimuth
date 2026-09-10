@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import replace
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from .celestrak import CelestrakClient
 from .gui import NightAzimuthApp
 from .live_view import LiveSkyView
 from .sky_map import SkySatellite
+from .track_prediction import TrackPredictor
 
 
 _CARDINALS = {
@@ -21,19 +25,16 @@ _CARDINALS = {
 
 
 class Stage7NightAzimuthApp(NightAzimuthApp):
-    """Stage 7 GUI with the original all-sky radar plus a forward-looking live view."""
+    """Current GUI: all-sky radar plus practical forward-looking Live view."""
 
     def __init__(self) -> None:
-        # NightAzimuthApp creates the Tk root first and then calls our overridden
-        # _build_ui(). Tk variables must therefore be created in _build_ui(), not
-        # before super().__init__(), otherwise a windowed EXE has no default root.
+        # Regular Python state can be created before the Tk root. Tk variables
+        # are intentionally created later in _build_ui().
+        self._track_load_in_progress = False
         super().__init__()
-        # A forward-looking view benefits from faster position updates than the all-sky prototype.
         self._auto_refresh_ms = 5_000
 
     def _build_ui(self) -> None:
-        # At this point tk.Tk.__init__() has already created the root window, so
-        # these variables can safely be bound to this application instance.
         self.facing_var = tk.StringVar(master=self, value="N")
         self.fov_var = tk.StringVar(master=self, value="90")
         self.live_detail_var = tk.StringVar(
@@ -113,8 +114,9 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
             details,
             text=(
                 "The practical live view covers 0–60° elevation. "
-                "Use the mouse wheel, +/− buttons, or drag a rectangle over the sky to zoom into a smaller area. "
-                "Reset view returns to the full 0–60° display."
+                "Dashed lines show the next three minutes of predicted movement; "
+                "the arrow points in the direction of travel. "
+                "Use the mouse wheel, +/− buttons, or drag a rectangle to zoom."
             ),
             wraplength=250,
             justify="left",
@@ -160,7 +162,8 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
             f"Facing {self.live_view.facing_deg:.0f}°\n"
             f"Horizontal FOV: {self.live_view.horizontal_fov_deg:.0f}°\n"
             f"Elevation: {self.live_view.minimum_elevation_deg:.0f}–{self.live_view.maximum_elevation_deg:.0f}°\n\n"
-            "Yellow = potentially visible. Blue = other tracked satellites."
+            "Yellow = potentially visible. Blue = other tracked satellites.\n"
+            "Dashed arrow = predicted movement for the next 3 minutes."
         )
 
     def _apply_tracking_data(
@@ -171,17 +174,100 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         sky_satellites: list[SkySatellite],
     ) -> None:
         super()._apply_tracking_data(profile_name, live_rows, pass_rows, sky_satellites)
-        if profile_name == self.selected_name and hasattr(self, "live_view"):
-            self.live_view.set_satellites(sky_satellites)
+        if profile_name != self.selected_name or not hasattr(self, "live_view"):
+            return
+
+        # Show current positions immediately, then add the short prediction in a
+        # worker thread so the normal five-second refresh remains responsive.
+        self.live_view.set_satellites(sky_satellites)
+        self._start_track_prediction(profile_name, sky_satellites)
+
+    def _start_track_prediction(
+        self,
+        profile_name: str,
+        satellites: list[SkySatellite],
+    ) -> None:
+        if self._track_load_in_progress or not satellites:
+            return
+        profile = next((item for item in self.profiles if item.name == profile_name), None)
+        if profile is None:
+            return
+
+        self._track_load_in_progress = True
+        observer = self._observer_for_profile(profile)
+        threading.Thread(
+            target=self._load_projected_tracks,
+            args=(profile_name, observer, satellites),
+            daemon=True,
+        ).start()
+
+    def _load_projected_tracks(
+        self,
+        profile_name: str,
+        observer: object,
+        satellites: list[SkySatellite],
+    ) -> None:
+        try:
+            wanted_ids = {satellite.norad_id for satellite in satellites}
+            client = CelestrakClient(cache_directory=self.cache_directory, cache_max_age_minutes=120)
+            elements = client.load_group("VISUAL")
+            relevant = [
+                fields
+                for fields in elements
+                if str(fields.get("NORAD_CAT_ID") or "") in wanted_ids
+            ]
+            tracks = TrackPredictor(observer).predict(
+                relevant,
+                duration_seconds=180,
+                step_seconds=30,
+            )
+            updated = [
+                replace(
+                    satellite,
+                    future_track=tracks.get(satellite.norad_id, ()),
+                )
+                for satellite in satellites
+            ]
+            self.after(0, self._apply_projected_tracks, profile_name, updated)
+        except Exception as exc:  # noqa: BLE001
+            self.after(0, self._projected_track_failed, str(exc))
+
+    def _apply_projected_tracks(
+        self,
+        profile_name: str,
+        satellites: list[SkySatellite],
+    ) -> None:
+        self._track_load_in_progress = False
+        if profile_name != self.selected_name:
+            return
+        self._sky_satellites = satellites
+        self.live_view.set_satellites(satellites)
+
+    def _projected_track_failed(self, _error: str) -> None:
+        # Track prediction is an enhancement to the current-position display.
+        # A failure here must not take down or obscure the working live tracker.
+        self._track_load_in_progress = False
 
     def _on_live_satellite_selected(self, satellite: SkySatellite) -> None:
         self.live_view.select_norad(satellite.norad_id)
+
+        projection_text = "No short projection available."
+        if len(satellite.future_track) >= 2:
+            first = satellite.future_track[0]
+            last = satellite.future_track[-1]
+            projection_text = (
+                f"Next {last.seconds_from_now // 60} min:\n"
+                f"Azimuth {first.azimuth_deg:.1f}° → {last.azimuth_deg:.1f}°\n"
+                f"Elevation {first.elevation_deg:.1f}° → {last.elevation_deg:.1f}°"
+            )
+
         self.live_detail_var.set(
             f"{satellite.name}\n\n"
             f"NORAD: {satellite.norad_id}\n"
             f"Azimuth: {satellite.azimuth_deg:.2f}°\n"
             f"Elevation: {satellite.elevation_deg:.2f}°\n"
             f"Range: {satellite.range_km:.0f} km\n\n"
+            f"{projection_text}\n\n"
             f"Sunlit: {'Yes' if satellite.satellite_sunlit else 'No'}\n"
             f"Dark sky: {'Yes' if satellite.sky_dark else 'No'}\n"
             f"Potentially visible: {'Yes' if satellite.potentially_visible else 'No'}"
