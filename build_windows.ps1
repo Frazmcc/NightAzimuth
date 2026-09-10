@@ -16,10 +16,10 @@ Write-Host "Building NightAzimuth.exe..."
     --clean `
     --noconfirm `
     --onefile `
-    --console `
+    --windowed `
     --name NightAzimuth `
     --collect-data skyfield `
-    nightazimuth_launcher.py
+    nightazimuth_gui_launcher.py
 
 Write-Host ""
 Write-Host "Build complete: $repoRoot\dist\NightAzimuth.exe"
