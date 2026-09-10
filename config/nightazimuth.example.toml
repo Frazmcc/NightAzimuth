@@ -23,8 +23,9 @@ pass_prediction_hours = 24.0
 darkness_threshold_deg = -6.0
 
 [data]
-# CelesTrak GP group to load. ACTIVE is the broad default dataset.
-celestrak_group = "ACTIVE"
+# CelesTrak GP group to load. VISUAL is the curated "100 (or so) Brightest"
+# group and is the best default for visual-satellite tracking.
+celestrak_group = "VISUAL"
 cache_directory = "data/cache"
 # Refresh GP orbital data after this many minutes.
 cache_max_age_minutes = 120
