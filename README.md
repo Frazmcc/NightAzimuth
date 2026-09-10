@@ -10,7 +10,7 @@ Location-based live satellite tracking with directional sky identification and n
 
 The released build includes saved locations, live satellite tracking, pass prediction, the all-sky radar-style Sky map, and the forward-looking Live view.
 
-Stage 8 development refines the Live view for practical observing with a 0–60° elevation range and zoom controls while keeping the all-sky Sky map unchanged.
+Current development has progressed through Stage 9. The Live view now uses a practical 0–60° observing range, supports zoom, and can draw a short predicted path showing where each satellite is expected to move over the next three minutes.
 
 Weather/cloud analysis, directional cloud estimation, brightness/magnitude modelling, camera support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
 
@@ -31,6 +31,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 - [`docs/STAGE_6_IMPLEMENTATION.md`](docs/STAGE_6_IMPLEMENTATION.md) — live satellite and pass data inside the GUI.
 - [`docs/STAGE_7_IMPLEMENTATION.md`](docs/STAGE_7_IMPLEMENTATION.md) — all-sky and forward-looking Live view work.
 - [`docs/STAGE_8_IMPLEMENTATION.md`](docs/STAGE_8_IMPLEMENTATION.md) — practical 0–60° Live view and zoom controls.
+- [`docs/STAGE_9_IMPLEMENTATION.md`](docs/STAGE_9_IMPLEMENTATION.md) — short projected tracks and direction of travel.
 - [`CREDITS.md`](CREDITS.md) — creator and third-party credits.
 
 ## Windows GUI
@@ -38,7 +39,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 From `C:\git\NightAzimuth`:
 
 ```powershell
-git checkout stage-8-live-view-refinement
+git checkout stage-9-projected-tracks
 git pull
 .\build_windows.ps1
 .\dist\NightAzimuth.exe
@@ -58,8 +59,10 @@ The GUI provides:
 - + / − zoom buttons
 - drag-to-select rectangular zoom
 - Reset view control
+- short 3-minute projected satellite paths
+- arrowed direction of travel
 - clickable satellite markers
-- selected satellite details
+- selected satellite details including projected azimuth/elevation movement
 - live satellites above the horizon
 - azimuth, elevation, and range
 - sunlit and dark-sky indicators
