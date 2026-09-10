@@ -31,6 +31,8 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         # Regular Python state can be created before the Tk root. Tk variables
         # are intentionally created later in _build_ui().
         self._track_load_in_progress = False
+        self._track_generation = 0
+        self._pending_track_request: tuple[str, list[SkySatellite], int] | None = None
         super().__init__()
         self._auto_refresh_ms = 5_000
 
@@ -177,27 +179,37 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         if profile_name != self.selected_name or not hasattr(self, "live_view"):
             return
 
-        # Show current positions immediately, then add the short prediction in a
-        # worker thread so the normal five-second refresh remains responsive.
+        self._track_generation += 1
+        generation = self._track_generation
+
+        # Show current positions immediately. The worker returns only prediction
+        # tracks; they are merged into the latest live positions later so an old
+        # snapshot can never overwrite a newer five-second refresh.
         self.live_view.set_satellites(sky_satellites)
-        self._start_track_prediction(profile_name, sky_satellites)
+        self._start_track_prediction(profile_name, sky_satellites, generation)
 
     def _start_track_prediction(
         self,
         profile_name: str,
         satellites: list[SkySatellite],
+        generation: int,
     ) -> None:
-        if self._track_load_in_progress or not satellites:
+        if not satellites:
             return
         profile = next((item for item in self.profiles if item.name == profile_name), None)
         if profile is None:
             return
 
+        if self._track_load_in_progress:
+            self._pending_track_request = (profile_name, satellites, generation)
+            return
+
         self._track_load_in_progress = True
+        self._pending_track_request = None
         observer = self._observer_for_profile(profile)
         threading.Thread(
             target=self._load_projected_tracks,
-            args=(profile_name, observer, satellites),
+            args=(profile_name, observer, satellites, generation),
             daemon=True,
         ).start()
 
@@ -206,6 +218,7 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         profile_name: str,
         observer: object,
         satellites: list[SkySatellite],
+        generation: int,
     ) -> None:
         try:
             wanted_ids = {satellite.norad_id for satellite in satellites}
@@ -221,32 +234,57 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
                 duration_seconds=180,
                 step_seconds=30,
             )
+            self.after(0, self._apply_projected_tracks, profile_name, generation, tracks)
+        except Exception as exc:  # noqa: BLE001
+            self.after(0, self._projected_track_failed, generation, str(exc))
+
+    def _apply_projected_tracks(
+        self,
+        profile_name: str,
+        generation: int,
+        tracks: dict[str, tuple],
+    ) -> None:
+        self._track_load_in_progress = False
+
+        if profile_name == self.selected_name and generation == self._track_generation:
+            selected_norad = self.live_view.selected_norad
+            current_satellites = list(self._sky_satellites)
             updated = [
                 replace(
                     satellite,
                     future_track=tracks.get(satellite.norad_id, ()),
                 )
-                for satellite in satellites
+                for satellite in current_satellites
             ]
-            self.after(0, self._apply_projected_tracks, profile_name, updated)
-        except Exception as exc:  # noqa: BLE001
-            self.after(0, self._projected_track_failed, str(exc))
+            self._sky_satellites = updated
+            self.live_view.set_satellites(updated)
 
-    def _apply_projected_tracks(
-        self,
-        profile_name: str,
-        satellites: list[SkySatellite],
-    ) -> None:
-        self._track_load_in_progress = False
-        if profile_name != self.selected_name:
-            return
-        self._sky_satellites = satellites
-        self.live_view.set_satellites(satellites)
+            # If the user selected a marker while the prediction was running,
+            # refresh its detail panel now that the future path is available.
+            if selected_norad is not None:
+                selected = next(
+                    (satellite for satellite in updated if satellite.norad_id == selected_norad),
+                    None,
+                )
+                if selected is not None:
+                    self._on_live_satellite_selected(selected)
 
-    def _projected_track_failed(self, _error: str) -> None:
+        self._start_pending_track_prediction()
+
+    def _projected_track_failed(self, _generation: int, _error: str) -> None:
         # Track prediction is an enhancement to the current-position display.
         # A failure here must not take down or obscure the working live tracker.
         self._track_load_in_progress = False
+        self._start_pending_track_prediction()
+
+    def _start_pending_track_prediction(self) -> None:
+        pending = self._pending_track_request
+        self._pending_track_request = None
+        if pending is None:
+            return
+        profile_name, satellites, generation = pending
+        if profile_name == self.selected_name and generation == self._track_generation:
+            self._start_track_prediction(profile_name, satellites, generation)
 
     def _on_live_satellite_selected(self, satellite: SkySatellite) -> None:
         self.live_view.select_norad(satellite.norad_id)
