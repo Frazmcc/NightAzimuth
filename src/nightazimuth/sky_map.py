@@ -18,13 +18,30 @@ class SkySatellite:
     potentially_visible: bool
 
 
-class SkyMap(tk.Canvas):
-    """Radar-style all-sky view.
+def project_sky_position(
+    azimuth_deg: float,
+    elevation_deg: float,
+    *,
+    center_x: float,
+    center_y: float,
+    radius: float,
+) -> tuple[float, float]:
+    """Project azimuth/elevation onto the all-sky radar view.
 
-    North is at the top, east at the right, the horizon is the outer circle,
-    and the zenith is the centre. Satellite positions use current topocentric
-    azimuth and elevation supplied by the tracking engine.
+    Azimuth is measured clockwise from north. Elevation 0 degrees lies on the
+    horizon circle and 90 degrees lies at the centre (zenith).
     """
+    elevation = max(0.0, min(90.0, elevation_deg))
+    azimuth = math.radians(azimuth_deg % 360.0)
+    radial = radius * (90.0 - elevation) / 90.0
+    return (
+        center_x + radial * math.sin(azimuth),
+        center_y - radial * math.cos(azimuth),
+    )
+
+
+class SkyMap(tk.Canvas):
+    """Interactive radar-style all-sky view."""
 
     def __init__(
         self,
@@ -105,10 +122,13 @@ class SkyMap(tk.Canvas):
         cy: float,
         radius: float,
     ) -> None:
-        azimuth = math.radians(satellite.azimuth_deg)
-        radial = radius * (90 - max(0.0, min(90.0, satellite.elevation_deg))) / 90
-        x = cx + radial * math.sin(azimuth)
-        y = cy - radial * math.cos(azimuth)
+        x, y = project_sky_position(
+            satellite.azimuth_deg,
+            satellite.elevation_deg,
+            center_x=cx,
+            center_y=cy,
+            radius=radius,
+        )
 
         selected = satellite.norad_id == self._selected_norad
         marker_radius = 6 if selected else 4
