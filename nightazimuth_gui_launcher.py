@@ -1,4 +1,4 @@
-from nightazimuth.gui import main
+from nightazimuth.gui_stage7 import main
 
 
 if __name__ == "__main__":

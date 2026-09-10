@@ -4,15 +4,15 @@
 
 Location-based live satellite tracking with directional sky identification and near-real-time cloud awareness.
 
-## Project status
+## Current release
 
-**Stage 6 — GUI live satellite data**
+**v0.1.0-alpha.1 — first alpha pre-release**
 
-NightAzimuth is being developed using a stage-gated process. Work only progresses to the next stage after the current stage has been reviewed and approved.
+This release includes the Stage 7 Windows GUI with saved locations, live satellite tracking, pass prediction, the all-sky radar-style Sky map, and the forward-looking Live view.
 
-Stage 6 connects the Windows GUI to the existing satellite-tracking engine. The selected saved location now drives live satellite calculations and upcoming pass prediction directly inside the application.
+Weather/cloud analysis, directional cloud estimation, brightness/magnitude modelling, camera support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
 
-Weather/cloud analysis, radar-style sky maps, camera support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
+See [`RELEASE_NOTES_v0.1.0-alpha.1.md`](RELEASE_NOTES_v0.1.0-alpha.1.md) for release details.
 
 ## Initial goal
 
@@ -27,6 +27,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 - [`docs/STAGE_4_IMPLEMENTATION.md`](docs/STAGE_4_IMPLEMENTATION.md) — astronomical visibility, pass prediction, CelesTrak behaviour, and Windows EXE build support.
 - [`docs/STAGE_5_IMPLEMENTATION.md`](docs/STAGE_5_IMPLEMENTATION.md) — Windows GUI shell and saved location profiles.
 - [`docs/STAGE_6_IMPLEMENTATION.md`](docs/STAGE_6_IMPLEMENTATION.md) — live satellite and pass data inside the GUI.
+- [`docs/STAGE_7_IMPLEMENTATION.md`](docs/STAGE_7_IMPLEMENTATION.md) — live sky-map work.
 - [`CREDITS.md`](CREDITS.md) — creator and third-party credits.
 
 ## Windows GUI
@@ -34,7 +35,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 From `C:\git\NightAzimuth`:
 
 ```powershell
-git checkout main
+git checkout stage-7-live-sky-map
 git pull
 .\build_windows.ps1
 .\dist\NightAzimuth.exe
@@ -44,6 +45,13 @@ The GUI provides:
 
 - saved observing locations
 - quick location switching
+- live radar-style all-sky map
+- horizon, zenith, cardinal directions, and elevation rings
+- separate forward-looking Live view
+- facing direction by compass point or 0–359° bearing
+- selectable horizontal field of view from 30° to 180°
+- clickable satellite markers
+- selected satellite details
 - live satellites above the horizon
 - azimuth, elevation, and range
 - sunlit and dark-sky indicators
@@ -51,6 +59,7 @@ The GUI provides:
 - upcoming passes for the next 24 hours
 - rise, peak, set time, and maximum elevation
 - manual refresh
+- automatic live refresh in the Stage 7 GUI
 
 Changing the selected location refreshes the calculations for that observer position.
 
