@@ -24,14 +24,23 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
     """Stage 7 GUI with the original all-sky radar plus a forward-looking live view."""
 
     def __init__(self) -> None:
-        self.facing_var = tk.StringVar(value="N")
-        self.fov_var = tk.StringVar(value="90")
-        self.live_detail_var = tk.StringVar(value="Click a satellite in the live view to see details.")
+        # NightAzimuthApp creates the Tk root first and then calls our overridden
+        # _build_ui(). Tk variables must therefore be created in _build_ui(), not
+        # before super().__init__(), otherwise a windowed EXE has no default root.
         super().__init__()
         # A forward-looking view benefits from faster position updates than the all-sky prototype.
         self._auto_refresh_ms = 5_000
 
     def _build_ui(self) -> None:
+        # At this point tk.Tk.__init__() has already created the root window, so
+        # these variables can safely be bound to this application instance.
+        self.facing_var = tk.StringVar(master=self, value="N")
+        self.fov_var = tk.StringVar(master=self, value="90")
+        self.live_detail_var = tk.StringVar(
+            master=self,
+            value="Click a satellite in the live view to see details.",
+        )
+
         super()._build_ui()
 
         notebook = self._find_notebook(self)
