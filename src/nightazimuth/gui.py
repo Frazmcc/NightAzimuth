@@ -1,23 +1,37 @@
 from __future__ import annotations
 
+from pathlib import Path
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from .celestrak import CelestrakClient, CelestrakError
+from .config import ObserverConfig
 from .location_profiles import LocationProfile, LocationProfileStore
+from .passes import PassPredictor
+from .tracker import SatelliteTracker
+from .visibility import VisibilityEngine
 
 
 class NightAzimuthApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("NightAzimuth")
-        self.geometry("860x560")
-        self.minsize(760, 480)
+        self.geometry("1180x720")
+        self.minsize(980, 620)
 
         self.store = LocationProfileStore()
         self.profiles, self.selected_name = self.store.load()
+        self._refresh_in_progress = False
 
         self._build_ui()
         self._refresh_location_selector()
+        if self._selected_profile() is not None:
+            self.after(250, self.refresh_data)
+
+    @property
+    def cache_directory(self) -> Path:
+        return self.store.path.parent / "cache"
 
     def _build_ui(self) -> None:
         header = ttk.Frame(self, padding=12)
@@ -36,38 +50,100 @@ class NightAzimuthApp(tk.Tk):
         self.location_combo.pack(side="left")
         self.location_combo.bind("<<ComboboxSelected>>", self._on_location_changed)
 
+        self.refresh_button = ttk.Button(header, text="Refresh", command=self.refresh_data)
+        self.refresh_button.pack(side="right", padx=(8, 0))
         ttk.Button(header, text="Settings", command=self.open_settings).pack(side="right")
 
-        body = ttk.Frame(self, padding=20)
+        body = ttk.Frame(self, padding=(12, 0, 12, 12))
         body.pack(fill="both", expand=True)
 
-        ttk.Label(
-            body,
-            text="Satellite tracking dashboard",
-            font=("Segoe UI", 15, "bold"),
-        ).pack(anchor="w")
-        ttk.Label(
-            body,
-            text=(
-                "Stage 5 introduces the graphical application shell and saved location settings. "
-                "The live sky map and weather layers will be added in later approved stages."
-            ),
-            wraplength=760,
-        ).pack(anchor="w", pady=(8, 18))
-
         self.location_summary = ttk.Label(body, text="No location configured.")
-        self.location_summary.pack(anchor="w", pady=(0, 12))
+        self.location_summary.pack(anchor="w", pady=(0, 8))
 
-        info = ttk.LabelFrame(body, text="Current status", padding=16)
-        info.pack(fill="x", pady=8)
+        self.status_var = tk.StringVar(value="Ready")
+        ttk.Label(body, textvariable=self.status_var).pack(anchor="w", pady=(0, 8))
+
+        notebook = ttk.Notebook(body)
+        notebook.pack(fill="both", expand=True)
+
+        live_tab = ttk.Frame(notebook, padding=8)
+        passes_tab = ttk.Frame(notebook, padding=8)
+        notebook.add(live_tab, text="Live satellites")
+        notebook.add(passes_tab, text="Upcoming passes")
+
+        self._build_live_table(live_tab)
+        self._build_pass_table(passes_tab)
+
         ttk.Label(
-            info,
+            body,
             text=(
-                "Use Settings to add one or more observing locations. The selected location is "
-                "remembered automatically and will be used by the graphical tracker in later stages."
+                "Potentially visible means the satellite is sunlit while your sky is sufficiently dark. "
+                "It does not yet include cloud, haze, magnitude, local obstructions, or camera sensitivity."
             ),
-            wraplength=720,
-        ).pack(anchor="w")
+            wraplength=1120,
+        ).pack(anchor="w", pady=(8, 0))
+
+    def _build_live_table(self, parent: ttk.Frame) -> None:
+        columns = ("name", "norad", "az", "el", "range", "sunlit", "dark", "potential")
+        self.live_tree = ttk.Treeview(parent, columns=columns, show="headings", height=18)
+        headings = {
+            "name": "Satellite",
+            "norad": "NORAD",
+            "az": "Azimuth",
+            "el": "Elevation",
+            "range": "Range km",
+            "sunlit": "Sunlit",
+            "dark": "Dark sky",
+            "potential": "Potential",
+        }
+        widths = {
+            "name": 260,
+            "norad": 80,
+            "az": 90,
+            "el": 90,
+            "range": 90,
+            "sunlit": 75,
+            "dark": 75,
+            "potential": 90,
+        }
+        for column in columns:
+            self.live_tree.heading(column, text=headings[column])
+            self.live_tree.column(column, width=widths[column], anchor="center")
+        self.live_tree.column("name", anchor="w")
+
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=self.live_tree.yview)
+        self.live_tree.configure(yscrollcommand=scrollbar.set)
+        self.live_tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    def _build_pass_table(self, parent: ttk.Frame) -> None:
+        columns = ("name", "norad", "rise", "peak", "set", "maxel")
+        self.pass_tree = ttk.Treeview(parent, columns=columns, show="headings", height=18)
+        headings = {
+            "name": "Satellite",
+            "norad": "NORAD",
+            "rise": "Rise UTC",
+            "peak": "Peak UTC",
+            "set": "Set UTC",
+            "maxel": "Max elevation",
+        }
+        widths = {
+            "name": 260,
+            "norad": 80,
+            "rise": 170,
+            "peak": 170,
+            "set": 170,
+            "maxel": 110,
+        }
+        for column in columns:
+            self.pass_tree.heading(column, text=headings[column])
+            self.pass_tree.column(column, width=widths[column], anchor="center")
+        self.pass_tree.column("name", anchor="w")
+
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=self.pass_tree.yview)
+        self.pass_tree.configure(yscrollcommand=scrollbar.set)
+        self.pass_tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
     def _refresh_location_selector(self) -> None:
         names = [profile.name for profile in self.profiles]
@@ -98,11 +174,133 @@ class NightAzimuthApp(tk.Tk):
                 return profile
         return None
 
+    def _observer_for_profile(self, profile: LocationProfile) -> ObserverConfig:
+        return ObserverConfig(
+            latitude=profile.latitude,
+            longitude=profile.longitude,
+            altitude_m=profile.altitude_m,
+        )
+
     def _on_location_changed(self, _event: object | None = None) -> None:
         selected = self.location_var.get().strip()
         self.selected_name = selected or None
         self.store.save(self.profiles, self.selected_name)
         self._update_location_summary()
+        self.refresh_data()
+
+    def refresh_data(self) -> None:
+        if self._refresh_in_progress:
+            return
+        profile = self._selected_profile()
+        if profile is None:
+            messagebox.showinfo(
+                "Location required",
+                "Open Settings and add an observing location first.",
+                parent=self,
+            )
+            return
+
+        self._refresh_in_progress = True
+        self.refresh_button.config(state="disabled")
+        self.status_var.set("Refreshing orbital data and calculations...")
+        threading.Thread(target=self._load_tracking_data, args=(profile,), daemon=True).start()
+
+    def _load_tracking_data(self, profile: LocationProfile) -> None:
+        try:
+            observer = self._observer_for_profile(profile)
+            client = CelestrakClient(
+                cache_directory=self.cache_directory,
+                cache_max_age_minutes=120,
+            )
+            elements = client.load_group("VISUAL")
+            elements_by_norad = {
+                str(item.get("NORAD_CAT_ID") or ""): item
+                for item in elements
+                if item.get("NORAD_CAT_ID") is not None
+            }
+
+            tracker = SatelliteTracker(observer)
+            positions = tracker.positions_above_horizon(elements)
+
+            visibility = VisibilityEngine(
+                observer,
+                cache_directory=self.cache_directory,
+                darkness_threshold_deg=-6.0,
+            )
+            live_rows: list[tuple[str, ...]] = []
+            for item in positions:
+                fields = elements_by_norad.get(item.norad_id)
+                if fields is None:
+                    continue
+                status = visibility.evaluate(fields)
+                live_rows.append(
+                    (
+                        item.name,
+                        item.norad_id,
+                        f"{item.azimuth_deg:.2f}°",
+                        f"{item.elevation_deg:.2f}°",
+                        f"{item.range_km:.0f}",
+                        "YES" if status.satellite_sunlit else "NO",
+                        "YES" if status.sky_dark else "NO",
+                        "YES" if status.potentially_visible else "NO",
+                    )
+                )
+
+            predictor = PassPredictor(observer)
+            passes = predictor.predict(
+                elements,
+                hours=24.0,
+                minimum_elevation_deg=10.0,
+            )
+            pass_rows = [
+                (
+                    item.name,
+                    item.norad_id,
+                    item.rise_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    item.culmination_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    item.set_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    f"{item.max_elevation_deg:.2f}°",
+                )
+                for item in passes
+            ]
+            self.after(0, self._apply_tracking_data, profile.name, live_rows, pass_rows)
+        except (CelestrakError, OSError, ValueError) as exc:
+            self.after(0, self._show_refresh_error, str(exc))
+        except Exception as exc:  # noqa: BLE001 - surface unexpected runtime errors in GUI
+            self.after(0, self._show_refresh_error, f"Unexpected error: {exc}")
+
+    def _apply_tracking_data(
+        self,
+        profile_name: str,
+        live_rows: list[tuple[str, ...]],
+        pass_rows: list[tuple[str, ...]],
+    ) -> None:
+        if profile_name != self.selected_name:
+            self._refresh_in_progress = False
+            self.refresh_button.config(state="normal")
+            self.refresh_data()
+            return
+
+        for tree in (self.live_tree, self.pass_tree):
+            for row in tree.get_children():
+                tree.delete(row)
+
+        for row in live_rows:
+            self.live_tree.insert("", tk.END, values=row)
+        for row in pass_rows:
+            self.pass_tree.insert("", tk.END, values=row)
+
+        self.status_var.set(
+            f"Loaded {len(live_rows)} satellites above the horizon and {len(pass_rows)} passes for the next 24 hours."
+        )
+        self._refresh_in_progress = False
+        self.refresh_button.config(state="normal")
+
+    def _show_refresh_error(self, error: str) -> None:
+        self.status_var.set("Refresh failed")
+        self._refresh_in_progress = False
+        self.refresh_button.config(state="normal")
+        messagebox.showerror("NightAzimuth refresh failed", error, parent=self)
 
     def open_settings(self) -> None:
         SettingsWindow(self)
@@ -221,7 +419,10 @@ class SettingsWindow(tk.Toplevel):
 
         selection = self.location_list.curselection()
         if selection:
+            old_name = self.app.profiles[selection[0]].name
             self.app.profiles[selection[0]] = profile
+            if self.app.selected_name == old_name:
+                self.app.selected_name = profile.name
         else:
             existing = next((i for i, p in enumerate(self.app.profiles) if p.name == profile.name), None)
             if existing is None:
@@ -245,6 +446,7 @@ class SettingsWindow(tk.Toplevel):
         self.app.store.save(self.app.profiles, self.app.selected_name)
         self.app._refresh_location_selector()
         self.destroy()
+        self.app.refresh_data()
 
     def _delete_profile(self) -> None:
         selection = self.location_list.curselection()
@@ -257,9 +459,15 @@ class SettingsWindow(tk.Toplevel):
         self._refresh_list()
         self.app._refresh_location_selector()
         self._new_profile()
+        if self.app.selected_name:
+            self.app.refresh_data()
 
 
 def main() -> int:
     app = NightAzimuthApp()
     app.mainloop()
     return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
