@@ -12,16 +12,18 @@ longitude = 0.0
 altitude_m = 0.0
 
 [tracking]
-# Minimum elevation above the local horizon to consider for display.
+# Minimum elevation above the local horizon to include in results.
 minimum_elevation_deg = 0.0
-# Runtime refresh values are placeholders until the tracking engine is designed.
+# Reserved for later live-refresh work.
 position_refresh_seconds = 1.0
 
 [data]
-# External provider configuration will be added in a later approved stage.
-# Secrets must be supplied outside source control.
+# CelesTrak GP group. ACTIVE is the broad default catalogue for Stage 3.
+celestrak_group = "ACTIVE"
+# Cache orbital data locally to avoid unnecessary repeated downloads.
 cache_directory = "data/cache"
+cache_max_age_minutes = 120
 
 [weather]
-# Weather/cloud provider selection will be designed later.
+# Weather/cloud provider selection will be implemented in a later approved stage.
 enabled = false
