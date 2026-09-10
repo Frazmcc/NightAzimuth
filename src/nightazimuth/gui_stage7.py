@@ -84,6 +84,12 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         ttk.Label(controls, text="°").pack(side="left", padx=(2, 8))
         ttk.Button(controls, text="Apply", command=self._apply_live_view_direction).pack(side="left")
 
+        ttk.Separator(controls, orient="vertical").pack(side="left", fill="y", padx=10)
+        ttk.Label(controls, text="Zoom:").pack(side="left")
+        ttk.Button(controls, text="−", width=3, command=self._zoom_live_out).pack(side="left", padx=(6, 2))
+        ttk.Button(controls, text="+", width=3, command=self._zoom_live_in).pack(side="left", padx=2)
+        ttk.Button(controls, text="Reset view", command=self._reset_live_zoom).pack(side="left", padx=(4, 0))
+
         content = ttk.Frame(parent)
         content.grid(row=1, column=0, sticky="nsew")
         content.columnconfigure(0, weight=1)
@@ -106,9 +112,9 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         ttk.Label(
             details,
             text=(
-                "This is the portion of sky directly in front of you. "
-                "0° = north, 90° = east, 180° = south, 270° = west. "
-                "The display refreshes approximately every 5 seconds."
+                "The practical live view covers 0–60° elevation. "
+                "Use the mouse wheel, +/− buttons, or drag a rectangle over the sky to zoom into a smaller area. "
+                "Reset view returns to the full 0–60° display."
             ),
             wraplength=250,
             justify="left",
@@ -135,8 +141,25 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
             return
 
         self.live_view.set_view(facing, fov)
+        self._update_live_view_summary()
+
+    def _zoom_live_in(self) -> None:
+        self.live_view.zoom_in()
+        self._update_live_view_summary()
+
+    def _zoom_live_out(self) -> None:
+        self.live_view.zoom_out()
+        self._update_live_view_summary()
+
+    def _reset_live_zoom(self) -> None:
+        self.live_view.reset_zoom()
+        self._update_live_view_summary()
+
+    def _update_live_view_summary(self) -> None:
         self.live_detail_var.set(
-            f"Facing {facing:.0f}° with a {fov:.0f}° horizontal field of view.\n\n"
+            f"Facing {self.live_view.facing_deg:.0f}°\n"
+            f"Horizontal FOV: {self.live_view.horizontal_fov_deg:.0f}°\n"
+            f"Elevation: {self.live_view.minimum_elevation_deg:.0f}–{self.live_view.maximum_elevation_deg:.0f}°\n\n"
             "Yellow = potentially visible. Blue = other tracked satellites."
         )
 
