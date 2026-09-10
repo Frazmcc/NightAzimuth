@@ -15,6 +15,9 @@ class ObserverConfig:
 @dataclass(frozen=True, slots=True)
 class TrackingConfig:
     minimum_elevation_deg: float = 0.0
+    pass_minimum_elevation_deg: float = 10.0
+    pass_prediction_hours: float = 24.0
+    darkness_threshold_deg: float = -6.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +51,11 @@ def load_config(path: str | Path) -> AppConfig:
         ),
         tracking=TrackingConfig(
             minimum_elevation_deg=float(tracking.get("minimum_elevation_deg", 0.0)),
+            pass_minimum_elevation_deg=float(
+                tracking.get("pass_minimum_elevation_deg", 10.0)
+            ),
+            pass_prediction_hours=float(tracking.get("pass_prediction_hours", 24.0)),
+            darkness_threshold_deg=float(tracking.get("darkness_threshold_deg", -6.0)),
         ),
         data=DataConfig(
             celestrak_group=str(data.get("celestrak_group", "ACTIVE")).upper(),
