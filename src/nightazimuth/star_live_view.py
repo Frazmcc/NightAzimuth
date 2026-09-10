@@ -24,12 +24,19 @@ class StarLiveSkyView(LiveSkyView):
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         self._star_snapshot: StarFieldSnapshot | None = None
+        self._star_snapshot_profile: str | None = None
         self._show_stars = True
         self._show_constellations = False
         super().__init__(*args, **kwargs)
 
+    def _current_profile_name(self) -> str | None:
+        """Return the currently selected observer profile from the owning app."""
+        selected = getattr(self.winfo_toplevel(), "selected_name", None)
+        return str(selected) if selected else None
+
     def set_star_field(self, snapshot: StarFieldSnapshot | None) -> None:
         self._star_snapshot = snapshot
+        self._star_snapshot_profile = self._current_profile_name() if snapshot is not None else None
         self.redraw()
 
     def set_star_visibility(self, *, stars: bool, constellations: bool) -> None:
@@ -41,6 +48,12 @@ class StarLiveSkyView(LiveSkyView):
         super().redraw()
         snapshot = self._star_snapshot
         if snapshot is None:
+            return
+
+        # A star snapshot belongs to the observer profile that was selected when
+        # it was installed. If the user changes location, suppress that old sky
+        # immediately while the replacement snapshot is being calculated.
+        if self._star_snapshot_profile != self._current_profile_name():
             return
 
         left, top, right, bottom = self._plot_bounds()
