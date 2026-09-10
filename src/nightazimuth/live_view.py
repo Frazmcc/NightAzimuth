@@ -87,6 +87,10 @@ class LiveSkyView(tk.Canvas):
     def maximum_elevation_deg(self) -> float:
         return self._maximum_elevation_deg
 
+    @property
+    def selected_norad(self) -> str | None:
+        return self._selected_norad
+
     def set_view(self, facing_deg: float, horizontal_fov_deg: float) -> None:
         self._base_facing_deg = facing_deg % 360.0
         self._base_horizontal_fov_deg = max(10.0, min(180.0, horizontal_fov_deg))
@@ -134,6 +138,11 @@ class LiveSkyView(tk.Canvas):
                 if abs(offset) <= self._horizontal_fov_deg / 2.0:
                     above_view_count += 1
 
+            # Draw the short future path independently of the current marker.
+            # This lets an object that is currently outside the selected view
+            # show an incoming path if it will enter during the prediction window.
+            self._draw_track(satellite, left, top, right, bottom)
+
             projection = project_live_view(
                 satellite.azimuth_deg,
                 satellite.elevation_deg,
@@ -146,7 +155,6 @@ class LiveSkyView(tk.Canvas):
                 continue
 
             visible_count += 1
-            self._draw_track(satellite, left, top, right, bottom)
             x = left + projection.x_fraction * plot_width
             y = top + projection.y_fraction * plot_height
             self._draw_satellite(satellite, x, y)
@@ -187,8 +195,8 @@ class LiveSkyView(tk.Canvas):
         selected = satellite.norad_id == self._selected_norad
         colour = "#fbbf24" if satellite.potentially_visible else "#60a5fa"
         line_width = 2 if selected else 1
-        segments: list[list[tuple[float, float]]] = []
-        current_segment: list[tuple[float, float]] = []
+        segments: list[list[tuple[float, float, int]]] = []
+        current_segment: list[tuple[float, float, int]] = []
 
         for point in satellite.future_track:
             projection = project_live_view(
@@ -204,6 +212,7 @@ class LiveSkyView(tk.Canvas):
                     (
                         left + projection.x_fraction * plot_width,
                         top + projection.y_fraction * plot_height,
+                        point.seconds_from_now,
                     )
                 )
             elif current_segment:
@@ -215,7 +224,7 @@ class LiveSkyView(tk.Canvas):
             segments.append(current_segment)
 
         for index, segment in enumerate(segments):
-            flattened = [coordinate for point in segment for coordinate in point]
+            flattened = [coordinate for x, y, _seconds in segment for coordinate in (x, y)]
             is_last = index == len(segments) - 1
             self.create_line(
                 *flattened,
@@ -228,12 +237,17 @@ class LiveSkyView(tk.Canvas):
             )
 
         if selected and segments:
-            end_x, end_y = segments[-1][-1]
-            duration = satellite.future_track[-1].seconds_from_now
+            end_x, end_y, duration = segments[-1][-1]
+            if duration >= 60:
+                label = f"+{duration // 60}m"
+                if duration % 60:
+                    label += f"{duration % 60:02d}s"
+            else:
+                label = f"+{duration}s"
             self.create_text(
                 end_x + 6,
                 end_y + 6,
-                text=f"+{duration // 60}m",
+                text=label,
                 fill=colour,
                 anchor="nw",
                 font=("Segoe UI", 8, "bold"),
