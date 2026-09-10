@@ -12,7 +12,7 @@ permissions:
 jobs:
   test:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -32,3 +32,11 @@ jobs:
 
       - name: Pytest
         run: python -m pytest -q
+
+      - name: Build Windows executable
+        shell: pwsh
+        run: |
+          python -m PyInstaller --clean --noconfirm --onefile --windowed --name NightAzimuth --collect-data skyfield nightazimuth_gui_launcher.py
+          if (-not (Test-Path .\dist\NightAzimuth.exe)) {
+            throw "NightAzimuth.exe was not produced"
+          }
