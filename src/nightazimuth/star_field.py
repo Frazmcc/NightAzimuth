@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -82,7 +83,7 @@ def parse_modern_skyculture(
         for polyline in constellation.get("lines", []):
             if not isinstance(polyline, list) or len(polyline) < 2:
                 continue
-            for start, end in zip(polyline, polyline[1:]):
+            for start, end in pairwise(polyline):
                 try:
                     edges.append((abbreviation, int(start), int(end)))
                 except (TypeError, ValueError):
@@ -107,10 +108,10 @@ class StarFieldEngine:
         self._loader = Loader(str(self.cache_directory), verbose=False, expire=False)
 
     def snapshot(self, *, at: datetime | None = None) -> StarFieldSnapshot:
-        moment = at or datetime.now(timezone.utc)
+        moment = at or datetime.now(UTC)
         if moment.tzinfo is None:
             raise ValueError("Star-field time must be timezone-aware")
-        moment = moment.astimezone(timezone.utc)
+        moment = moment.astimezone(UTC)
 
         with self._loader.open(hipparcos.URL) as handle:
             catalogue = hipparcos.load_dataframe(handle)
@@ -125,7 +126,7 @@ class StarFieldEngine:
 
         bright = catalogue[catalogue["magnitude"] <= self.limiting_magnitude]
         edge_ids = {hip_id for _abbr, start, end in edges for hip_id in (start, end)}
-        wanted_ids = set(int(value) for value in bright.index) | edge_ids
+        wanted_ids = {int(value) for value in bright.index} | edge_ids
         selected_ids = catalogue.index.intersection(sorted(wanted_ids))
         selected = catalogue.loc[selected_ids]
 
@@ -147,10 +148,11 @@ class StarFieldEngine:
             selected.index,
             azimuth.degrees,
             altitude.degrees,
+            strict=True,
         ):
             position_map[int(hip_id)] = (float(az_deg) % 360.0, float(alt_deg))
 
-        bright_ids = set(int(value) for value in bright.index)
+        bright_ids = {int(value) for value in bright.index}
         stars: list[StarPoint] = []
         for hip_id in bright_ids:
             position = position_map.get(hip_id)
