@@ -12,18 +12,23 @@ longitude = 0.0
 altitude_m = 0.0
 
 [tracking]
-# Minimum elevation above the local horizon to include in results.
+# Minimum elevation above the local horizon to include in the live list.
 minimum_elevation_deg = 0.0
-# Reserved for later live-refresh work.
-position_refresh_seconds = 1.0
+# Minimum elevation a predicted pass must reach to be listed.
+pass_minimum_elevation_deg = 10.0
+# How far ahead to predict satellite passes.
+pass_prediction_hours = 24.0
+# Sun altitude at or below which NightAzimuth considers the local sky dark.
+# -6 = civil twilight, -12 = nautical twilight, -18 = astronomical twilight.
+darkness_threshold_deg = -6.0
 
 [data]
-# CelesTrak GP group. ACTIVE is the broad default catalogue for Stage 3.
+# CelesTrak GP group to load. ACTIVE is the broad default dataset.
 celestrak_group = "ACTIVE"
-# Cache orbital data locally to avoid unnecessary repeated downloads.
 cache_directory = "data/cache"
+# Refresh GP orbital data after this many minutes.
 cache_max_age_minutes = 120
 
 [weather]
-# Weather/cloud provider selection will be implemented in a later approved stage.
+# Weather/cloud provider selection will be designed in a later approved stage.
 enabled = false
