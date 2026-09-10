@@ -138,6 +138,7 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
             text=(
                 "The practical live view covers 0–60° elevation. "
                 "Stars are plotted from the Hipparcos catalogue for the selected location and current time. "
+                "Major planets remain labelled independently of the Stars control. "
                 "Dashed lines show the next three minutes of satellite movement."
             ),
             wraplength=250,
@@ -187,8 +188,9 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
             stars=self.show_stars_var.get(),
             constellations=self.show_constellations_var.get(),
         )
-        if self.show_stars_var.get() or self.show_constellations_var.get():
-            self._ensure_star_field(self.selected_name, force=True)
+        # Planet positions share the same astronomical snapshot, so keep that
+        # snapshot available even when both optional star layers are hidden.
+        self._ensure_star_field(self.selected_name)
 
     def _update_live_view_summary(self) -> None:
         star_status = "On" if self.show_stars_var.get() else "Off"
@@ -198,6 +200,7 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
             f"Horizontal FOV: {self.live_view.horizontal_fov_deg:.0f}°\n"
             f"Elevation: {self.live_view.minimum_elevation_deg:.0f}–{self.live_view.maximum_elevation_deg:.0f}°\n"
             f"Stars: {star_status}  |  Constellations: {constellation_status}\n\n"
+            "Major planets are always shown when they are inside the current view.\n"
             "Yellow = potentially visible satellite. Blue = other tracked satellite.\n"
             "Dashed arrow = predicted movement for the next 3 minutes."
         )
@@ -220,7 +223,7 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         self._ensure_star_field(profile_name)
 
     def _ensure_star_field(self, profile_name: str, *, force: bool = False) -> None:
-        if not profile_name or not (self.show_stars_var.get() or self.show_constellations_var.get()):
+        if not profile_name:
             return
 
         age = time.monotonic() - self._star_loaded_monotonic
@@ -272,7 +275,7 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
     def _star_field_failed(self, profile_name: str, error: str) -> None:
         self._star_load_in_progress = False
         if profile_name == self.selected_name:
-            self.status_var.set(f"Satellite tracking active; star field unavailable: {error}")
+            self.status_var.set(f"Satellite tracking active; celestial field unavailable: {error}")
         self._start_pending_star_field()
 
     def _start_pending_star_field(self) -> None:
