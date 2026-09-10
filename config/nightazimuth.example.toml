@@ -1,0 +1,27 @@
+# NightAzimuth example configuration
+#
+# Copy this file to a local, untracked configuration file when runtime
+# configuration is introduced. Do not commit API keys or other secrets.
+
+[observer]
+# Decimal degrees. Positive latitude = north, negative = south.
+latitude = 0.0
+# Decimal degrees. Positive longitude = east, negative = west.
+longitude = 0.0
+# Observer altitude above mean sea level in metres.
+altitude_m = 0.0
+
+[tracking]
+# Minimum elevation above the local horizon to consider for display.
+minimum_elevation_deg = 0.0
+# Runtime refresh values are placeholders until the tracking engine is designed.
+position_refresh_seconds = 1.0
+
+[data]
+# External provider configuration will be added in a later approved stage.
+# Secrets must be supplied outside source control.
+cache_directory = "data/cache"
+
+[weather]
+# Weather/cloud provider selection will be designed later.
+enabled = false
