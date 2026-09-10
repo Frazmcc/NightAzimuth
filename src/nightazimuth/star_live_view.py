@@ -227,7 +227,9 @@ class StarLiveSkyView(LiveSkyView):
             return
 
         current_tags = self.gettags("current") if self.find_withtag("current") else ()
-        if any(tag.startswith(("live-sat:", "planet:")) for tag in current_tags):
+        if "projected-track" in current_tags or any(
+            tag.startswith(("live-sat:", "planet:")) for tag in current_tags
+        ):
             return
         if not self._show_stars:
             return
