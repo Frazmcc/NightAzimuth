@@ -50,6 +50,8 @@ The prototype deliberately does not download terrain data itself. This avoids re
 
 Offline terrain packs can be created from free/open elevation datasets outside NightAzimuth and copied into the local terrain directory before use. Packaging or distributing regional packs can be considered separately before this feature is integrated into the application.
 
+The current prototype therefore proves the private calculation path, not automatic terrain acquisition. Automatic location-based terrain downloading is intentionally excluded.
+
 ## Run the prototype
 
 From an activated NightAzimuth development environment:
