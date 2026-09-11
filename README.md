@@ -6,15 +6,15 @@ Location-based live satellite tracking with directional sky identification and o
 
 ## Current release
 
-**v0.2.0-alpha.1 — second alpha pre-release**
+**v0.3.0-alpha.1 — third alpha pre-release**
 
-This release includes saved locations, live satellite tracking, pass prediction, the all-sky radar-style Sky map, and the forward-looking Live view with practical zooming, projected satellite tracks, a real stellar background, constellation guides, and major-planet identification.
+This release adds automatic terrain-horizon generation to the forward-looking Live view. After a user enters or selects an observing location, NightAzimuth can obtain the required Terrarium elevation tiles, cache them locally, calculate a 360° skyline, and mask sky objects that are geometrically below the local terrain horizon.
 
-NightAzimuth has progressed through Stage 11. The Live view uses a practical 0–60° observing range, supports zoom, draws a short predicted satellite path, places satellites against a real star-field background, identifies major planets, keeps useful bright reference stars labelled, and reveals fainter star names or Hipparcos identifiers when clicked.
+NightAzimuth has progressed through Stage 12. Saved location profiles remain local to the user's PC, the Windows release is validated against a strict output allowlist, and the end-user configuration/operation guide is included with the release build.
 
 Weather/cloud analysis, directional cloud estimation, satellite brightness/magnitude modelling, camera support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
 
-See [`RELEASE_NOTES_v0.2.0-alpha.1.md`](RELEASE_NOTES_v0.2.0-alpha.1.md) for release details.
+See [`RELEASE_NOTES_v0.3.0-alpha.1.md`](RELEASE_NOTES_v0.3.0-alpha.1.md) for release details.
 
 ## Initial goal
 
@@ -35,6 +35,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 - [`docs/STAGE_9_IMPLEMENTATION.md`](docs/STAGE_9_IMPLEMENTATION.md) — short projected tracks and direction of travel.
 - [`docs/STAGE_10_IMPLEMENTATION.md`](docs/STAGE_10_IMPLEMENTATION.md) — real Hipparcos star field and constellation reference layer.
 - [`docs/STAGE_11_IMPLEMENTATION.md`](docs/STAGE_11_IMPLEMENTATION.md) — major planet labels and click-to-reveal fainter star names.
+- [`docs/TERRAIN_HORIZON_PROTOTYPE.md`](docs/TERRAIN_HORIZON_PROTOTYPE.md) — terrain-horizon architecture, privacy model, cache/import behaviour and current limitations.
 - [`CREDITS.md`](CREDITS.md) — creator and third-party credits.
 
 ## Windows GUI
@@ -59,6 +60,9 @@ The GUI provides:
 
 - saved observing locations
 - quick location switching
+- automatic terrain-horizon generation for the selected location
+- terrain masking for sky objects below the calculated local skyline
+- optional import of compatible local Terrarium terrain packs
 - live radar-style all-sky map
 - horizon, zenith, cardinal directions, and elevation rings
 - separate forward-looking Live view
@@ -90,7 +94,7 @@ The GUI provides:
 - manual refresh
 - automatic live refresh
 
-Changing the selected location refreshes the calculations for that observer position. NightAzimuth suppresses the previous location's stellar snapshot while the replacement view is calculated.
+Changing the selected location refreshes the calculations for that observer position. NightAzimuth suppresses the previous location's stellar and terrain snapshots while replacement data is calculated.
 
 ## Saved application data
 
@@ -112,11 +116,13 @@ Terrain tiles generated for user-entered locations are cached under:
 %APPDATA%\NightAzimuth\terrain\terrarium\
 ```
 
+A fresh release does not include saved user locations or personal terrain/cache data. Terrain tile requests are derived from the location the user enters, so the terrain provider can infer the geographic area represented by those requested tiles; the saved NightAzimuth profile file and profile name are not uploaded.
+
 ## Visibility terminology
 
 `Potential` means the satellite is illuminated by the Sun while the observer's sky is sufficiently dark. It does **not** mean guaranteed naked-eye visibility.
 
-Cloud, haze, satellite brightness/magnitude, local obstructions, moonlight, and camera sensitivity are not yet included in the result.
+Cloud, haze, satellite brightness/magnitude, non-terrain local obstructions, moonlight, and camera sensitivity are not yet included in the result.
 
 The star and planet layers are positional observing references. A plotted star or planet is not a guarantee that local conditions make it visible to the unaided eye.
 
@@ -127,13 +133,14 @@ The star and planet layers are positional observing references. A plotted star o
 - Use modern OMM orbital data rather than assuming legacy TLE-only identifiers.
 - Keep external data providers replaceable where practical.
 - Never embed API keys or other secrets in source control.
+- Never bundle saved user locations, personal runtime data, or caches in a release.
 - Make data age and confidence clear when displaying time-sensitive information.
 - Add camera integration only after the core satellite tracker is reliable.
 - Progress one approved stage at a time.
 
 ## Technology baseline
 
-The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite, stellar, and planetary astronomy calculations, Pandas for Hipparcos catalogue loading, HTTPX for orbital-data retrieval, and PyInstaller for Windows EXE packaging.
+The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite, stellar, and planetary astronomy calculations, Pandas for Hipparcos catalogue loading, HTTPX for orbital/terrain data retrieval, Pillow for Terrarium elevation-tile decoding, and PyInstaller for Windows EXE packaging.
 
 ## Credits
 
