@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import tkinter as tk
 
+from .celestial_profile import profile_snapshot_key
 from .live_view import LiveSkyView, project_live_view
 from .star_field import PlanetPoint, StarFieldSnapshot, StarPoint
 
@@ -40,7 +41,7 @@ class StarLiveSkyView(LiveSkyView):
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         self._star_snapshot: StarFieldSnapshot | None = None
-        self._star_snapshot_profile: str | None = None
+        self._star_snapshot_profile_key: object | None = None
         self._show_stars = True
         self._show_constellations = False
         self._selected_star_hip: int | None = None
@@ -56,13 +57,16 @@ class StarLiveSkyView(LiveSkyView):
         selected = getattr(self.winfo_toplevel(), "selected_name", None)
         return str(selected) if selected else None
 
+    def _current_profile_key(self) -> object | None:
+        return profile_snapshot_key(self.winfo_toplevel(), self._current_profile_name())
+
     def set_star_field(self, snapshot: StarFieldSnapshot | None) -> None:
-        incoming_profile = self._current_profile_name() if snapshot is not None else None
-        if incoming_profile != self._star_snapshot_profile:
+        incoming_profile_key = self._current_profile_key() if snapshot is not None else None
+        if incoming_profile_key != self._star_snapshot_profile_key:
             self._selected_star_hip = None
             self._selected_planet = None
         self._star_snapshot = snapshot
-        self._star_snapshot_profile = incoming_profile
+        self._star_snapshot_profile_key = incoming_profile_key
         self.redraw()
 
     def set_star_visibility(self, *, stars: bool, constellations: bool) -> None:
@@ -79,7 +83,7 @@ class StarLiveSkyView(LiveSkyView):
         if snapshot is None:
             return
 
-        if self._star_snapshot_profile != self._current_profile_name():
+        if self._star_snapshot_profile_key != self._current_profile_key():
             return
 
         left, top, right, bottom = self._plot_bounds()
