@@ -52,14 +52,14 @@ For normal use, configure NightAzimuth through the **Settings** window. You do n
 7. Select **Save location**.
 8. Select **Use this location** to make it the active observer position.
 
-| Field | What to enter | Example format |
+| Field | What to enter | Format |
 |---|---|---|
-| Location name | Any local label you recognise | `Back Garden` or `Field Site` |
-| Latitude | Decimal degrees; north positive, south negative | `51.5000` or `-33.9000` |
-| Longitude | Decimal degrees; east positive, west negative | `-0.1200` or `151.2000` |
-| Altitude | Metres above sea level | `75` |
+| Location name | Any local label you recognise | Text |
+| Latitude | Decimal degrees; north positive, south negative | `<decimal latitude>` |
+| Longitude | Decimal degrees; east positive, west negative | `<decimal longitude>` |
+| Altitude | Metres above sea level | `<metres>` |
 
-The examples above are formatting examples only. Enter the coordinates for the observing position you actually want NightAzimuth to use.
+Enter the coordinates for the observing position you actually want NightAzimuth to use. The release itself does not provide a preset real-world observer location.
 
 ### Edit or switch locations
 
