@@ -71,10 +71,14 @@ class HudFinderView(TerrainStarLiveSkyView):
 
     def redraw(self) -> None:
         super().redraw()
-        # The generic Live view adds an "above current elevation" counter that is
-        # useful for chart mode but distracting in the HUD. The HUD shows its own
-        # exact candidate count instead.
-        self.delete("above-view-count")
+        # Remove the generic chart-only counter so the sparse HUD owns the status area.
+        for item in self.find_all():
+            if self.type(item) != "text":
+                continue
+            text = str(self.itemcget(item, "text"))
+            if "above current elevation view" in text:
+                self.delete(item)
+
         left, top, right, _bottom = self._plot_bounds()
         self.create_text(
             right - 6,
