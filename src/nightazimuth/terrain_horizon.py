@@ -64,6 +64,29 @@ class OfflineTerrariumElevationSource:
         return image
 
 
+class SyntheticDemoElevationSource:
+    """Deterministic synthetic terrain for privacy-safe rendering tests.
+
+    The source is mathematical only: it reads no files, location profiles, or network
+    resources. It is intentionally centred around the synthetic observer at 0°, 0°.
+    """
+
+    def elevation_m(self, latitude: float, longitude: float) -> float:
+        north_km = float(latitude) * 111.0
+        east_km = float(longitude) * 111.0
+
+        broad_ridge = 190.0 * math.exp(
+            -(((east_km - 5.0) / 4.0) ** 2 + ((north_km - 1.0) / 7.0) ** 2)
+        )
+        southern_hill = 115.0 * math.exp(
+            -(((east_km + 2.0) / 3.0) ** 2 + ((north_km + 5.0) / 3.0) ** 2)
+        )
+        undulation = 18.0 * (
+            math.sin(east_km / 2.8) + 0.6 * math.cos(north_km / 3.7)
+        )
+        return max(20.0, 70.0 + broad_ridge + southern_hill + undulation)
+
+
 def calculate_horizon_profile(
     source: ElevationSource,
     *,
