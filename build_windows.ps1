@@ -50,5 +50,16 @@ if (-not (Test-Path $exePath)) {
     throw "Build finished without producing $exePath"
 }
 
+$userGuideSource = Join-Path $repoRoot "docs\NightAzimuth_User_Guide.md"
+$userGuideDestination = Join-Path $repoRoot "dist\NightAzimuth_User_Guide.md"
+if (-not (Test-Path $userGuideSource)) {
+    throw "User guide was not found at $userGuideSource"
+}
+Copy-Item $userGuideSource $userGuideDestination -Force
+if (-not (Test-Path $userGuideDestination)) {
+    throw "Build finished without producing $userGuideDestination"
+}
+
 Write-Host ""
 Write-Host "Build complete: $exePath"
+Write-Host "User guide: $userGuideDestination"
