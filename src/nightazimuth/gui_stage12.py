@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 import threading
-import tkinter as tk
 from tkinter import filedialog, ttk
 
+from .garden_sky_view import GardenSkyDomeView
 from .gui import SettingsWindow
 from .gui_stage7 import Stage7NightAzimuthApp
 from .terrain_horizon import (
@@ -15,46 +14,6 @@ from .terrain_horizon import (
     calculate_horizon_profile,
     import_terrarium_pack,
 )
-from .terrain_star_live_view import TerrainStarLiveSkyView
-
-
-@dataclass(frozen=True, slots=True)
-class VerticalSkyWindow:
-    sky_angle_deg: float
-    facing_deg: float
-    minimum_elevation_deg: float
-    maximum_elevation_deg: float
-
-
-def vertical_sky_window(
-    sky_angle_deg: float,
-    *,
-    base_facing_deg: float,
-    elevation_span_deg: float = 60.0,
-) -> VerticalSkyWindow:
-    """Map a 0..180 vertical sky sweep onto a valid astronomical elevation window.
-
-    0° is the horizon in the selected facing direction, 90° is the zenith, and
-    180° is the opposite horizon. Astronomical elevation itself remains 0..90°;
-    after passing the zenith the rendered facing direction is rotated by 180°.
-    """
-    angle = max(0.0, min(180.0, float(sky_angle_deg)))
-    span = max(5.0, min(90.0, float(elevation_span_deg)))
-    target_elevation = angle if angle <= 90.0 else 180.0 - angle
-    facing = base_facing_deg % 360.0 if angle <= 90.0 else (base_facing_deg + 180.0) % 360.0
-
-    minimum = target_elevation - span / 2.0
-    maximum = minimum + span
-    if minimum < 0.0:
-        maximum -= minimum
-        minimum = 0.0
-    if maximum > 90.0:
-        minimum -= maximum - 90.0
-        maximum = 90.0
-    minimum = max(0.0, minimum)
-    maximum = min(90.0, maximum)
-
-    return VerticalSkyWindow(angle, facing, minimum, maximum)
 
 
 class Stage12SettingsWindow(SettingsWindow):
@@ -125,107 +84,90 @@ class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
         self._pending_terrain_profile: str | None = None
         self._terrain_location_key: tuple[str, float, float, float] | None = None
         self._terrain_horizon: tuple = ()
-        self._vertical_sky_angle_deg = 30.0
-        self._vertical_scale: ttk.Scale | None = None
-        self._vertical_scale_value: tk.DoubleVar | None = None
-        self._vertical_scale_label: tk.StringVar | None = None
         super().__init__()
 
     @property
     def terrain_directory(self) -> Path:
         return self.store.path.parent / "terrain" / "terrarium"
 
-    def _build_ui(self) -> None:
-        super()._build_ui()
-        old_live_view = self.live_view
-        parent = old_live_view.master
-        old_live_view.destroy()
-        self.live_view = TerrainStarLiveSkyView(parent, on_select=self._on_live_satellite_selected)
-        self.live_view.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+    def _build_live_view(self, parent: ttk.Frame) -> None:
+        """Build the observer-centred all-sky Garden Sky Dome."""
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
 
-        details = next(
-            (child for child in parent.winfo_children() if isinstance(child, ttk.LabelFrame)),
-            None,
-        )
-        if details is not None:
-            details.grid_configure(row=0, column=2, sticky="ns")
+        controls = ttk.Frame(parent)
+        controls.grid(row=0, column=0, sticky="ew", pady=(0, 8))
 
-        elevation_control = ttk.Frame(parent, padding=(2, 0, 8, 0))
-        elevation_control.grid(row=0, column=1, sticky="ns")
-        ttk.Label(elevation_control, text="180°", anchor="center").pack(fill="x")
-        self._vertical_scale_value = tk.DoubleVar(master=self, value=self._vertical_sky_angle_deg)
-        self._vertical_scale = ttk.Scale(
-            elevation_control,
-            from_=180.0,
-            to=0.0,
-            orient="vertical",
-            variable=self._vertical_scale_value,
-            command=self._on_vertical_sky_angle_changed,
-            length=360,
-        )
-        self._vertical_scale.pack(side="top", fill="y", expand=True, pady=4)
-        ttk.Label(elevation_control, text="0°", anchor="center").pack(fill="x")
-        self._vertical_scale_label = tk.StringVar(master=self, value="30°")
+        ttk.Label(controls, text="Facing marker:").pack(side="left")
+        facing_entry = ttk.Entry(controls, textvariable=self.facing_var, width=10)
+        facing_entry.pack(side="left", padx=(6, 10))
         ttk.Label(
-            elevation_control,
-            textvariable=self._vertical_scale_label,
-            anchor="center",
-            font=("Segoe UI", 9, "bold"),
-        ).pack(fill="x", pady=(6, 0))
+            controls,
+            text="Direction you are physically facing — the full 360° sky remains visible",
+        ).pack(side="left")
+        ttk.Button(controls, text="Apply", command=self._apply_live_view_direction).pack(side="left", padx=(10, 0))
+
+        ttk.Separator(controls, orient="vertical").pack(side="left", fill="y", padx=10)
+        ttk.Checkbutton(
+            controls,
+            text="Stars",
+            variable=self.show_stars_var,
+            command=self._on_star_layer_changed,
+        ).pack(side="left")
+        ttk.Checkbutton(
+            controls,
+            text="Constellations",
+            variable=self.show_constellations_var,
+            command=self._on_star_layer_changed,
+        ).pack(side="left", padx=(8, 0))
+
+        content = ttk.Frame(parent)
+        content.grid(row=1, column=0, sticky="nsew")
+        content.columnconfigure(0, weight=1)
+        content.rowconfigure(0, weight=1)
+
+        self.live_view = GardenSkyDomeView(content, on_select=self._on_live_satellite_selected)
+        self.live_view.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+
+        details = ttk.LabelFrame(content, text="Garden sky", padding=12, width=280)
+        details.grid(row=0, column=1, sticky="ns")
+        details.grid_propagate(False)
+
         ttk.Label(
-            elevation_control,
-            text="Sky\nangle",
-            anchor="center",
-            justify="center",
-        ).pack(fill="x", pady=(2, 0))
+            details,
+            textvariable=self.live_detail_var,
+            wraplength=250,
+            justify="left",
+        ).pack(anchor="nw", fill="x")
+
+        ttk.Label(
+            details,
+            text=(
+                "This view represents the sky as it appears to an observer standing outside and looking upward. "
+                "The outer circle is the complete 360° horizon, the centre is directly overhead (zenith), and the "
+                "terrain skyline is calculated from the selected observer location with Earth-curvature correction."
+            ),
+            wraplength=250,
+            justify="left",
+        ).pack(side="bottom", anchor="sw")
 
         self._apply_live_view_direction(show_error=False)
-        self._apply_vertical_sky_angle()
         self._on_star_layer_changed()
 
-    def _apply_live_view_direction(self, *, show_error: bool = True) -> None:
-        super()._apply_live_view_direction(show_error=show_error)
-        if hasattr(self, "live_view"):
-            self._apply_vertical_sky_angle(update_summary=False)
-            self._update_live_view_summary()
-
-    def _on_vertical_sky_angle_changed(self, value: str) -> None:
-        self._vertical_sky_angle_deg = max(0.0, min(180.0, float(value)))
-        self._apply_vertical_sky_angle()
-
-    def _apply_vertical_sky_angle(self, *, update_summary: bool = True) -> None:
+    def _update_live_view_summary(self) -> None:
         if not hasattr(self, "live_view"):
             return
-        span = self.live_view.maximum_elevation_deg - self.live_view.minimum_elevation_deg
-        window = vertical_sky_window(
-            self._vertical_sky_angle_deg,
-            base_facing_deg=self.live_view._base_facing_deg,
-            elevation_span_deg=span,
-        )
-        self.live_view._facing_deg = window.facing_deg
-        self.live_view._minimum_elevation_deg = window.minimum_elevation_deg
-        self.live_view._maximum_elevation_deg = window.maximum_elevation_deg
-        if self._vertical_scale_label is not None:
-            self._vertical_scale_label.set(f"{window.sky_angle_deg:.0f}°")
-        self.live_view.redraw()
-        if update_summary:
-            self._update_live_view_summary()
-
-    def _reset_live_zoom(self) -> None:
-        self._vertical_sky_angle_deg = 30.0
-        if self._vertical_scale_value is not None:
-            self._vertical_scale_value.set(self._vertical_sky_angle_deg)
-        super()._reset_live_zoom()
-        self._apply_vertical_sky_angle()
-
-    def _update_live_view_summary(self) -> None:
-        super()._update_live_view_summary()
-        current = self.live_detail_var.get()
-        hemisphere = "selected facing horizon" if self._vertical_sky_angle_deg <= 90.0 else "opposite horizon"
+        star_status = "On" if self.show_stars_var.get() else "Off"
+        constellation_status = "On" if self.show_constellations_var.get() else "Off"
         self.live_detail_var.set(
-            current
-            + f"\nVertical sky angle: {self._vertical_sky_angle_deg:.0f}° ({hemisphere})\n"
-            + "0° = facing horizon  |  90° = zenith  |  180° = opposite horizon"
+            "Garden Sky Dome\n"
+            f"Facing marker: {self.live_view.facing_deg:.0f}°\n"
+            "Sky coverage: 360° around horizon\n"
+            "Elevation: 0° horizon → 90° zenith\n"
+            f"Stars: {star_status}  |  Constellations: {constellation_status}\n\n"
+            "North is at the top, east right, south bottom and west left.\n"
+            "Yellow = potentially visible satellite. Blue = other tracked satellite.\n"
+            "Dashed arrow = predicted movement for the next 3 minutes."
         )
 
     def open_settings(self) -> None:
@@ -247,7 +189,7 @@ class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
             return
         self._terrain_location_key = None
         self._terrain_horizon = ()
-        if hasattr(self, "live_view") and isinstance(self.live_view, TerrainStarLiveSkyView):
+        if hasattr(self, "live_view") and isinstance(self.live_view, GardenSkyDomeView):
             self.live_view.set_terrain_horizon(None)
             self.live_view.set_terrain_status(
                 "Terrain: waiting for location" if current_key is None else "Terrain: preparing"
@@ -272,7 +214,7 @@ class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
             return
         self._terrain_load_in_progress = True
         self._pending_terrain_profile = None
-        if isinstance(self.live_view, TerrainStarLiveSkyView):
+        if isinstance(self.live_view, GardenSkyDomeView):
             self.live_view.set_terrain_status("Terrain: loading required data...")
         threading.Thread(
             target=self._load_terrain_horizon,
@@ -307,22 +249,32 @@ class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
             return
         self.after(0, self._apply_terrain_horizon, profile_name, location_key, horizon)
 
-    def _apply_terrain_horizon(self, profile_name: str, location_key: tuple[str, float, float, float], horizon: tuple) -> None:
+    def _apply_terrain_horizon(
+        self,
+        profile_name: str,
+        location_key: tuple[str, float, float, float],
+        horizon: tuple,
+    ) -> None:
         self._terrain_load_in_progress = False
         if profile_name == self.selected_name and location_key == self._location_key(self.selected_name):
             self._terrain_location_key = location_key
             self._terrain_horizon = horizon
-            if isinstance(self.live_view, TerrainStarLiveSkyView):
+            if isinstance(self.live_view, GardenSkyDomeView):
                 self.live_view.set_terrain_horizon(horizon)
                 self.live_view.set_terrain_status("Terrain: generated")
         self._start_pending_terrain_horizon()
 
-    def _terrain_horizon_failed(self, profile_name: str, location_key: tuple[str, float, float, float], status: str) -> None:
+    def _terrain_horizon_failed(
+        self,
+        profile_name: str,
+        location_key: tuple[str, float, float, float],
+        status: str,
+    ) -> None:
         self._terrain_load_in_progress = False
         if profile_name == self.selected_name and location_key == self._location_key(self.selected_name):
             self._terrain_location_key = location_key
             self._terrain_horizon = ()
-            if isinstance(self.live_view, TerrainStarLiveSkyView):
+            if isinstance(self.live_view, GardenSkyDomeView):
                 self.live_view.set_terrain_horizon(None)
                 self.live_view.set_terrain_status(status)
         self._start_pending_terrain_horizon()
