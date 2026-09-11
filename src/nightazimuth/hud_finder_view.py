@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import tkinter as tk
 
-from .live_view import project_live_view, signed_angular_difference
+from .live_view import project_live_view
 from .sky_map import SkySatellite
 from .star_field import DeepSkyPoint, PlanetPoint, StarPoint
 from .star_live_view import (
