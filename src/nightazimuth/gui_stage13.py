@@ -7,12 +7,12 @@ from tkinter import ttk
 
 from .celestrak import CelestrakClient, CelestrakError
 from .gui_stage12 import Stage12NightAzimuthApp
-from .hud_finder_view import HudFinderView
 from .live_catalog import merge_orbital_catalogues
 from .live_view import project_live_view
 from .location_profiles import LocationProfile
 from .passes import PassPredictor
 from .sky_map import SkySatellite
+from .smooth_hud_finder_view import SmoothHudFinderView
 from .track_prediction import TrackPredictor
 from .tracker import SatelliteTracker
 from .visibility import VisibilityEngine
@@ -84,7 +84,7 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
         content.columnconfigure(0, weight=1)
         content.rowconfigure(0, weight=1)
 
-        self.live_view = HudFinderView(content, on_select=self._on_live_satellite_selected)
+        self.live_view = SmoothHudFinderView(content, on_select=self._on_live_satellite_selected)
         self.live_view.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
         details = ttk.LabelFrame(content, text="Live finder", padding=12, width=280)
@@ -102,6 +102,7 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
             details,
             text=(
                 "Normal mode shows the fastest potentially-visible satellites in the sky section you are looking at. "
+                "Satellite positions are predicted every second and animated smoothly between those points. "
                 "Each is named and carries a short projected path. Vega and major planets remain orientation references. "
                 "Enable All tracked only for diagnostic identification of the full candidate set."
             ),
@@ -130,6 +131,7 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
             "VEGA = blue-white reference\n"
             "Yellow = named planet\n"
             "Green = potentially visible satellite\n"
+            "1-second orbital samples + 20 fps interpolation = smooth marker motion\n"
             "Satellite label includes apparent angular speed when a track is available\n"
             "Thin path = predicted movement\n"
             f"All tracked: {all_status}\n\n"
@@ -247,8 +249,6 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
             ).visible
         ]
         pool = in_view or [satellite for satellite in satellites if satellite.potentially_visible] or satellites
-        # Nearer objects are more likely to sweep rapidly across the local sky, so
-        # use range only to decide which objects deserve short-track calculation.
         candidates = sorted(pool, key=lambda satellite: (satellite.range_km, -satellite.elevation_deg))[
             : self.LIVE_TRACK_LIMIT
         ]
@@ -274,7 +274,7 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
             tracks = TrackPredictor(observer).predict(
                 relevant,
                 duration_seconds=180,
-                step_seconds=20,
+                step_seconds=1,
             )
             self.after(0, self._apply_projected_tracks, profile_name, generation, tracks)
         except Exception as exc:  # noqa: BLE001
