@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import tkinter as tk
 
-from .live_view import project_live_view
 from .sky_map import SkySatellite
 from .star_field import StarPoint
 from .star_live_view import is_vega_star, star_visual_style, vega_locator_text
@@ -13,10 +12,10 @@ def select_finder_satellites(
     satellites: list[SkySatellite],
     *,
     selected_norad: str | None = None,
-    limit: int = 10,
+    limit: int = 1,
     show_all: bool = False,
 ) -> list[SkySatellite]:
-    """Choose a sparse set of live-finder candidates without a hard range cutoff."""
+    """Choose the live-sky target set without applying a hard range cutoff."""
     if show_all:
         chosen = [satellite for satellite in satellites if satellite.potentially_visible]
     else:
@@ -33,9 +32,9 @@ def select_finder_satellites(
 
 
 class HudFinderView(TerrainStarLiveSkyView):
-    """Sparse forward-looking sky HUD designed for real-world observing."""
+    """Sparse forward-looking live sky focused on one observing target."""
 
-    DEFAULT_CANDIDATE_LIMIT = 10
+    DEFAULT_CANDIDATE_LIMIT = 1
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         self._all_satellites: list[SkySatellite] = []
@@ -69,9 +68,15 @@ class HudFinderView(TerrainStarLiveSkyView):
         )
         self.redraw()
 
+    def _primary_target_norad(self) -> str | None:
+        if self._selected_norad is not None:
+            return self._selected_norad
+        if self._satellites:
+            return self._satellites[0].norad_id
+        return None
+
     def redraw(self) -> None:
         super().redraw()
-        # Remove the generic chart-only counter so the sparse HUD owns the status area.
         for item in self.find_all():
             if self.type(item) != "text":
                 continue
@@ -80,45 +85,30 @@ class HudFinderView(TerrainStarLiveSkyView):
                 self.delete(item)
 
         left, top, right, _bottom = self._plot_bounds()
+        primary = self._primary_target_norad()
         self.create_text(
             right - 6,
             top - 10,
-            text=f"{self._visible_candidate_count()} finder candidate(s)",
+            text="LIVE TARGET" if primary is not None else "NO LIVE TARGET",
             fill="#4ade80",
             anchor="e",
-            font=("Segoe UI", 8),
-            tags=("finder-candidate-count",),
+            font=("Segoe UI", 8, "bold"),
+            tags=("finder-target-status",),
         )
 
-    def _visible_candidate_count(self) -> int:
-        count = 0
-        for satellite in self._satellites:
-            projection = project_live_view(
-                satellite.azimuth_deg,
-                satellite.elevation_deg,
-                self.facing_deg,
-                self.horizontal_fov_deg,
-                minimum_elevation_deg=self.minimum_elevation_deg,
-                maximum_elevation_deg=self.maximum_elevation_deg,
-            )
-            if projection.visible:
-                count += 1
-        return count
-
     def _draw_grid(self, left: float, top: float, right: float, bottom: float) -> None:
-        grid = "#0f3d25"
+        grid = "#0b2f20"
         bright = "#22c55e"
-        muted = "#4ade80"
+        muted = "#3fa66a"
         width = right - left
         height = bottom - top
 
         self.create_rectangle(left, top, right, bottom, outline=grid, width=1)
-
         for fraction in (0.25, 0.5, 0.75):
             x = left + width * fraction
             y = top + height * fraction
-            self.create_line(x, top, x, bottom, fill=grid, dash=(2, 7))
-            self.create_line(left, y, right, y, fill=grid, dash=(2, 7))
+            self.create_line(x, top, x, bottom, fill=grid, dash=(2, 9))
+            self.create_line(left, y, right, y, fill=grid, dash=(2, 9))
 
         minimum = self.minimum_elevation_deg
         maximum = self.maximum_elevation_deg
@@ -141,7 +131,7 @@ class HudFinderView(TerrainStarLiveSkyView):
         self.create_text(
             (left + right) / 2,
             bottom + 18,
-            text="LIVE FINDER",
+            text="LIVE SKY",
             fill=bright,
             font=("Segoe UI", 8, "bold"),
         )
@@ -175,7 +165,7 @@ class HudFinderView(TerrainStarLiveSkyView):
         else:
             if star.magnitude > 3.0 and not selected:
                 return
-            radius = 0.8 if star.magnitude > 2.0 else 1.2
+            radius = 0.7 if star.magnitude > 2.0 else 1.1
             if selected:
                 radius = 3.0
             self.create_oval(
@@ -183,7 +173,7 @@ class HudFinderView(TerrainStarLiveSkyView):
                 y - radius,
                 x + radius,
                 y + radius,
-                fill="#64748b" if not selected else "#e2e8f0",
+                fill="#526174" if not selected else "#e2e8f0",
                 outline="",
                 tags=(tag, "star-field"),
             )
@@ -204,9 +194,10 @@ class HudFinderView(TerrainStarLiveSkyView):
         self.tag_bind(tag, "<Leave>", lambda _event: self.config(cursor=""))
 
     def _draw_satellite(self, satellite: SkySatellite, x: float, y: float) -> None:
+        primary = satellite.norad_id == self._primary_target_norad()
         selected = satellite.norad_id == self.selected_norad
-        radius = 6 if selected else 3
-        fill = "#22c55e" if satellite.potentially_visible else "#60a5fa"
+        radius = 7 if primary else 3
+        fill = "#fbbf24" if primary else "#22c55e"
         tag = f"live-sat:{satellite.norad_id}"
         self.create_oval(
             x - radius,
@@ -218,14 +209,14 @@ class HudFinderView(TerrainStarLiveSkyView):
             width=2 if selected else 1,
             tags=(tag, "live-satellite"),
         )
-        if selected:
+        if primary:
             self.create_text(
-                x + 8,
-                y - 8,
+                x + 9,
+                y - 9,
                 text=f"{satellite.name}  Az {satellite.azimuth_deg:.0f}°  El {satellite.elevation_deg:.0f}°",
-                fill="#bbf7d0",
+                fill="#fde68a",
                 anchor="sw",
-                font=("Segoe UI", 8, "bold"),
+                font=("Segoe UI", 9, "bold"),
                 tags=(tag,),
             )
         self.tag_bind(tag, "<Button-1>", lambda _event, item=satellite: self._select(item))
@@ -240,7 +231,6 @@ class HudFinderView(TerrainStarLiveSkyView):
         right: float,
         bottom: float,
     ) -> None:
-        # Keep the finder clean: only the selected object's path is shown.
-        if satellite.norad_id != self.selected_norad:
+        if satellite.norad_id != self._primary_target_norad():
             return
         super()._draw_track(satellite, left, top, right, bottom)
