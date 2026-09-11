@@ -104,6 +104,9 @@ class TerrainStarLiveSkyView(StarLiveSkyView):
         flattened = [coordinate for point in polygon for coordinate in point]
         skyline_flattened = [coordinate for point in skyline for coordinate in point]
 
+        # Terrain is deliberately drawn after the celestial and satellite layers.
+        # Anything geometrically below the local skyline is therefore masked by
+        # the silhouette, matching what the observer can actually see.
         self.create_polygon(
             *flattened,
             fill="#182433",
@@ -117,15 +120,3 @@ class TerrainStarLiveSkyView(StarLiveSkyView):
                 width=2,
                 tags=("terrain-horizon",),
             )
-
-        # Terrain should hide celestial objects that are geometrically below the
-        # local skyline, while satellites and their projected tracks stay on top.
-        for tag in ("star-field", "constellation-line", "planet-field"):
-            if self.find_withtag(tag):
-                self.tag_raise("terrain-horizon", tag)
-        if self.find_withtag("projected-track"):
-            self.tag_raise("projected-track")
-        for satellite in self._satellites:
-            tag = f"live-sat:{satellite.norad_id}"
-            if self.find_withtag(tag):
-                self.tag_raise(tag)
