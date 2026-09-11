@@ -1,12 +1,16 @@
-# Zero-cost offline terrain horizon
+# Zero-cost terrain horizon
 
-NightAzimuth can build a useful 360° terrain skyline without Google Earth, a paid API, or any location-derived network request.
+NightAzimuth can build a useful 360° terrain skyline without Google Earth or a paid API.
 
 ## Privacy model
 
-Saved observing locations remain local to the user's computer. Terrain lookup is local-only: NightAzimuth does not contact a terrain server and does not request map tiles based on the selected location.
+A fresh NightAzimuth installation contains no saved user location. A location exists only after the user enters and saves one.
 
-Offline Terrarium tiles are stored beneath:
+Saved observing locations remain in the local NightAzimuth application-data folder. The saved `locations.json` file and local profile name are not uploaded to the terrain service.
+
+When terrain for a user-entered location is required, NightAzimuth converts the requested area into standard Terrarium z/x/y tile identifiers and downloads only missing tiles. Because those tile identifiers are derived from the selected observer position, the terrain provider can infer the geographic area covered by the request.
+
+Downloaded Terrarium tiles are cached beneath:
 
 `%APPDATA%\NightAzimuth\terrain\terrarium`
 
@@ -14,15 +18,17 @@ using the layout:
 
 `<terrain-directory>/<zoom>/<x>/<y>.png`
 
-Tile identifiers remain local file-system data and are not transmitted by this feature.
+The application reuses cached tiles before making another terrain request.
 
 ## Automatic generation when a location is entered
 
-Once an offline terrain pack has been installed, NightAzimuth automatically recalculates the terrain horizon when the user saves, edits, or selects an observing location.
+NightAzimuth automatically recalculates the terrain horizon when the user saves, edits, or selects an observing location.
 
-The calculation runs locally in the background using the saved latitude, longitude and altitude. The result is kept in memory and displayed directly in the Live view. No separate preview command is required for normal use.
+The calculation runs in the background using the selected latitude, longitude and altitude. Required terrain tiles are read from the local cache first. Missing tiles are downloaded and then cached locally for later reuse.
 
-If the installed pack does not cover the selected location, NightAzimuth shows a local status message and does not fall back to an online lookup.
+The calculated horizon is kept in memory and displayed directly in the Live view. No separate preview command is required for normal use.
+
+If required terrain data cannot be downloaded, NightAzimuth shows a terrain status message and leaves the terrain overlay unavailable until data can be loaded.
 
 ## Live-view behaviour
 
@@ -36,9 +42,9 @@ The terrain model does not include:
 - temporary structures
 - very small nearby terrain details below the source elevation-model resolution
 
-A future optional user-supplied panorama could add those local obstructions while keeping the data local.
+A future optional user-supplied panorama could add those local obstructions while keeping that panorama data local.
 
-## Offline terrain-pack import
+## Optional offline terrain-pack import
 
 Open **Settings** and choose **Import offline terrain pack...** to import an already-downloaded Terrarium tile directory from the local PC.
 
@@ -46,19 +52,18 @@ The import process:
 
 - validates the local Terrarium tile structure
 - copies valid tiles into NightAzimuth's local terrain directory
-- does not read a saved observer profile while importing
-- makes no network request
-- triggers a new local terrain calculation for the currently selected location after import
+- makes no network request during the import itself
+- triggers a new terrain calculation for the currently selected location after import
 
-NightAzimuth deliberately does not decide which terrain pack to download from the user's coordinates. Selecting or obtaining a regional terrain pack remains independent of the private saved observing location.
+Imported tiles and automatically downloaded tiles use the same local cache layout.
 
 ## Coverage
 
-The current Terrarium/Web Mercator path covers approximately 85° south to 85° north. Polar locations outside that range would need a different offline elevation format in a later implementation.
+The current Terrarium/Web Mercator path covers approximately 85° south to 85° north. Polar locations outside that range would need a different elevation format in a later implementation.
 
 ## Synthetic demo mode
 
-The standalone preview tool still provides a privacy-safe synthetic test mode:
+The standalone preview tool still provides a synthetic test mode:
 
 ```powershell
 python .\tools\terrain_horizon_preview.py --demo --output .\terrain_horizon_demo.png
