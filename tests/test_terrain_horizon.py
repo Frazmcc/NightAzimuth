@@ -9,10 +9,13 @@ from nightazimuth.terrain_horizon import (
     MissingTerrainDataError,
     OfflineTerrariumElevationSource,
     SyntheticDemoElevationSource,
+    TerrainPackError,
     _tile_pixel,
     apparent_elevation_deg,
     calculate_horizon_profile,
     destination_point,
+    import_terrarium_pack,
+    inspect_terrarium_pack,
 )
 
 
@@ -43,7 +46,6 @@ def test_horizon_profile_finds_higher_terrain_to_east() -> None:
         azimuth_step_deg=90.0,
         max_distance_km=1.0,
     )
-
     by_azimuth = {round(point.azimuth_deg): point.elevation_deg for point in horizon}
     assert by_azimuth[90] > by_azimuth[270]
 
@@ -55,10 +57,7 @@ def test_offline_source_reads_local_terrarium_tile(tmp_path: Path) -> None:
     tile_x, tile_y, _pixel_x, _pixel_y = _tile_pixel(latitude, longitude, zoom)
     path = tmp_path / str(zoom) / str(tile_x) / f"{tile_y}.png"
     path.parent.mkdir(parents=True)
-
-    # Terrarium encoding for 100 m: 32868 = 128 * 256 + 100.
     Image.new("RGB", (256, 256), (128, 100, 0)).save(path)
-
     source = OfflineTerrariumElevationSource(tmp_path, zoom=zoom)
     assert source.elevation_m(latitude, longitude) == pytest.approx(100.0)
 
@@ -74,7 +73,6 @@ def test_synthetic_demo_source_produces_varied_local_terrain() -> None:
     centre = source.elevation_m(0.0, 0.0)
     east = source.elevation_m(0.01, 0.05)
     west = source.elevation_m(0.01, -0.05)
-
     assert centre > 0.0
     assert east != pytest.approx(west)
 
@@ -89,9 +87,26 @@ def test_synthetic_demo_horizon_is_complete_and_non_flat() -> None:
         azimuth_step_deg=30.0,
         max_distance_km=20.0,
     )
-
-    # Production horizon resolution is intentionally capped at a 10-degree
-    # maximum step, so a requested 30-degree step produces 36 samples.
     assert len(horizon) == 36
-    elevations = {round(point.elevation_deg, 3) for point in horizon}
-    assert len(elevations) > 1
+    assert len({round(point.elevation_deg, 3) for point in horizon}) > 1
+
+
+def test_terrain_pack_inspection_and_import(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    tile = source / "1" / "1" / "1.png"
+    tile.parent.mkdir(parents=True)
+    Image.new("RGB", (256, 256), (128, 100, 0)).save(tile)
+
+    summary = inspect_terrarium_pack(source)
+    assert summary.tile_count == 1
+    assert summary.zoom_levels == (1,)
+
+    imported = import_terrarium_pack(source, destination)
+    assert imported == summary
+    assert (destination / "1" / "1" / "1.png").is_file()
+
+
+def test_empty_terrain_pack_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(TerrainPackError):
+        inspect_terrarium_pack(tmp_path)
