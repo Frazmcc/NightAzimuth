@@ -10,11 +10,9 @@ Terrain lookup is local-only. NightAzimuth does not contact a terrain server and
 
 The preview does not include the saved profile name or observer coordinates in the image.
 
-The terrain pack is expected beneath:
+The managed terrain pack is stored beneath:
 
 `%APPDATA%\NightAzimuth\terrain\terrarium`
-
-or another local directory supplied with `--terrain-directory`.
 
 The local terrain files use the standard Terrarium tile layout:
 
@@ -43,7 +41,27 @@ python .\tools\terrain_horizon_preview.py --demo --output .\terrain_horizon_demo
 start .\terrain_horizon_demo.png
 ```
 
-This is the recommended first test before any real offline terrain pack is installed.
+## Importing an offline terrain pack
+
+A user can import a terrain pack that has already been obtained separately. The import command validates the local tile structure and copies only valid Terrarium PNG tiles into NightAzimuth's managed terrain directory.
+
+The import process does not read a saved observer profile and does not make a network request.
+
+```powershell
+python .\tools\terrain_horizon_preview.py --import-pack "C:\path\to\terrain-pack"
+```
+
+Expected pack layout:
+
+```text
+terrain-pack\
+  10\
+    500\
+      330.png
+      331.png
+```
+
+The example tile numbers above are illustrative only.
 
 ## Coverage
 
@@ -57,27 +75,13 @@ The current Web Mercator tile format covers latitudes between approximately 85°
 
 The preview calculates the highest terrain elevation angle around the observer and draws a 360° skyline from 0° to 60° elevation.
 
-It is a terrain model, not a photograph. It does not include:
+It is a terrain model, not a photograph. It does not include houses, trees, hedges, fences, temporary structures, or very small nearby terrain details below the source DEM resolution.
 
-- houses or other buildings
-- trees and hedges
-- fences
-- temporary structures
-- very small nearby terrain details below the source DEM resolution
-
-A future optional user-supplied panorama could be combined with this mathematical terrain horizon to include local obstructions while keeping that data local.
-
-## Terrain data
-
-The prototype deliberately does not download terrain data itself. This avoids revealing a user's area through location-derived requests.
-
-Offline terrain packs can be created from free/open elevation datasets outside NightAzimuth and copied into the local terrain directory before use. Packaging or distributing regional packs can be considered separately before this feature is integrated into the application.
-
-The current prototype therefore proves the private calculation path, not automatic terrain acquisition. Automatic location-based terrain downloading is intentionally excluded.
+A future optional user-supplied panorama could be combined with this mathematical terrain horizon while keeping that data local.
 
 ## Run against a real saved location later
 
-Only after an appropriate offline terrain pack has been installed:
+Only after an appropriate offline terrain pack has been imported:
 
 ```powershell
 python .\tools\terrain_horizon_preview.py
