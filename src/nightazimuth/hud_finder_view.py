@@ -13,7 +13,7 @@ def select_finder_satellites(
     satellites: list[SkySatellite],
     *,
     selected_norad: str | None = None,
-    limit: int = 10,
+    limit: int = 1,
     show_all: bool = False,
 ) -> list[SkySatellite]:
     """Choose a sparse set of live-finder candidates without a hard range cutoff."""
@@ -61,7 +61,7 @@ def pan_live_view_window(
 class HudFinderView(TerrainStarLiveSkyView):
     """Sparse forward-looking sky HUD designed for real-world observing."""
 
-    DEFAULT_CANDIDATE_LIMIT = 10
+    DEFAULT_CANDIDATE_LIMIT = 1
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         self._all_satellites: list[SkySatellite] = []
