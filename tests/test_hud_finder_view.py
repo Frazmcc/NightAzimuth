@@ -21,6 +21,18 @@ def _satellite(
     )
 
 
+def test_default_finder_chooses_one_primary_target() -> None:
+    satellites = [
+        _satellite("1", elevation=20.0, range_km=500.0),
+        _satellite("2", elevation=50.0, range_km=1200.0),
+        _satellite("3", elevation=50.0, range_km=600.0),
+    ]
+
+    chosen = select_finder_satellites(satellites)
+
+    assert [satellite.norad_id for satellite in chosen] == ["3"]
+
+
 def test_sparse_finder_limits_and_ranks_candidates() -> None:
     satellites = [
         _satellite("1", elevation=20.0, range_km=500.0),
