@@ -6,15 +6,15 @@ Location-based live satellite tracking with directional sky identification and o
 
 ## Current release
 
-**v0.3.0-alpha.1 — third alpha pre-release**
+**v0.4.0-beta.1 — first beta pre-release**
 
-This release adds automatic terrain-horizon generation to the forward-looking Live view. After a user enters or selects an observing location, NightAzimuth can obtain the required Terrarium elevation tiles, cache them locally, calculate a 360° skyline, and mask sky objects that are geometrically below the local terrain horizon.
+This release moves NightAzimuth beyond alpha testing and focuses the Live view on real-world naked-eye observing. It adds broader live satellite coverage, smooth fast-mover tracking, full horizon-to-zenith viewing, mouse panning, clearer named celestial references, and retains terrain-aware masking for the selected observing location.
 
-NightAzimuth has progressed through Stage 12. Saved location profiles remain local to the user's PC, the Windows release is validated against a strict output allowlist, and the end-user configuration/operation guide is included with the release build.
+NightAzimuth has progressed through Stage 13. Saved location profiles remain local to the user's PC, the Windows release is validated against a strict output allowlist, and the end-user configuration/operation guide is included with the release build.
 
-Weather/cloud analysis, directional cloud estimation, satellite brightness/magnitude modelling, camera support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
+Weather/cloud analysis, satellite brightness/magnitude modelling, camera overlay support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
 
-See [`RELEASE_NOTES_v0.3.0-alpha.1.md`](RELEASE_NOTES_v0.3.0-alpha.1.md) for release details.
+See [`RELEASE_NOTES_v0.4.0-beta.1.md`](RELEASE_NOTES_v0.4.0-beta.1.md) for release details.
 
 ## Initial goal
 
@@ -31,10 +31,11 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 - [`docs/STAGE_5_IMPLEMENTATION.md`](docs/STAGE_5_IMPLEMENTATION.md) — Windows GUI shell and saved location profiles.
 - [`docs/STAGE_6_IMPLEMENTATION.md`](docs/STAGE_6_IMPLEMENTATION.md) — live satellite and pass data inside the GUI.
 - [`docs/STAGE_7_IMPLEMENTATION.md`](docs/STAGE_7_IMPLEMENTATION.md) — all-sky and forward-looking Live view work.
-- [`docs/STAGE_8_IMPLEMENTATION.md`](docs/STAGE_8_IMPLEMENTATION.md) — practical 0–60° Live view and zoom controls.
+- [`docs/STAGE_8_IMPLEMENTATION.md`](docs/STAGE_8_IMPLEMENTATION.md) — original practical Live-view elevation/zoom work.
 - [`docs/STAGE_9_IMPLEMENTATION.md`](docs/STAGE_9_IMPLEMENTATION.md) — short projected tracks and direction of travel.
 - [`docs/STAGE_10_IMPLEMENTATION.md`](docs/STAGE_10_IMPLEMENTATION.md) — real Hipparcos star field and constellation reference layer.
 - [`docs/STAGE_11_IMPLEMENTATION.md`](docs/STAGE_11_IMPLEMENTATION.md) — major planet labels and click-to-reveal fainter star names.
+- [`docs/STAGE_13_IMPLEMENTATION.md`](docs/STAGE_13_IMPLEMENTATION.md) — live finder redesign, broad satellite coverage, fast-mover ranking and smooth animation.
 - [`docs/TERRAIN_HORIZON_PROTOTYPE.md`](docs/TERRAIN_HORIZON_PROTOTYPE.md) — terrain-horizon architecture, privacy model, cache/import behaviour and current limitations.
 - [`CREDITS.md`](CREDITS.md) — creator and third-party credits.
 
@@ -64,37 +65,39 @@ The GUI provides:
 - terrain masking for sky objects below the calculated local skyline
 - optional import of compatible local Terrarium terrain packs
 - live radar-style all-sky map
-- horizon, zenith, cardinal directions, and elevation rings
-- separate forward-looking Live view
-- practical 0–60° Live view elevation range
+- separate forward-looking Live finder
+- full 0–90° Live-view elevation range, including zenith
+- click-and-drag sky panning horizontally and vertically
 - facing direction by compass point or 0–359° bearing
 - selectable horizontal field of view from 30° to 180°
 - mouse-wheel zoom
 - + / − zoom buttons
-- drag-to-select rectangular zoom
 - Reset view control
-- short 3-minute projected satellite paths
-- arrowed direction of travel
+- broad live satellite tracking using CelesTrak VISUAL + ACTIVE catalogues
+- default fast-mover ranking in the current field of view
+- small named satellite markers with apparent angular speed when available
+- optional All tracked diagnostic mode
+- smooth satellite motion using one-second orbital samples interpolated at about 20 fps
+- short 3-minute projected satellite paths sampled every second
 - real Hipparcos star-field background
-- star brightness represented by marker size
-- major planets positioned from the Skyfield ephemeris and permanently labelled when in view
+- Vega emphasised as a blue-white visual reference with live azimuth/elevation
 - bright named reference stars labelled automatically, with more labels appearing as you zoom in
 - fainter stars identified when clicked
 - optional Stellarium constellation lines
-- Stars On/Off control; major planets remain independent of this control
-- Constellations On/Off control
+- Mercury, Venus, Mars, Jupiter, Saturn, Uranus and Neptune positioned from the Skyfield ephemeris and labelled when in view
+- named galaxy references for M31, M33, M81, M82, M51, M101 and M104
 - clickable satellite markers
 - selected satellite details including projected azimuth/elevation movement
 - live satellites above the horizon
 - azimuth, elevation, and range
 - sunlit and dark-sky indicators
 - potential astronomical visibility
-- upcoming passes for the next 24 hours
+- upcoming VISUAL-group passes for the next 24 hours
 - rise, peak, set time, and maximum elevation
 - manual refresh
 - automatic live refresh
 
-Changing the selected location refreshes the calculations for that observer position. NightAzimuth suppresses the previous location's stellar and terrain snapshots while replacement data is calculated.
+Changing the selected location refreshes calculations for that observer position. NightAzimuth suppresses the previous location's stellar and terrain snapshots while replacement data is calculated.
 
 ## Saved application data
 
@@ -124,7 +127,9 @@ A fresh release does not include saved user locations or personal terrain/cache 
 
 Cloud, haze, satellite brightness/magnitude, non-terrain local obstructions, moonlight, and camera sensitivity are not yet included in the result.
 
-The star and planet layers are positional observing references. A plotted star or planet is not a guarantee that local conditions make it visible to the unaided eye.
+Fast-mover ranking prioritises apparent movement across the current Live view. It improves practical identification but is not a brightness model.
+
+The star, planet and galaxy layers are positional observing references. A plotted object is not a guarantee that local conditions make it visible to the unaided eye.
 
 ## Development principles
 
@@ -140,7 +145,7 @@ The star and planet layers are positional observing references. A plotted star o
 
 ## Technology baseline
 
-The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite, stellar, and planetary astronomy calculations, Pandas for Hipparcos catalogue loading, HTTPX for orbital/terrain data retrieval, Pillow for Terrarium elevation-tile decoding, and PyInstaller for Windows EXE packaging.
+The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite, stellar, planetary and deep-sky coordinate calculations, Pandas for Hipparcos catalogue loading, HTTPX for orbital/terrain data retrieval, Pillow for Terrarium elevation-tile decoding, and PyInstaller for Windows EXE packaging.
 
 ## Credits
 
