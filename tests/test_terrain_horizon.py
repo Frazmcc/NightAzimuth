@@ -90,6 +90,8 @@ def test_synthetic_demo_horizon_is_complete_and_non_flat() -> None:
         max_distance_km=20.0,
     )
 
-    assert len(horizon) == 12
+    # Production horizon resolution is intentionally capped at a 10-degree
+    # maximum step, so a requested 30-degree step produces 36 samples.
+    assert len(horizon) == 36
     elevations = {round(point.elevation_deg, 3) for point in horizon}
     assert len(elevations) > 1
