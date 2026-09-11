@@ -2,9 +2,21 @@ from __future__ import annotations
 
 import math
 import tkinter as tk
+from dataclasses import dataclass
 
 from .live_view import LiveSkyView, project_live_view
 from .star_field import PlanetPoint, StarFieldSnapshot, StarPoint
+
+VEGA_HIP_ID = 91262
+
+
+@dataclass(frozen=True, slots=True)
+class StarVisualStyle:
+    radius: float
+    fill: str
+    outline: str
+    label_fill: str
+    force_label: bool = False
 
 
 def star_marker_radius(magnitude: float) -> float:
@@ -33,6 +45,30 @@ def automatic_star_label_limit(horizontal_fov_deg: float) -> float:
     if horizontal_fov_deg > 25.0:
         return 4.0
     return 5.0
+
+
+def is_vega_star(star: StarPoint) -> bool:
+    """Return True for Vega using its Hipparcos identity or proper name."""
+    return star.hip_id == VEGA_HIP_ID or (star.name or "").casefold() == "vega"
+
+
+def star_visual_style(star: StarPoint, *, selected: bool) -> StarVisualStyle:
+    """Return rendering style, giving Vega a strong blue-white reference marker."""
+    if is_vega_star(star):
+        return StarVisualStyle(
+            radius=5.0 if selected else 4.5,
+            fill="#dbeafe",
+            outline="#ffffff",
+            label_fill="#bfdbfe" if selected else "#93c5fd",
+            force_label=True,
+        )
+
+    return StarVisualStyle(
+        radius=star_marker_radius(star.magnitude),
+        fill="#e2e8f0",
+        outline="#ffffff" if selected else "",
+        label_fill="#cbd5e1" if selected else "#94a3b8",
+    )
 
 
 class StarLiveSkyView(LiveSkyView):
@@ -156,35 +192,41 @@ class StarLiveSkyView(LiveSkyView):
         self.tag_lower("constellation-line")
 
     def _draw_star(self, star: StarPoint, x: float, y: float) -> None:
-        radius = star_marker_radius(star.magnitude)
         selected = star.hip_id == self._selected_star_hip
+        style = star_visual_style(star, selected=selected)
         tag = f"star:{star.hip_id}"
 
         self.create_oval(
-            x - radius,
-            y - radius,
-            x + radius,
-            y + radius,
-            fill="#e2e8f0",
-            outline="#ffffff" if selected else "",
-            width=1,
+            x - style.radius,
+            y - style.radius,
+            x + style.radius,
+            y + style.radius,
+            fill=style.fill,
+            outline=style.outline,
+            width=2 if is_vega_star(star) else 1,
             tags=(tag, "star-field"),
         )
 
         label_limit = automatic_star_label_limit(self.horizontal_fov_deg)
         automatic_label = bool(star.name and star.magnitude <= label_limit)
-        if automatic_label or selected:
+        if automatic_label or style.force_label or selected:
             name = star.name or f"HIP {star.hip_id}"
             label = name
+            if is_vega_star(star) and not selected:
+                label = "VEGA"
             if selected:
                 label += f"  (mag {star.magnitude:.2f})"
             self.create_text(
-                x + 5,
-                y - 5,
+                x + 7 if is_vega_star(star) else x + 5,
+                y - 7 if is_vega_star(star) else y - 5,
                 text=label,
-                fill="#cbd5e1" if selected else "#94a3b8",
+                fill=style.label_fill,
                 anchor="sw",
-                font=("Segoe UI", 8 if selected else 7, "bold" if selected else "normal"),
+                font=(
+                    "Segoe UI",
+                    9 if is_vega_star(star) else (8 if selected else 7),
+                    "bold" if (selected or is_vega_star(star)) else "normal",
+                ),
                 tags=(tag, "star-field"),
             )
 
