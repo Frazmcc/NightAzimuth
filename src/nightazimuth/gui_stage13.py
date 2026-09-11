@@ -9,6 +9,7 @@ from .celestrak import CelestrakClient, CelestrakError
 from .gui_stage12 import Stage12NightAzimuthApp
 from .hud_finder_view import HudFinderView
 from .live_catalog import merge_orbital_catalogues
+from .live_view import project_live_view
 from .location_profiles import LocationProfile
 from .passes import PassPredictor
 from .sky_map import SkySatellite
@@ -18,15 +19,12 @@ from .visibility import VisibilityEngine
 
 
 class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
-    """Sparse live finder with broad active-satellite background tracking."""
+    """Live observer finder focused on fast-moving naked-eye satellites."""
 
-    LIVE_TRACK_LIMIT = 60
+    LIVE_TRACK_LIMIT = 180
 
     def __init__(self) -> None:
         super().__init__()
-        # Broad ACTIVE-catalogue calculations are intentionally slower than the
-        # earlier small VISUAL-only set. Fifteen seconds remains useful outdoors
-        # without repeatedly recalculating thousands of orbital elements.
         self._auto_refresh_ms = 15_000
 
     def _build_live_view(self, parent: ttk.Frame) -> None:
@@ -103,9 +101,9 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
         ttk.Label(
             details,
             text=(
-                "The finder is deliberately sparse so it can later sit over a real sky/camera image. "
-                "Vega stays prominent, major planets remain labelled, and the default finder shows only the strongest "
-                "current satellite candidates. Enable All tracked only when you want the full potentially-visible set."
+                "Normal mode shows the fastest potentially-visible satellites in the sky section you are looking at. "
+                "Each is named and carries a short projected path. Vega and major planets remain orientation references. "
+                "Enable All tracked only for diagnostic identification of the full candidate set."
             ),
             wraplength=250,
             justify="left",
@@ -128,21 +126,20 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
             f"Facing {self.live_view.facing_deg:.0f}°\n"
             f"Horizontal FOV: {self.live_view.horizontal_fov_deg:.0f}°\n"
             f"Elevation: {self.live_view.minimum_elevation_deg:.0f}–{self.live_view.maximum_elevation_deg:.0f}°\n\n"
-            "Sparse HUD mode\n"
+            "Fast-mover live mode\n"
             "VEGA = blue-white reference\n"
+            "Yellow = named planet\n"
             "Green = potentially visible satellite\n"
-            "Selected object = labelled + projected path\n"
+            "Satellite label includes apparent angular speed when a track is available\n"
+            "Thin path = predicted movement\n"
             f"All tracked: {all_status}\n\n"
-            "Default mode ranks candidates by elevation and then range, with no hard distance cutoff."
+            "Normal mode prioritises apparent motion across your current view, not distance alone."
         )
 
     def _load_tracking_data(self, profile: LocationProfile) -> None:
         try:
             observer = self._observer_for_profile(profile)
             client = CelestrakClient(cache_directory=self.cache_directory, cache_max_age_minutes=120)
-
-            # Keep VISUAL first so its records win on duplicates, then add the
-            # much broader ACTIVE catalogue for live identification coverage.
             visual_elements = client.load_group("VISUAL")
             try:
                 active_elements = client.load_group("ACTIVE")
@@ -208,14 +205,7 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
                 for item in passes
             ]
 
-            self.after(
-                0,
-                self._apply_tracking_data,
-                profile.name,
-                live_rows,
-                pass_rows,
-                sky_satellites,
-            )
+            self.after(0, self._apply_tracking_data, profile.name, live_rows, pass_rows, sky_satellites)
         except (CelestrakError, OSError, ValueError) as exc:
             self.after(0, self._show_refresh_error, str(exc))
         except Exception as exc:  # noqa: BLE001
@@ -232,8 +222,6 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
         if profile_name != self.selected_name or not hasattr(self, "live_view"):
             return
         self.live_view.set_show_all_tracked(self.show_all_tracked_var.get())
-        # Tracking data proves a selected observer is active. Re-check terrain here
-        # so the HUD cannot remain stuck on "waiting for location" after a valid refresh.
         self._ensure_terrain_horizon(profile_name)
 
     def _start_track_prediction(
@@ -242,13 +230,28 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
         satellites: list[SkySatellite],
         generation: int,
     ) -> None:
-        candidates = sorted(
-            satellites,
-            key=lambda satellite: (
-                not satellite.potentially_visible,
-                -satellite.elevation_deg,
-            ),
-        )[: self.LIVE_TRACK_LIMIT]
+        if not satellites or not hasattr(self, "live_view"):
+            return
+
+        in_view = [
+            satellite
+            for satellite in satellites
+            if satellite.potentially_visible
+            and project_live_view(
+                satellite.azimuth_deg,
+                satellite.elevation_deg,
+                self.live_view.facing_deg,
+                self.live_view.horizontal_fov_deg,
+                minimum_elevation_deg=self.live_view.minimum_elevation_deg,
+                maximum_elevation_deg=self.live_view.maximum_elevation_deg,
+            ).visible
+        ]
+        pool = in_view or [satellite for satellite in satellites if satellite.potentially_visible] or satellites
+        # Nearer objects are more likely to sweep rapidly across the local sky, so
+        # use range only to decide which objects deserve short-track calculation.
+        candidates = sorted(pool, key=lambda satellite: (satellite.range_km, -satellite.elevation_deg))[
+            : self.LIVE_TRACK_LIMIT
+        ]
         super()._start_track_prediction(profile_name, candidates, generation)
 
     def _load_projected_tracks(
@@ -267,15 +270,11 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
             except CelestrakError:
                 active_elements = []
             elements = merge_orbital_catalogues(visual_elements, active_elements)
-            relevant = [
-                fields
-                for fields in elements
-                if str(fields.get("NORAD_CAT_ID") or "") in wanted_ids
-            ]
+            relevant = [fields for fields in elements if str(fields.get("NORAD_CAT_ID") or "") in wanted_ids]
             tracks = TrackPredictor(observer).predict(
                 relevant,
                 duration_seconds=180,
-                step_seconds=30,
+                step_seconds=20,
             )
             self.after(0, self._apply_projected_tracks, profile_name, generation, tracks)
         except Exception as exc:  # noqa: BLE001
@@ -291,18 +290,12 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
         if profile_name == self.selected_name and generation == self._track_generation:
             selected_norad = self.live_view.selected_norad
             current_satellites = list(self._sky_satellites)
-            updated = [
-                replace(satellite, future_track=tracks.get(satellite.norad_id, ()))
-                for satellite in current_satellites
-            ]
+            updated = [replace(satellite, future_track=tracks.get(satellite.norad_id, ())) for satellite in current_satellites]
             self._sky_satellites = updated
             self.live_view.set_satellites(updated)
             self.live_view.set_show_all_tracked(self.show_all_tracked_var.get())
             if selected_norad is not None:
-                selected = next(
-                    (satellite for satellite in updated if satellite.norad_id == selected_norad),
-                    None,
-                )
+                selected = next((satellite for satellite in updated if satellite.norad_id == selected_norad), None)
                 if selected is not None:
                     self._on_live_satellite_selected(selected)
         self._start_pending_track_prediction()
