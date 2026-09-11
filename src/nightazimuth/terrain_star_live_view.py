@@ -46,18 +46,36 @@ class TerrainStarLiveSkyView(StarLiveSkyView):
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         self._terrain_horizon: tuple[HorizonPoint, ...] = ()
+        self._terrain_status = "Terrain: waiting for location"
         super().__init__(*args, **kwargs)
 
     def set_terrain_horizon(self, horizon: tuple[HorizonPoint, ...] | None) -> None:
         self._terrain_horizon = horizon or ()
         self.redraw()
 
+    def set_terrain_status(self, status: str) -> None:
+        self._terrain_status = status
+        self.redraw()
+
     def redraw(self) -> None:
         super().redraw()
-        if not self._terrain_horizon:
-            return
-
         left, top, right, bottom = self._plot_bounds()
+
+        if self._terrain_horizon:
+            self._draw_terrain(left, top, right, bottom)
+
+        self.create_text(
+            right - 6,
+            top + 8,
+            text=self._terrain_status,
+            fill="#94a3b8",
+            anchor="ne",
+            font=("Segoe UI", 8),
+            tags=("terrain-status",),
+        )
+        self.tag_raise("terrain-status")
+
+    def _draw_terrain(self, left: float, top: float, right: float, bottom: float) -> None:
         plot_width = max(right - left, 1.0)
         plot_height = max(bottom - top, 1.0)
         profile = terrain_profile_for_view(
