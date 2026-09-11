@@ -51,6 +51,7 @@ def main() -> int:
     source = OfflineTerrariumElevationSource(terrain_directory, zoom=args.zoom)
 
     print("Creating terrain horizon from local terrain data only.")
+    print("Saved location data remains local to this computer.")
     print("No terrain-related network request will be made.")
 
     try:
