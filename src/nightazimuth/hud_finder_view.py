@@ -5,8 +5,13 @@ import tkinter as tk
 
 from .live_view import project_live_view, signed_angular_difference
 from .sky_map import SkySatellite
-from .star_field import PlanetPoint, StarPoint
-from .star_live_view import is_vega_star, star_visual_style, vega_locator_text
+from .star_field import DeepSkyPoint, PlanetPoint, StarPoint
+from .star_live_view import (
+    automatic_star_label_limit,
+    is_vega_star,
+    star_visual_style,
+    vega_locator_text,
+)
 from .terrain_star_live_view import TerrainStarLiveSkyView
 
 
@@ -244,7 +249,7 @@ class HudFinderView(TerrainStarLiveSkyView):
             if "above current elevation view" in text:
                 self.delete(item)
 
-        left, top, right, _bottom = self._plot_bounds()
+        left, top, right, bottom = self._plot_bounds()
         mode = "tracked" if self._show_all_tracked else "fast mover"
         self.create_text(
             right - 6,
@@ -257,7 +262,7 @@ class HudFinderView(TerrainStarLiveSkyView):
         )
 
         snapshot = getattr(self, "_star_snapshot", None)
-        if snapshot is not None:
+        if snapshot is not None and getattr(self, "_star_snapshot_profile", None) == self._current_profile_name():
             planet_names = [planet.name for planet in snapshot.planets if planet.elevation_deg >= 0.0]
             if planet_names:
                 self.create_text(
@@ -269,6 +274,24 @@ class HudFinderView(TerrainStarLiveSkyView):
                     font=("Segoe UI", 8, "bold"),
                     tags=("planet-summary",),
                 )
+
+            plot_width = max(right - left, 1.0)
+            plot_height = max(bottom - top, 1.0)
+            for galaxy in snapshot.galaxies:
+                projection = project_live_view(
+                    galaxy.azimuth_deg,
+                    galaxy.elevation_deg,
+                    self.facing_deg,
+                    self.horizontal_fov_deg,
+                    minimum_elevation_deg=self.minimum_elevation_deg,
+                    maximum_elevation_deg=self.maximum_elevation_deg,
+                )
+                if not projection.visible:
+                    continue
+                x = left + projection.x_fraction * plot_width
+                y = top + projection.y_fraction * plot_height
+                self._draw_galaxy(galaxy, x, y)
+            self.tag_lower("galaxy-field")
 
     def _visible_candidate_count(self) -> int:
         return sum(
@@ -323,18 +346,57 @@ class HudFinderView(TerrainStarLiveSkyView):
             self.create_oval(x - radius, y - radius, x + radius, y + radius, fill="#dbeafe", outline="#60a5fa", width=2, tags=(tag, "star-field"))
             self.create_text(x + 7, y - 7, text=vega_locator_text(star), fill="#93c5fd", anchor="sw", font=("Segoe UI", 9, "bold"), tags=(tag, "star-field"))
         else:
-            if star.magnitude > 3.0 and not selected:
+            if star.magnitude > 4.5 and not selected:
                 return
-            radius = 0.65 if star.magnitude > 2.0 else 1.0
+            radius = 0.5 if star.magnitude > 4.0 else (0.65 if star.magnitude > 3.0 else (0.8 if star.magnitude > 2.0 else 1.0))
             if selected:
                 radius = 2.5
             self.create_oval(x - radius, y - radius, x + radius, y + radius, fill="#64748b" if not selected else "#e2e8f0", outline="", tags=(tag, "star-field"))
-            if selected:
+
+            label_limit = automatic_star_label_limit(self.horizontal_fov_deg)
+            automatic_label = bool(star.name and star.magnitude <= label_limit)
+            if automatic_label or selected:
                 name = star.name or f"HIP {star.hip_id}"
-                self.create_text(x + 6, y - 6, text=f"{name}  mag {star.magnitude:.2f}", fill="#cbd5e1", anchor="sw", font=("Segoe UI", 8), tags=(tag, "star-field"))
+                label = name if not selected else f"{name}  mag {star.magnitude:.2f}"
+                self.create_text(
+                    x + 5,
+                    y - 5,
+                    text=label,
+                    fill="#cbd5e1" if selected else "#94a3b8",
+                    anchor="sw",
+                    font=("Segoe UI", 8 if selected else 7, "bold" if selected else "normal"),
+                    tags=(tag, "star-field"),
+                )
         self.tag_bind(tag, "<Button-1>", lambda _event, item=star: self._select_star(item))
         self.tag_bind(tag, "<Enter>", lambda _event: self.config(cursor="hand2"))
         self.tag_bind(tag, "<Leave>", lambda _event: self.config(cursor=""))
+
+    def _draw_galaxy(self, galaxy: DeepSkyPoint, x: float, y: float) -> None:
+        radius = 3.0
+        tag = f"galaxy:{galaxy.name}"
+        self.create_polygon(
+            x,
+            y - radius,
+            x + radius,
+            y,
+            x,
+            y + radius,
+            x - radius,
+            y,
+            fill="",
+            outline="#c084fc",
+            width=1,
+            tags=(tag, "galaxy-field"),
+        )
+        self.create_text(
+            x + 6,
+            y - 5,
+            text=f"{galaxy.name}  Az {galaxy.azimuth_deg:.0f}°  El {galaxy.elevation_deg:.0f}°",
+            fill="#d8b4fe",
+            anchor="sw",
+            font=("Segoe UI", 7, "bold"),
+            tags=(tag, "galaxy-field"),
+        )
 
     def _draw_planet(self, planet: PlanetPoint, x: float, y: float) -> None:
         selected = planet.name == self._selected_planet
