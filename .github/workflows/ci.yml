@@ -33,13 +33,16 @@ jobs:
       - name: Pytest
         run: python -m pytest -q
 
-      - name: Build Windows executable
+      - name: Build Windows release output
         shell: pwsh
         run: |
-          python -m PyInstaller --clean --noconfirm --onefile --windowed --name NightAzimuth --collect-data skyfield nightazimuth_gui_launcher.py
+          .\build_windows.ps1
           if ($LASTEXITCODE -ne 0) {
-            throw "PyInstaller failed with exit code $LASTEXITCODE"
+            throw "Windows build failed with exit code $LASTEXITCODE"
           }
           if (-not (Test-Path .\dist\NightAzimuth.exe)) {
             throw "NightAzimuth.exe was not produced"
+          }
+          if (-not (Test-Path .\dist\NightAzimuth_User_Guide.md)) {
+            throw "NightAzimuth user guide was not included in the release output"
           }

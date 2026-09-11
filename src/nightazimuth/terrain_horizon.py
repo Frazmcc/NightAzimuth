@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from io import BytesIO
 import math
 from pathlib import Path
 from typing import Protocol
 
+import httpx
 from PIL import Image
 
 
 EARTH_RADIUS_M = 6_371_000.0
 TILE_SIZE = 256
+TERRARIUM_BASE_URL = "https://elevation-tiles-prod.s3.amazonaws.com/terrarium"
 
 
 class ElevationSource(Protocol):
@@ -18,7 +21,11 @@ class ElevationSource(Protocol):
 
 
 class MissingTerrainDataError(RuntimeError):
-    """Raised when the installed offline terrain pack does not cover a requested point."""
+    """Raised when an offline-only terrain source does not cover a requested point."""
+
+
+class TerrainDownloadError(RuntimeError):
+    """Raised when required terrain data cannot be downloaded or decoded."""
 
 
 class TerrainPackError(ValueError):
@@ -41,15 +48,14 @@ class OfflineTerrariumElevationSource:
     """Read Terrarium elevation tiles from a local-only terrain pack."""
 
     def __init__(self, terrain_directory: Path, *, zoom: int = 10) -> None:
-        self.terrain_directory = terrain_directory
+        self.terrain_directory = Path(terrain_directory)
         self.zoom = max(0, min(14, int(zoom)))
         self._images: dict[tuple[int, int], Image.Image] = {}
 
     def elevation_m(self, latitude: float, longitude: float) -> float:
         tile_x, tile_y, pixel_x, pixel_y = _tile_pixel(latitude, longitude, self.zoom)
         image = self._load_tile(tile_x, tile_y)
-        red, green, blue = image.getpixel((pixel_x, pixel_y))[:3]
-        return red * 256.0 + green + blue / 256.0 - 32768.0
+        return _terrarium_elevation_m(image, pixel_x, pixel_y)
 
     def _load_tile(self, tile_x: int, tile_y: int) -> Image.Image:
         key = (tile_x, tile_y)
@@ -57,17 +63,84 @@ class OfflineTerrariumElevationSource:
         if cached is not None:
             return cached
 
-        path = self.terrain_directory / str(self.zoom) / str(tile_x) / f"{tile_y}.png"
+        path = _terrain_tile_path(self.terrain_directory, self.zoom, tile_x, tile_y)
         if not path.is_file():
             raise MissingTerrainDataError(
                 "The installed offline terrain pack does not cover this observing location. "
                 "No network request was made."
             )
 
-        data = path.read_bytes()
-        image = Image.open(BytesIO(data)).convert("RGB")
+        image = _decode_terrarium_image(path.read_bytes())
         self._images[key] = image
         return image
+
+
+class CachedTerrariumElevationSource:
+    """Use local cached terrain first and download only missing Terrarium tiles.
+
+    The caller supplies latitude/longitude only after a user has entered a
+    location. The saved NightAzimuth profile itself is never uploaded. Remote
+    requests contain only standard z/x/y terrain tile identifiers required to
+    retrieve the elevation data, and successful tiles are cached locally.
+    """
+
+    def __init__(
+        self,
+        terrain_directory: Path,
+        *,
+        zoom: int = 10,
+        base_url: str = TERRARIUM_BASE_URL,
+        tile_fetcher: Callable[[str], bytes] | None = None,
+    ) -> None:
+        self.terrain_directory = Path(terrain_directory)
+        self.zoom = max(0, min(14, int(zoom)))
+        self.base_url = base_url.rstrip("/")
+        self._tile_fetcher = tile_fetcher
+        self._images: dict[tuple[int, int], Image.Image] = {}
+
+    def elevation_m(self, latitude: float, longitude: float) -> float:
+        tile_x, tile_y, pixel_x, pixel_y = _tile_pixel(latitude, longitude, self.zoom)
+        image = self._load_tile(tile_x, tile_y)
+        return _terrarium_elevation_m(image, pixel_x, pixel_y)
+
+    def _load_tile(self, tile_x: int, tile_y: int) -> Image.Image:
+        key = (tile_x, tile_y)
+        cached = self._images.get(key)
+        if cached is not None:
+            return cached
+
+        path = _terrain_tile_path(self.terrain_directory, self.zoom, tile_x, tile_y)
+        if path.is_file():
+            image = _decode_terrarium_image(path.read_bytes())
+            self._images[key] = image
+            return image
+
+        data = self._download_tile(tile_x, tile_y)
+        try:
+            image = _decode_terrarium_image(data)
+        except OSError as exc:
+            raise TerrainDownloadError("Downloaded terrain data could not be decoded.") from exc
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        self._images[key] = image
+        return image
+
+    def _download_tile(self, tile_x: int, tile_y: int) -> bytes:
+        url = f"{self.base_url}/{self.zoom}/{tile_x}/{tile_y}.png"
+        try:
+            if self._tile_fetcher is not None:
+                data = self._tile_fetcher(url)
+            else:
+                response = httpx.get(url, timeout=20.0, follow_redirects=True)
+                response.raise_for_status()
+                data = response.content
+        except (httpx.HTTPError, OSError, ValueError) as exc:
+            raise TerrainDownloadError("Required terrain data could not be downloaded.") from exc
+
+        if not data:
+            raise TerrainDownloadError("Required terrain data could not be downloaded.")
+        return data
 
 
 class SyntheticDemoElevationSource:
@@ -126,6 +199,19 @@ def import_terrarium_pack(source_directory: Path, destination_directory: Path) -
     if copied != summary.tile_count:
         raise TerrainPackError("Terrain-pack import did not complete successfully.")
     return summary
+
+
+def _terrain_tile_path(directory: Path, zoom: int, tile_x: int, tile_y: int) -> Path:
+    return directory / str(zoom) / str(tile_x) / f"{tile_y}.png"
+
+
+def _decode_terrarium_image(data: bytes) -> Image.Image:
+    return Image.open(BytesIO(data)).convert("RGB")
+
+
+def _terrarium_elevation_m(image: Image.Image, pixel_x: int, pixel_y: int) -> float:
+    red, green, blue = image.getpixel((pixel_x, pixel_y))[:3]
+    return red * 256.0 + green + blue / 256.0 - 32768.0
 
 
 def _valid_tile_path(relative: Path) -> bool:
@@ -217,10 +303,30 @@ def destination_point(
 
 def _sample_distances(max_distance_m: float) -> tuple[float, ...]:
     distances_km = (
-        0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
-        8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 80.0, 100.0,
+        0.25,
+        0.5,
+        0.75,
+        1.0,
+        1.5,
+        2.0,
+        3.0,
+        4.0,
+        6.0,
+        8.0,
+        12.0,
+        16.0,
+        24.0,
+        32.0,
+        48.0,
+        64.0,
+        80.0,
+        100.0,
     )
-    result = [distance * 1_000.0 for distance in distances_km if distance * 1_000.0 <= max_distance_m]
+    result = [
+        distance * 1_000.0
+        for distance in distances_km
+        if distance * 1_000.0 <= max_distance_m
+    ]
     if not result or result[-1] < max_distance_m:
         result.append(max_distance_m)
     return tuple(result)

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
 from nightazimuth.terrain_horizon import (
+    CachedTerrariumElevationSource,
     MissingTerrainDataError,
     OfflineTerrariumElevationSource,
     SyntheticDemoElevationSource,
+    TerrainDownloadError,
     TerrainPackError,
     _tile_pixel,
     apparent_elevation_deg,
@@ -23,6 +26,15 @@ class FakeElevationSource:
     def elevation_m(self, latitude: float, longitude: float) -> float:
         del latitude
         return 250.0 if longitude > 0.0 else 100.0
+
+
+def _terrarium_png_bytes(elevation_m: int = 100) -> bytes:
+    encoded = 32768 + elevation_m
+    red = encoded // 256
+    green = encoded % 256
+    buffer = BytesIO()
+    Image.new("RGB", (256, 256), (red, green, 0)).save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 def test_destination_point_north_increases_latitude() -> None:
@@ -65,6 +77,33 @@ def test_offline_source_reads_local_terrarium_tile(tmp_path: Path) -> None:
 def test_offline_source_never_falls_back_when_tile_is_missing(tmp_path: Path) -> None:
     source = OfflineTerrariumElevationSource(tmp_path, zoom=10)
     with pytest.raises(MissingTerrainDataError, match="No network request was made"):
+        source.elevation_m(0.0, 0.0)
+
+
+def test_cached_source_downloads_missing_tile_then_reuses_local_cache(tmp_path: Path) -> None:
+    requested: list[str] = []
+
+    def fetch_tile(url: str) -> bytes:
+        requested.append(url)
+        return _terrarium_png_bytes(125)
+
+    source = CachedTerrariumElevationSource(tmp_path, zoom=1, tile_fetcher=fetch_tile)
+    assert source.elevation_m(0.0, 0.0) == pytest.approx(125.0)
+    assert len(requested) == 1
+
+    def must_not_fetch(_url: str) -> bytes:
+        raise AssertionError("terrain cache should have been reused")
+
+    cached_source = CachedTerrariumElevationSource(tmp_path, zoom=1, tile_fetcher=must_not_fetch)
+    assert cached_source.elevation_m(0.0, 0.0) == pytest.approx(125.0)
+
+
+def test_cached_source_reports_download_failure_without_exposing_location(tmp_path: Path) -> None:
+    def fetch_tile(_url: str) -> bytes:
+        raise OSError("network unavailable")
+
+    source = CachedTerrariumElevationSource(tmp_path, zoom=1, tile_fetcher=fetch_tile)
+    with pytest.raises(TerrainDownloadError, match="could not be downloaded"):
         source.elevation_m(0.0, 0.0)
 
 
