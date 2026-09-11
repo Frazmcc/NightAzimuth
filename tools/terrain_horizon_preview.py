@@ -11,7 +11,9 @@ from nightazimuth.terrain_horizon import (
     MissingTerrainDataError,
     OfflineTerrariumElevationSource,
     SyntheticDemoElevationSource,
+    TerrainPackError,
     calculate_horizon_profile,
+    import_terrarium_pack,
 )
 
 WIDTH = 1800
@@ -30,6 +32,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Use deterministic synthetic terrain only; do not read saved location profiles.",
     )
+    parser.add_argument(
+        "--import-pack",
+        type=Path,
+        help="Import a user-selected local Terrarium terrain pack and exit.",
+    )
     parser.add_argument("--profile")
     parser.add_argument("--output", default="terrain_horizon_preview.png")
     parser.add_argument("--max-distance-km", type=float, default=80.0)
@@ -42,6 +49,20 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    appdata = Path(os.environ.get("APPDATA", Path.home()))
+    managed_terrain = appdata / "NightAzimuth" / "terrain" / "terrarium"
+
+    if args.import_pack is not None:
+        try:
+            summary = import_terrarium_pack(args.import_pack, managed_terrain)
+        except TerrainPackError as exc:
+            raise SystemExit(str(exc)) from None
+        zooms = ", ".join(str(level) for level in summary.zoom_levels)
+        print("Offline terrain pack imported successfully.")
+        print(f"Tiles imported: {summary.tile_count}")
+        print(f"Zoom levels: {zooms}")
+        print("No saved observer profile was read and no network request was made.")
+        return 0
 
     if args.demo:
         print("Creating synthetic terrain-horizon demo.")
@@ -57,7 +78,7 @@ def main() -> int:
             max_distance_km=min(args.max_distance_km, 20.0),
         )
     else:
-        horizon = build_saved_location_horizon(args)
+        horizon = build_saved_location_horizon(args, managed_terrain)
 
     output = Path(args.output).resolve()
     draw_preview(horizon, output, demo=args.demo)
@@ -65,7 +86,7 @@ def main() -> int:
     return 0
 
 
-def build_saved_location_horizon(args: argparse.Namespace) -> tuple:
+def build_saved_location_horizon(args: argparse.Namespace, managed_terrain: Path) -> tuple:
     store = LocationProfileStore()
     profiles, selected = store.load()
     profile_name = args.profile or selected
@@ -76,8 +97,7 @@ def build_saved_location_horizon(args: argparse.Namespace) -> tuple:
     if profile is None:
         raise SystemExit("The requested saved location profile was not found.")
 
-    appdata = Path(os.environ.get("APPDATA", Path.home()))
-    terrain_directory = args.terrain_directory or appdata / "NightAzimuth" / "terrain" / "terrarium"
+    terrain_directory = args.terrain_directory or managed_terrain
     source = OfflineTerrariumElevationSource(terrain_directory, zoom=args.zoom)
 
     print("Creating terrain horizon from local terrain data only.")
@@ -132,7 +152,11 @@ def draw_preview(horizon: tuple, output: Path, *, demo: bool = False) -> None:
         draw.line(skyline, fill="#a3b18a", width=3)
 
     draw.rectangle((plot_left, plot_top, plot_right, plot_bottom), outline="#475569", width=2)
-    title = "NightAzimuth synthetic terrain-horizon demo" if demo else "NightAzimuth offline terrain-horizon preview"
+    title = (
+        "NightAzimuth synthetic terrain-horizon demo"
+        if demo
+        else "NightAzimuth offline terrain-horizon preview"
+    )
     draw.text((plot_left, 8), title, fill="#f8fafc")
     draw.text(
         (plot_left, HEIGHT - 30),
