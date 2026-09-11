@@ -19,6 +19,19 @@ MODERN_SKYCULTURE_URL = (
     "skycultures/modern_st/index.json"
 )
 
+# A compact zero-cost deep-sky reference set for the Live finder. Coordinates
+# are J2000 right ascension / declination and are transformed topocentrically
+# with Skyfield for the observer and current time.
+GALAXY_CATALOGUE: tuple[tuple[str, float, float], ...] = (
+    ("Andromeda Galaxy (M31)", 0.7123056, 41.26917),
+    ("Triangulum Galaxy (M33)", 1.5641389, 30.66028),
+    ("Bode's Galaxy (M81)", 9.9258889, 69.06528),
+    ("Cigar Galaxy (M82)", 9.9311667, 69.67972),
+    ("Whirlpool Galaxy (M51)", 13.4979722, 47.19528),
+    ("Pinwheel Galaxy (M101)", 14.0535000, 54.34917),
+    ("Sombrero Galaxy (M104)", 12.6665000, -11.62306),
+)
+
 
 @dataclass(frozen=True, slots=True)
 class StarPoint:
@@ -37,6 +50,14 @@ class PlanetPoint:
 
 
 @dataclass(frozen=True, slots=True)
+class DeepSkyPoint:
+    name: str
+    azimuth_deg: float
+    elevation_deg: float
+    object_type: str = "galaxy"
+
+
+@dataclass(frozen=True, slots=True)
 class ConstellationLine:
     constellation: str
     start_azimuth_deg: float
@@ -51,6 +72,7 @@ class StarFieldSnapshot:
     planets: tuple[PlanetPoint, ...]
     constellation_lines: tuple[ConstellationLine, ...]
     calculated_at: datetime
+    galaxies: tuple[DeepSkyPoint, ...] = ()
 
 
 def parse_modern_skyculture(
@@ -93,7 +115,7 @@ def parse_modern_skyculture(
 
 
 class StarFieldEngine:
-    """Calculate real topocentric stars and major planets for an observer."""
+    """Calculate real topocentric stars, planets and galaxy references for an observer."""
 
     def __init__(
         self,
@@ -193,6 +215,23 @@ class StarFieldEngine:
                 )
             )
 
+        galaxy_points: list[DeepSkyPoint] = []
+        for display_name, ra_hours, dec_degrees in GALAXY_CATALOGUE:
+            apparent_galaxy = topocentric_observer.at(t).observe(
+                Star(ra_hours=ra_hours, dec_degrees=dec_degrees)
+            ).apparent()
+            galaxy_altitude, galaxy_azimuth, _galaxy_distance = apparent_galaxy.altaz()
+            elevation = float(galaxy_altitude.degrees)
+            if elevation < 0.0:
+                continue
+            galaxy_points.append(
+                DeepSkyPoint(
+                    name=display_name,
+                    azimuth_deg=float(galaxy_azimuth.degrees) % 360.0,
+                    elevation_deg=elevation,
+                )
+            )
+
         lines: list[ConstellationLine] = []
         for abbreviation, start_id, end_id in edges:
             start = position_map.get(start_id)
@@ -212,4 +251,10 @@ class StarFieldEngine:
             )
 
         stars.sort(key=lambda star: star.magnitude)
-        return StarFieldSnapshot(tuple(stars), tuple(planet_points), tuple(lines), moment)
+        return StarFieldSnapshot(
+            tuple(stars),
+            tuple(planet_points),
+            tuple(lines),
+            moment,
+            tuple(galaxy_points),
+        )
