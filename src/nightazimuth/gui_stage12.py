@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 import threading
+import tkinter as tk
 from tkinter import filedialog, ttk
 
 from .gui import SettingsWindow
@@ -14,6 +16,45 @@ from .terrain_horizon import (
     import_terrarium_pack,
 )
 from .terrain_star_live_view import TerrainStarLiveSkyView
+
+
+@dataclass(frozen=True, slots=True)
+class VerticalSkyWindow:
+    sky_angle_deg: float
+    facing_deg: float
+    minimum_elevation_deg: float
+    maximum_elevation_deg: float
+
+
+def vertical_sky_window(
+    sky_angle_deg: float,
+    *,
+    base_facing_deg: float,
+    elevation_span_deg: float = 60.0,
+) -> VerticalSkyWindow:
+    """Map a 0..180 vertical sky sweep onto a valid astronomical elevation window.
+
+    0° is the horizon in the selected facing direction, 90° is the zenith, and
+    180° is the opposite horizon. Astronomical elevation itself remains 0..90°;
+    after passing the zenith the rendered facing direction is rotated by 180°.
+    """
+    angle = max(0.0, min(180.0, float(sky_angle_deg)))
+    span = max(5.0, min(90.0, float(elevation_span_deg)))
+    target_elevation = angle if angle <= 90.0 else 180.0 - angle
+    facing = base_facing_deg % 360.0 if angle <= 90.0 else (base_facing_deg + 180.0) % 360.0
+
+    minimum = target_elevation - span / 2.0
+    maximum = minimum + span
+    if minimum < 0.0:
+        maximum -= minimum
+        minimum = 0.0
+    if maximum > 90.0:
+        minimum -= maximum - 90.0
+        maximum = 90.0
+    minimum = max(0.0, minimum)
+    maximum = min(90.0, maximum)
+
+    return VerticalSkyWindow(angle, facing, minimum, maximum)
 
 
 class Stage12SettingsWindow(SettingsWindow):
@@ -84,6 +125,10 @@ class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
         self._pending_terrain_profile: str | None = None
         self._terrain_location_key: tuple[str, float, float, float] | None = None
         self._terrain_horizon: tuple = ()
+        self._vertical_sky_angle_deg = 30.0
+        self._vertical_scale: ttk.Scale | None = None
+        self._vertical_scale_value: tk.DoubleVar | None = None
+        self._vertical_scale_label: tk.StringVar | None = None
         super().__init__()
 
     @property
@@ -96,9 +141,92 @@ class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
         parent = old_live_view.master
         old_live_view.destroy()
         self.live_view = TerrainStarLiveSkyView(parent, on_select=self._on_live_satellite_selected)
-        self.live_view.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        self.live_view.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+        details = next(
+            (child for child in parent.winfo_children() if isinstance(child, ttk.LabelFrame)),
+            None,
+        )
+        if details is not None:
+            details.grid_configure(row=0, column=2, sticky="ns")
+
+        elevation_control = ttk.Frame(parent, padding=(2, 0, 8, 0))
+        elevation_control.grid(row=0, column=1, sticky="ns")
+        ttk.Label(elevation_control, text="180°", anchor="center").pack(fill="x")
+        self._vertical_scale_value = tk.DoubleVar(master=self, value=self._vertical_sky_angle_deg)
+        self._vertical_scale = ttk.Scale(
+            elevation_control,
+            from_=180.0,
+            to=0.0,
+            orient="vertical",
+            variable=self._vertical_scale_value,
+            command=self._on_vertical_sky_angle_changed,
+            length=360,
+        )
+        self._vertical_scale.pack(side="top", fill="y", expand=True, pady=4)
+        ttk.Label(elevation_control, text="0°", anchor="center").pack(fill="x")
+        self._vertical_scale_label = tk.StringVar(master=self, value="30°")
+        ttk.Label(
+            elevation_control,
+            textvariable=self._vertical_scale_label,
+            anchor="center",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(fill="x", pady=(6, 0))
+        ttk.Label(
+            elevation_control,
+            text="Sky\nangle",
+            anchor="center",
+            justify="center",
+        ).pack(fill="x", pady=(2, 0))
+
         self._apply_live_view_direction(show_error=False)
+        self._apply_vertical_sky_angle()
         self._on_star_layer_changed()
+
+    def _apply_live_view_direction(self, *, show_error: bool = True) -> None:
+        super()._apply_live_view_direction(show_error=show_error)
+        if hasattr(self, "live_view"):
+            self._apply_vertical_sky_angle(update_summary=False)
+            self._update_live_view_summary()
+
+    def _on_vertical_sky_angle_changed(self, value: str) -> None:
+        self._vertical_sky_angle_deg = max(0.0, min(180.0, float(value)))
+        self._apply_vertical_sky_angle()
+
+    def _apply_vertical_sky_angle(self, *, update_summary: bool = True) -> None:
+        if not hasattr(self, "live_view"):
+            return
+        span = self.live_view.maximum_elevation_deg - self.live_view.minimum_elevation_deg
+        window = vertical_sky_window(
+            self._vertical_sky_angle_deg,
+            base_facing_deg=self.live_view._base_facing_deg,
+            elevation_span_deg=span,
+        )
+        self.live_view._facing_deg = window.facing_deg
+        self.live_view._minimum_elevation_deg = window.minimum_elevation_deg
+        self.live_view._maximum_elevation_deg = window.maximum_elevation_deg
+        if self._vertical_scale_label is not None:
+            self._vertical_scale_label.set(f"{window.sky_angle_deg:.0f}°")
+        self.live_view.redraw()
+        if update_summary:
+            self._update_live_view_summary()
+
+    def _reset_live_zoom(self) -> None:
+        self._vertical_sky_angle_deg = 30.0
+        if self._vertical_scale_value is not None:
+            self._vertical_scale_value.set(self._vertical_sky_angle_deg)
+        super()._reset_live_zoom()
+        self._apply_vertical_sky_angle()
+
+    def _update_live_view_summary(self) -> None:
+        super()._update_live_view_summary()
+        current = self.live_detail_var.get()
+        hemisphere = "selected facing horizon" if self._vertical_sky_angle_deg <= 90.0 else "opposite horizon"
+        self.live_detail_var.set(
+            current
+            + f"\nVertical sky angle: {self._vertical_sky_angle_deg:.0f}° ({hemisphere})\n"
+            + "0° = facing horizon  |  90° = zenith  |  180° = opposite horizon"
+        )
 
     def open_settings(self) -> None:
         Stage12SettingsWindow(self)
