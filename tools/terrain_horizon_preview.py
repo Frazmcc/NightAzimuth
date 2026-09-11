@@ -10,6 +10,7 @@ from nightazimuth.location_profiles import LocationProfileStore
 from nightazimuth.terrain_horizon import (
     MissingTerrainDataError,
     OfflineTerrariumElevationSource,
+    SyntheticDemoElevationSource,
     calculate_horizon_profile,
 )
 
@@ -24,6 +25,11 @@ MAX_ELEVATION_DEG = 60.0
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create an offline terrain-horizon preview.")
+    parser.add_argument(
+        "--demo",
+        action="store_true",
+        help="Use deterministic synthetic terrain only; do not read saved location profiles.",
+    )
     parser.add_argument("--profile")
     parser.add_argument("--output", default="terrain_horizon_preview.png")
     parser.add_argument("--max-distance-km", type=float, default=80.0)
@@ -36,6 +42,30 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+
+    if args.demo:
+        print("Creating synthetic terrain-horizon demo.")
+        print("Demo mode does not read saved NightAzimuth location profiles.")
+        print("Demo mode uses mathematical terrain only and makes no network requests.")
+        horizon = calculate_horizon_profile(
+            SyntheticDemoElevationSource(),
+            observer_latitude=0.0,
+            observer_longitude=0.0,
+            observer_altitude_m=70.0,
+            observer_height_m=args.observer_height_m,
+            azimuth_step_deg=args.azimuth_step,
+            max_distance_km=min(args.max_distance_km, 20.0),
+        )
+    else:
+        horizon = build_saved_location_horizon(args)
+
+    output = Path(args.output).resolve()
+    draw_preview(horizon, output, demo=args.demo)
+    print(f"Preview created: {output}")
+    return 0
+
+
+def build_saved_location_horizon(args: argparse.Namespace) -> tuple:
     store = LocationProfileStore()
     profiles, selected = store.load()
     profile_name = args.profile or selected
@@ -55,7 +85,7 @@ def main() -> int:
     print("No terrain-related network request will be made.")
 
     try:
-        horizon = calculate_horizon_profile(
+        return calculate_horizon_profile(
             source,
             observer_latitude=profile.latitude,
             observer_longitude=profile.longitude,
@@ -67,13 +97,8 @@ def main() -> int:
     except MissingTerrainDataError as exc:
         raise SystemExit(str(exc)) from None
 
-    output = Path(args.output).resolve()
-    draw_preview(horizon, output)
-    print(f"Preview created: {output}")
-    return 0
 
-
-def draw_preview(horizon: tuple, output: Path) -> None:
+def draw_preview(horizon: tuple, output: Path, *, demo: bool = False) -> None:
     image = Image.new("RGB", (WIDTH, HEIGHT), "#08111f")
     draw = ImageDraw.Draw(image)
 
@@ -107,7 +132,8 @@ def draw_preview(horizon: tuple, output: Path) -> None:
         draw.line(skyline, fill="#a3b18a", width=3)
 
     draw.rectangle((plot_left, plot_top, plot_right, plot_bottom), outline="#475569", width=2)
-    draw.text((plot_left, 8), "NightAzimuth offline terrain-horizon preview", fill="#f8fafc")
+    title = "NightAzimuth synthetic terrain-horizon demo" if demo else "NightAzimuth offline terrain-horizon preview"
+    draw.text((plot_left, 8), title, fill="#f8fafc")
     draw.text(
         (plot_left, HEIGHT - 30),
         "Terrain only: trees, buildings and other nearby obstructions are not included.",
