@@ -8,6 +8,7 @@ from PIL import Image
 from nightazimuth.terrain_horizon import (
     MissingTerrainDataError,
     OfflineTerrariumElevationSource,
+    SyntheticDemoElevationSource,
     _tile_pixel,
     apparent_elevation_deg,
     calculate_horizon_profile,
@@ -66,3 +67,29 @@ def test_offline_source_never_falls_back_when_tile_is_missing(tmp_path: Path) ->
     source = OfflineTerrariumElevationSource(tmp_path, zoom=10)
     with pytest.raises(MissingTerrainDataError, match="No network request was made"):
         source.elevation_m(0.0, 0.0)
+
+
+def test_synthetic_demo_source_produces_varied_local_terrain() -> None:
+    source = SyntheticDemoElevationSource()
+    centre = source.elevation_m(0.0, 0.0)
+    east = source.elevation_m(0.01, 0.05)
+    west = source.elevation_m(0.01, -0.05)
+
+    assert centre > 0.0
+    assert east != pytest.approx(west)
+
+
+def test_synthetic_demo_horizon_is_complete_and_non_flat() -> None:
+    horizon = calculate_horizon_profile(
+        SyntheticDemoElevationSource(),
+        observer_latitude=0.0,
+        observer_longitude=0.0,
+        observer_altitude_m=70.0,
+        observer_height_m=1.7,
+        azimuth_step_deg=30.0,
+        max_distance_km=20.0,
+    )
+
+    assert len(horizon) == 12
+    elevations = {round(point.elevation_deg, 3) for point in horizon}
+    assert len(elevations) > 1
