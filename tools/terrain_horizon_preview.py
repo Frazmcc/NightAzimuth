@@ -8,10 +8,10 @@ from PIL import Image, ImageDraw
 
 from nightazimuth.location_profiles import LocationProfileStore
 from nightazimuth.terrain_horizon import (
-    TerrariumElevationSource,
+    MissingTerrainDataError,
+    OfflineTerrariumElevationSource,
     calculate_horizon_profile,
 )
-
 
 WIDTH = 1800
 HEIGHT = 520
@@ -23,24 +23,19 @@ MAX_ELEVATION_DEG = 60.0
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Create a zero-cost terrain-horizon preview for a saved NightAzimuth location. "
-            "Coordinates are read locally and are not printed or written into the image."
-        )
-    )
-    parser.add_argument("--profile", help="Saved profile name. Defaults to the currently selected profile.")
+    parser = argparse.ArgumentParser(description="Create an offline terrain-horizon preview.")
+    parser.add_argument("--profile")
     parser.add_argument("--output", default="terrain_horizon_preview.png")
     parser.add_argument("--max-distance-km", type=float, default=80.0)
     parser.add_argument("--azimuth-step", type=float, default=1.0)
     parser.add_argument("--zoom", type=int, default=10)
     parser.add_argument("--observer-height-m", type=float, default=1.7)
+    parser.add_argument("--terrain-directory", type=Path)
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-
     store = LocationProfileStore()
     profiles, selected = store.load()
     profile_name = args.profile or selected
@@ -49,34 +44,35 @@ def main() -> int:
 
     profile = next((item for item in profiles if item.name == profile_name), None)
     if profile is None:
-        available = ", ".join(item.name for item in profiles) or "none"
-        raise SystemExit(f"Saved profile {profile_name!r} was not found. Available profiles: {available}")
+        raise SystemExit("The requested saved location profile was not found.")
 
     appdata = Path(os.environ.get("APPDATA", Path.home()))
-    cache = appdata / "NightAzimuth" / "cache" / "terrain-tiles"
-    source = TerrariumElevationSource(cache, zoom=args.zoom)
+    terrain_directory = args.terrain_directory or appdata / "NightAzimuth" / "terrain" / "terrarium"
+    source = OfflineTerrariumElevationSource(terrain_directory, zoom=args.zoom)
 
-    print(f"Creating terrain horizon for saved profile: {profile.name}")
-    print("The first run downloads free public elevation tiles and caches them locally.")
-    print("No saved coordinates are printed or embedded in the preview image.")
+    print("Creating terrain horizon from local terrain data only.")
+    print("No terrain-related network request will be made.")
 
-    horizon = calculate_horizon_profile(
-        source,
-        observer_latitude=profile.latitude,
-        observer_longitude=profile.longitude,
-        observer_altitude_m=profile.altitude_m,
-        observer_height_m=args.observer_height_m,
-        azimuth_step_deg=args.azimuth_step,
-        max_distance_km=args.max_distance_km,
-    )
+    try:
+        horizon = calculate_horizon_profile(
+            source,
+            observer_latitude=profile.latitude,
+            observer_longitude=profile.longitude,
+            observer_altitude_m=profile.altitude_m,
+            observer_height_m=args.observer_height_m,
+            azimuth_step_deg=args.azimuth_step,
+            max_distance_km=args.max_distance_km,
+        )
+    except MissingTerrainDataError as exc:
+        raise SystemExit(str(exc)) from None
 
     output = Path(args.output).resolve()
-    draw_preview(horizon, profile.name, output)
+    draw_preview(horizon, output)
     print(f"Preview created: {output}")
     return 0
 
 
-def draw_preview(horizon: tuple, profile_name: str, output: Path) -> None:
+def draw_preview(horizon: tuple, output: Path) -> None:
     image = Image.new("RGB", (WIDTH, HEIGHT), "#08111f")
     draw = ImageDraw.Draw(image)
 
@@ -95,8 +91,7 @@ def draw_preview(horizon: tuple, profile_name: str, output: Path) -> None:
     for azimuth in range(0, 361, 30):
         x = plot_left + (azimuth / 360.0) * plot_width
         draw.line((x, plot_top, x, plot_bottom), fill="#1e293b", width=1)
-        label = cardinal_label(azimuth)
-        draw.text((x - 10, plot_bottom + 15), label, fill="#cbd5e1")
+        draw.text((x - 10, plot_bottom + 15), cardinal_label(azimuth), fill="#cbd5e1")
 
     skyline: list[tuple[float, float]] = []
     for point in horizon:
@@ -111,7 +106,7 @@ def draw_preview(horizon: tuple, profile_name: str, output: Path) -> None:
         draw.line(skyline, fill="#a3b18a", width=3)
 
     draw.rectangle((plot_left, plot_top, plot_right, plot_bottom), outline="#475569", width=2)
-    draw.text((plot_left, 8), f"NightAzimuth terrain-horizon prototype — {profile_name}", fill="#f8fafc")
+    draw.text((plot_left, 8), "NightAzimuth offline terrain-horizon preview", fill="#f8fafc")
     draw.text(
         (plot_left, HEIGHT - 30),
         "Terrain only: trees, buildings and other nearby obstructions are not included.",
