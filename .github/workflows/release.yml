@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Build validated Windows release output
+        shell: pwsh
+        run: .\build_windows.ps1
+
+      - name: Verify tag matches application version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $displayVersion = $tag.Substring(1)
+          $versionLine = '__version__ = "' + $displayVersion + '"'
+          $initText = Get-Content .\src\nightazimuth\__init__.py -Raw
+          if (-not $initText.Contains($versionLine)) {
+            throw "Tag $tag does not match NightAzimuth application version $displayVersion"
+          }
+
+      - name: Prepare release assets and checksums
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $releaseDir = Join-Path $PWD "release"
+          if (Test-Path $releaseDir) {
+            Remove-Item $releaseDir -Recurse -Force
+          }
+          New-Item -ItemType Directory -Path $releaseDir | Out-Null
+
+          $exeName = "NightAzimuth-$tag-Windows-x64.exe"
+          $guideName = "NightAzimuth-$tag-User-Guide.md"
+          $checksumName = "NightAzimuth-$tag-SHA256.txt"
+
+          Copy-Item .\dist\NightAzimuth.exe (Join-Path $releaseDir $exeName)
+          Copy-Item .\dist\NightAzimuth_User_Guide.md (Join-Path $releaseDir $guideName)
+
+          $exeHash = (Get-FileHash (Join-Path $releaseDir $exeName) -Algorithm SHA256).Hash.ToLowerInvariant()
+          $guideHash = (Get-FileHash (Join-Path $releaseDir $guideName) -Algorithm SHA256).Hash.ToLowerInvariant()
+          @(
+            "$exeHash  $exeName"
+            "$guideHash  $guideName"
+          ) | Set-Content (Join-Path $releaseDir $checksumName) -Encoding ascii
+
+          $approved = @($exeName, $guideName, $checksumName)
+          $unexpected = Get-ChildItem $releaseDir -Force | Where-Object { $_.Name -notin $approved }
+          if ($unexpected) {
+            throw "Unexpected release asset(s): $($unexpected.Name -join ', ')"
+          }
+          if ((Get-ChildItem $releaseDir -File).Count -ne 3) {
+            throw "Release asset validation expected exactly three files."
+          }
+
+      - name: Publish GitHub prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $notes = ".\RELEASE_NOTES_$tag.md"
+          if (-not (Test-Path $notes)) {
+            throw "Release notes were not found at $notes"
+          }
+          gh release create $tag `
+            --title "NightAzimuth $tag" `
+            --notes-file $notes `
+            --prerelease `
+            .\release\NightAzimuth-$tag-Windows-x64.exe `
+            .\release\NightAzimuth-$tag-User-Guide.md `
+            .\release\NightAzimuth-$tag-SHA256.txt
