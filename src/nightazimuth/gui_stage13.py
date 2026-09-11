@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import threading
+import tkinter as tk
 from tkinter import ttk
 
 from .celestrak import CelestrakClient, CelestrakError
@@ -72,6 +73,14 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
             command=self._on_star_layer_changed,
         ).pack(side="left", padx=(8, 0))
 
+        self.show_all_tracked_var = tk.BooleanVar(master=self, value=False)
+        ttk.Checkbutton(
+            controls,
+            text="All tracked",
+            variable=self.show_all_tracked_var,
+            command=self._on_show_all_tracked_changed,
+        ).pack(side="left", padx=(8, 0))
+
         content = ttk.Frame(parent)
         content.grid(row=1, column=0, sticky="nsew")
         content.columnconfigure(0, weight=1)
@@ -95,8 +104,8 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
             details,
             text=(
                 "The finder is deliberately sparse so it can later sit over a real sky/camera image. "
-                "Vega stays prominent, major planets remain labelled, and only satellites currently "
-                "classed as potentially visible are drawn unless you explicitly select another object."
+                "Vega stays prominent, major planets remain labelled, and the default finder shows only the strongest "
+                "current satellite candidates. Enable All tracked only when you want the full potentially-visible set."
             ),
             wraplength=250,
             justify="left",
@@ -105,9 +114,16 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
         self._apply_live_view_direction(show_error=False)
         self._on_star_layer_changed()
 
+    def _on_show_all_tracked_changed(self) -> None:
+        if not hasattr(self, "live_view"):
+            return
+        self.live_view.set_show_all_tracked(self.show_all_tracked_var.get())
+        self._update_live_view_summary()
+
     def _update_live_view_summary(self) -> None:
         if not hasattr(self, "live_view"):
             return
+        all_status = "On" if getattr(self, "show_all_tracked_var", None) and self.show_all_tracked_var.get() else "Off"
         self.live_detail_var.set(
             f"Facing {self.live_view.facing_deg:.0f}°\n"
             f"Horizontal FOV: {self.live_view.horizontal_fov_deg:.0f}°\n"
@@ -115,8 +131,9 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
             "Sparse HUD mode\n"
             "VEGA = blue-white reference\n"
             "Green = potentially visible satellite\n"
-            "Selected objects remain visible for identification.\n\n"
-            "Live tracking uses the broad active catalogue plus the visual catalogue."
+            "Selected object = labelled + projected path\n"
+            f"All tracked: {all_status}\n\n"
+            "Default mode ranks candidates by elevation and then range, with no hard distance cutoff."
         )
 
     def _load_tracking_data(self, profile: LocationProfile) -> None:
@@ -177,9 +194,6 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
                     )
                 )
 
-            # Long-range pass planning stays intentionally limited to the bright
-            # VISUAL catalogue; calculating 24-hour passes for every active object
-            # on each refresh would be wasteful and would not improve the live HUD.
             predictor = PassPredictor(observer)
             passes = predictor.predict(visual_elements, hours=24.0, minimum_elevation_deg=10.0)
             pass_rows = [
@@ -207,14 +221,27 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
         except Exception as exc:  # noqa: BLE001
             self.after(0, self._show_refresh_error, f"Unexpected error: {exc}")
 
+    def _apply_tracking_data(
+        self,
+        profile_name: str,
+        live_rows: list[tuple[str, ...]],
+        pass_rows: list[tuple[str, ...]],
+        sky_satellites: list[SkySatellite],
+    ) -> None:
+        super()._apply_tracking_data(profile_name, live_rows, pass_rows, sky_satellites)
+        if profile_name != self.selected_name or not hasattr(self, "live_view"):
+            return
+        self.live_view.set_show_all_tracked(self.show_all_tracked_var.get())
+        # Tracking data proves a selected observer is active. Re-check terrain here
+        # so the HUD cannot remain stuck on "waiting for location" after a valid refresh.
+        self._ensure_terrain_horizon(profile_name)
+
     def _start_track_prediction(
         self,
         profile_name: str,
         satellites: list[SkySatellite],
         generation: int,
     ) -> None:
-        # Tracks are useful only for the sparse HUD candidates. Limit the work
-        # rather than predicting three minutes for every active object overhead.
         candidates = sorted(
             satellites,
             key=lambda satellite: (
@@ -270,6 +297,7 @@ class Stage13NightAzimuthApp(Stage12NightAzimuthApp):
             ]
             self._sky_satellites = updated
             self.live_view.set_satellites(updated)
+            self.live_view.set_show_all_tracked(self.show_all_tracked_var.get())
             if selected_norad is not None:
                 selected = next(
                     (satellite for satellite in updated if satellite.norad_id == selected_norad),
