@@ -1,5 +1,12 @@
-from nightazimuth.hud_finder_view import pan_live_view_window, select_finder_satellites
+from dataclasses import replace
+
+from nightazimuth.hud_finder_view import (
+    apparent_angular_speed_deg_s,
+    pan_live_view_window,
+    select_finder_satellites,
+)
 from nightazimuth.sky_map import SkySatellite
+from nightazimuth.track_prediction import TrackPoint
 
 
 def _satellite(
@@ -21,19 +28,35 @@ def _satellite(
     )
 
 
-def test_default_finder_chooses_one_primary_target() -> None:
-    satellites = [
-        _satellite("1", elevation=20.0, range_km=500.0),
-        _satellite("2", elevation=50.0, range_km=1200.0),
-        _satellite("3", elevation=50.0, range_km=600.0),
-    ]
+def _with_track(satellite: SkySatellite, *, azimuth_change: float, seconds: int = 20) -> SkySatellite:
+    return replace(
+        satellite,
+        future_track=(
+            TrackPoint(0, satellite.azimuth_deg, satellite.elevation_deg),
+            TrackPoint(seconds, satellite.azimuth_deg + azimuth_change, satellite.elevation_deg),
+        ),
+    )
+
+
+def test_default_finder_returns_small_fast_mover_set() -> None:
+    satellites = [_satellite(str(index), elevation=10.0 + index, range_km=500.0 + index) for index in range(10)]
 
     chosen = select_finder_satellites(satellites)
 
-    assert [satellite.norad_id for satellite in chosen] == ["3"]
+    assert len(chosen) == 6
 
 
-def test_sparse_finder_limits_and_ranks_candidates() -> None:
+def test_finder_prefers_faster_apparent_motion() -> None:
+    slow = _with_track(_satellite("slow", elevation=70.0, range_km=400.0), azimuth_change=2.0)
+    fast = _with_track(_satellite("fast", elevation=25.0, range_km=1200.0), azimuth_change=20.0)
+
+    chosen = select_finder_satellites([slow, fast], limit=1)
+
+    assert [satellite.norad_id for satellite in chosen] == ["fast"]
+    assert apparent_angular_speed_deg_s(fast) > apparent_angular_speed_deg_s(slow)
+
+
+def test_sparse_finder_limits_and_ranks_candidates_without_tracks() -> None:
     satellites = [
         _satellite("1", elevation=20.0, range_km=500.0),
         _satellite("2", elevation=50.0, range_km=1200.0),
