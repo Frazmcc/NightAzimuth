@@ -1,4 +1,4 @@
-from nightazimuth.star_field import parse_modern_skyculture
+from nightazimuth.star_field import GALAXY_CATALOGUE, parse_modern_skyculture
 from nightazimuth.star_live_view import automatic_star_label_limit, star_marker_radius
 
 
@@ -42,3 +42,11 @@ def test_star_labels_become_richer_as_live_view_zooms_in() -> None:
 
 def test_ninety_degree_view_labels_more_named_stars_than_wide_view() -> None:
     assert automatic_star_label_limit(90.0) > automatic_star_label_limit(150.0)
+
+
+def test_galaxy_reference_catalogue_contains_named_targets() -> None:
+    names = {name for name, _ra_hours, _dec_degrees in GALAXY_CATALOGUE}
+
+    assert "Andromeda Galaxy (M31)" in names
+    assert "Triangulum Galaxy (M33)" in names
+    assert len(names) == len(GALAXY_CATALOGUE)
