@@ -21,18 +21,24 @@ class MissingTerrainDataError(RuntimeError):
     """Raised when the installed offline terrain pack does not cover a requested point."""
 
 
+class TerrainPackError(ValueError):
+    """Raised when a selected offline terrain pack is invalid."""
+
+
 @dataclass(frozen=True, slots=True)
 class HorizonPoint:
     azimuth_deg: float
     elevation_deg: float
 
 
-class OfflineTerrariumElevationSource:
-    """Read Terrarium elevation tiles from a local-only terrain pack.
+@dataclass(frozen=True, slots=True)
+class TerrainPackSummary:
+    tile_count: int
+    zoom_levels: tuple[int, ...]
 
-    The source performs no network access. Tile lookup is derived locally from the
-    observer coordinates and only reads files beneath ``terrain_directory``.
-    """
+
+class OfflineTerrariumElevationSource:
+    """Read Terrarium elevation tiles from a local-only terrain pack."""
 
     def __init__(self, terrain_directory: Path, *, zoom: int = 10) -> None:
         self.terrain_directory = terrain_directory
@@ -65,11 +71,7 @@ class OfflineTerrariumElevationSource:
 
 
 class SyntheticDemoElevationSource:
-    """Deterministic synthetic terrain for privacy-safe rendering tests.
-
-    The source is mathematical only: it reads no files, location profiles, or network
-    resources. It is intentionally centred around the synthetic observer at 0°, 0°.
-    """
+    """Deterministic synthetic terrain for privacy-safe rendering tests."""
 
     def elevation_m(self, latitude: float, longitude: float) -> float:
         north_km = float(latitude) * 111.0
@@ -87,6 +89,61 @@ class SyntheticDemoElevationSource:
         return max(20.0, 70.0 + broad_ridge + southern_hill + undulation)
 
 
+def inspect_terrarium_pack(source_directory: Path) -> TerrainPackSummary:
+    source = Path(source_directory)
+    if not source.is_dir():
+        raise TerrainPackError("The selected terrain-pack folder does not exist.")
+
+    tile_count = 0
+    zoom_levels: set[int] = set()
+    for path in source.rglob("*.png"):
+        relative = path.relative_to(source)
+        if not _valid_tile_path(relative):
+            continue
+        tile_count += 1
+        zoom_levels.add(int(relative.parts[0]))
+
+    if tile_count == 0:
+        raise TerrainPackError("No valid Terrarium tiles were found.")
+    return TerrainPackSummary(tile_count, tuple(sorted(zoom_levels)))
+
+
+def import_terrarium_pack(source_directory: Path, destination_directory: Path) -> TerrainPackSummary:
+    source = Path(source_directory)
+    destination = Path(destination_directory)
+    summary = inspect_terrarium_pack(source)
+
+    copied = 0
+    for path in source.rglob("*.png"):
+        relative = path.relative_to(source)
+        if not _valid_tile_path(relative):
+            continue
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(path.read_bytes())
+        copied += 1
+
+    if copied != summary.tile_count:
+        raise TerrainPackError("Terrain-pack import did not complete successfully.")
+    return summary
+
+
+def _valid_tile_path(relative: Path) -> bool:
+    if len(relative.parts) != 3:
+        return False
+    zoom_text, x_text, y_name = relative.parts
+    if not y_name.lower().endswith(".png"):
+        return False
+    y_text = y_name[:-4]
+    if not (zoom_text.isdigit() and x_text.isdigit() and y_text.isdigit()):
+        return False
+    zoom = int(zoom_text)
+    if not 0 <= zoom <= 22:
+        return False
+    limit = 2**zoom
+    return 0 <= int(x_text) < limit and 0 <= int(y_text) < limit
+
+
 def calculate_horizon_profile(
     source: ElevationSource,
     *,
@@ -97,11 +154,7 @@ def calculate_horizon_profile(
     azimuth_step_deg: float = 1.0,
     max_distance_km: float = 80.0,
 ) -> tuple[HorizonPoint, ...]:
-    """Calculate the highest terrain angle around the observer.
-
-    The result is terrain-only. Nearby trees, buildings, fences and other local
-    obstructions are intentionally outside the DEM model.
-    """
+    """Calculate the highest terrain angle around the observer."""
     step = max(0.25, min(10.0, float(azimuth_step_deg)))
     max_distance_m = max(1_000.0, float(max_distance_km) * 1_000.0)
     observer_eye_m = float(observer_altitude_m) + float(observer_height_m)
@@ -119,11 +172,7 @@ def calculate_horizon_profile(
                 distance_m,
             )
             terrain_m = source.elevation_m(latitude, longitude)
-            angle = apparent_elevation_deg(
-                observer_eye_m,
-                terrain_m,
-                distance_m,
-            )
+            angle = apparent_elevation_deg(observer_eye_m, terrain_m, distance_m)
             if angle > highest:
                 highest = angle
         points.append(HorizonPoint(azimuth, max(0.0, highest)))
@@ -137,7 +186,6 @@ def apparent_elevation_deg(
     target_altitude_m: float,
     distance_m: float,
 ) -> float:
-    """Return geometric apparent elevation, including Earth curvature."""
     distance = max(1.0, float(distance_m))
     curvature_drop = distance * distance / (2.0 * EARTH_RADIUS_M)
     relative_height = float(target_altitude_m) - float(observer_altitude_m) - curvature_drop
@@ -150,7 +198,6 @@ def destination_point(
     bearing_deg: float,
     distance_m: float,
 ) -> tuple[float, float]:
-    """Return the spherical-Earth destination point for a bearing and distance."""
     latitude = math.radians(latitude_deg)
     longitude = math.radians(longitude_deg)
     bearing = math.radians(bearing_deg)
@@ -170,24 +217,8 @@ def destination_point(
 
 def _sample_distances(max_distance_m: float) -> tuple[float, ...]:
     distances_km = (
-        0.25,
-        0.5,
-        0.75,
-        1.0,
-        1.5,
-        2.0,
-        3.0,
-        4.0,
-        6.0,
-        8.0,
-        12.0,
-        16.0,
-        24.0,
-        32.0,
-        48.0,
-        64.0,
-        80.0,
-        100.0,
+        0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
+        8.0, 12.0, 16.0, 24.0, 32.0, 48.0, 64.0, 80.0, 100.0,
     )
     result = [distance * 1_000.0 for distance in distances_km if distance * 1_000.0 <= max_distance_m]
     if not result or result[-1] < max_distance_m:
