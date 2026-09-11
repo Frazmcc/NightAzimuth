@@ -37,6 +37,7 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         self._pending_star_profile: str | None = None
         self._star_snapshot: StarFieldSnapshot | None = None
         self._star_snapshot_profile: str | None = None
+        self._star_snapshot_location_key: tuple[str, float, float, float] | None = None
         self._star_loaded_monotonic = 0.0
         super().__init__()
         self._auto_refresh_ms = 5_000
@@ -222,8 +223,49 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         self._start_track_prediction(profile_name, sky_satellites, generation)
         self._ensure_star_field(profile_name)
 
+    def _location_key(
+        self,
+        profile_name: str | None,
+    ) -> tuple[str, float, float, float] | None:
+        if not profile_name:
+            return None
+        profile = next((item for item in self.profiles if item.name == profile_name), None)
+        if profile is None:
+            return None
+        return (
+            profile.name,
+            profile.latitude,
+            profile.longitude,
+            profile.altitude_m,
+        )
+
+    def _invalidate_stale_star_field(self) -> None:
+        current_key = self._location_key(self.selected_name)
+        if current_key == self._star_snapshot_location_key:
+            return
+
+        self._star_snapshot = None
+        self._star_snapshot_profile = None
+        self._star_snapshot_location_key = None
+        self._star_loaded_monotonic = 0.0
+
+        if hasattr(self, "live_view"):
+            self.live_view.set_star_field(None)
+
+    def _on_location_changed(self, _event: object | None = None) -> None:
+        super()._on_location_changed(_event)
+        self._invalidate_stale_star_field()
+
+    def _refresh_location_selector(self) -> None:
+        super()._refresh_location_selector()
+        self._invalidate_stale_star_field()
+
     def _ensure_star_field(self, profile_name: str, *, force: bool = False) -> None:
         if not profile_name:
+            return
+
+        location_key = self._location_key(profile_name)
+        if location_key is None:
             return
 
         age = time.monotonic() - self._star_loaded_monotonic
@@ -231,6 +273,7 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
             not force
             and self._star_snapshot is not None
             and self._star_snapshot_profile == profile_name
+            and self._star_snapshot_location_key == location_key
             and age < 60.0
         ):
             return
@@ -248,33 +291,67 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
         observer = self._observer_for_profile(profile)
         threading.Thread(
             target=self._load_star_field,
-            args=(profile_name, observer),
+            args=(profile_name, location_key, observer),
             daemon=True,
         ).start()
 
-    def _load_star_field(self, profile_name: str, observer: object) -> None:
+    def _load_star_field(
+        self,
+        profile_name: str,
+        location_key: tuple[str, float, float, float],
+        observer: object,
+    ) -> None:
         try:
             snapshot = StarFieldEngine(
                 observer,
                 self.cache_directory,
                 limiting_magnitude=5.5,
             ).snapshot()
-            self.after(0, self._apply_star_field, profile_name, snapshot)
+            self.after(
+                0,
+                self._apply_star_field,
+                profile_name,
+                location_key,
+                snapshot,
+            )
         except Exception as exc:  # noqa: BLE001
-            self.after(0, self._star_field_failed, profile_name, str(exc))
+            self.after(
+                0,
+                self._star_field_failed,
+                profile_name,
+                location_key,
+                str(exc),
+            )
 
-    def _apply_star_field(self, profile_name: str, snapshot: StarFieldSnapshot) -> None:
+    def _apply_star_field(
+        self,
+        profile_name: str,
+        location_key: tuple[str, float, float, float],
+        snapshot: StarFieldSnapshot,
+    ) -> None:
         self._star_load_in_progress = False
-        if profile_name == self.selected_name:
+        if (
+            profile_name == self.selected_name
+            and location_key == self._location_key(self.selected_name)
+        ):
             self._star_snapshot = snapshot
             self._star_snapshot_profile = profile_name
+            self._star_snapshot_location_key = location_key
             self._star_loaded_monotonic = time.monotonic()
             self.live_view.set_star_field(snapshot)
         self._start_pending_star_field()
 
-    def _star_field_failed(self, profile_name: str, error: str) -> None:
+    def _star_field_failed(
+        self,
+        profile_name: str,
+        location_key: tuple[str, float, float, float],
+        error: str,
+    ) -> None:
         self._star_load_in_progress = False
-        if profile_name == self.selected_name:
+        if (
+            profile_name == self.selected_name
+            and location_key == self._location_key(self.selected_name)
+        ):
             self.status_var.set(f"Satellite tracking active; celestial field unavailable: {error}")
         self._start_pending_star_field()
 

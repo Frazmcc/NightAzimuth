@@ -37,6 +37,9 @@ jobs:
         shell: pwsh
         run: |
           python -m PyInstaller --clean --noconfirm --onefile --windowed --name NightAzimuth --collect-data skyfield nightazimuth_gui_launcher.py
+          if ($LASTEXITCODE -ne 0) {
+            throw "PyInstaller failed with exit code $LASTEXITCODE"
+          }
           if (-not (Test-Path .\dist\NightAzimuth.exe)) {
             throw "NightAzimuth.exe was not produced"
           }
