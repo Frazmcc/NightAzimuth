@@ -7,8 +7,8 @@ from tkinter import filedialog, ttk
 from .gui import SettingsWindow
 from .gui_stage7 import Stage7NightAzimuthApp
 from .terrain_horizon import (
-    MissingTerrainDataError,
-    OfflineTerrariumElevationSource,
+    CachedTerrariumElevationSource,
+    TerrainDownloadError,
     TerrainPackError,
     calculate_horizon_profile,
     import_terrarium_pack,
@@ -17,30 +17,23 @@ from .terrain_star_live_view import TerrainStarLiveSkyView
 
 
 class Stage12SettingsWindow(SettingsWindow):
-    """Settings window with privacy-safe local terrain-pack import."""
-
     def __init__(self, app: Stage12NightAzimuthApp) -> None:
         super().__init__(app)
         self.geometry("620x500")
 
     def _build_ui(self) -> None:
         super()._build_ui()
-
-        terrain = ttk.LabelFrame(self, text="Offline terrain", padding=10)
+        terrain = ttk.LabelFrame(self, text="Terrain horizon", padding=10)
         terrain.pack(fill="x", padx=16, pady=(0, 14))
         ttk.Label(
             terrain,
-            text=(
-                "Terrain packs are imported from a folder already on this PC. "
-                "NightAzimuth never uses your saved coordinates to download terrain."
-            ),
+            text="Terrain is generated automatically after a location is entered. Downloaded terrain is cached locally.",
             wraplength=560,
             justify="left",
         ).pack(anchor="w")
-
         self.terrain_import_status = ttk.Label(
             terrain,
-            text="No terrain download is performed by NightAzimuth.",
+            text="You can also import a local Terrarium terrain pack.",
             wraplength=560,
             justify="left",
         )
@@ -53,22 +46,14 @@ class Stage12SettingsWindow(SettingsWindow):
         self.terrain_import_button.pack(anchor="w")
 
     def _choose_terrain_pack(self) -> None:
-        selected = filedialog.askdirectory(
-            parent=self,
-            title="Select offline Terrarium terrain-pack folder",
-        )
+        selected = filedialog.askdirectory(parent=self, title="Select offline Terrarium terrain-pack folder")
         if not selected:
             return
-
         source = Path(selected)
-        destination = self.app.store.path.parent / "terrain" / "terrarium"
+        destination = self.app.terrain_directory
         self.terrain_import_button.config(state="disabled")
         self.terrain_import_status.config(text="Importing local terrain pack...")
-        threading.Thread(
-            target=self._import_terrain_pack,
-            args=(source, destination),
-            daemon=True,
-        ).start()
+        threading.Thread(target=self._import_terrain_pack, args=(source, destination), daemon=True).start()
 
     def _import_terrain_pack(self, source: Path, destination: Path) -> None:
         try:
@@ -80,9 +65,7 @@ class Stage12SettingsWindow(SettingsWindow):
 
     def _terrain_import_failed(self) -> None:
         self.terrain_import_button.config(state="normal")
-        self.terrain_import_status.config(
-            text="Import failed. Select a valid local Terrarium tile folder."
-        )
+        self.terrain_import_status.config(text="Import failed. Select a valid local Terrarium tile folder.")
 
     def _terrain_import_complete(self, tile_count: int, zoom_levels: tuple[int, ...]) -> None:
         self.terrain_import_button.config(state="normal")
@@ -90,11 +73,11 @@ class Stage12SettingsWindow(SettingsWindow):
         self.terrain_import_status.config(
             text=f"Imported {tile_count} terrain tiles. Available zoom levels: {zoom_text}."
         )
-        self.app._terrain_pack_changed()
+        self.app._terrain_cache_changed()
 
 
 class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
-    """Current GUI with automatic, local-only terrain horizon generation."""
+    TERRAIN_ZOOM = 10
 
     def __init__(self) -> None:
         self._terrain_load_in_progress = False
@@ -109,17 +92,10 @@ class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
 
     def _build_ui(self) -> None:
         super()._build_ui()
-
-        # Stage 7 creates the celestial live view. Replace only that canvas with
-        # the terrain-aware subclass so all existing controls and behaviour stay
-        # unchanged.
         old_live_view = self.live_view
         parent = old_live_view.master
         old_live_view.destroy()
-        self.live_view = TerrainStarLiveSkyView(
-            parent,
-            on_select=self._on_live_satellite_selected,
-        )
+        self.live_view = TerrainStarLiveSkyView(parent, on_select=self._on_live_satellite_selected)
         self.live_view.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         self._apply_live_view_direction(show_error=False)
         self._on_star_layer_changed()
@@ -141,47 +117,35 @@ class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
         current_key = self._location_key(self.selected_name)
         if current_key == self._terrain_location_key:
             return
-
         self._terrain_location_key = None
         self._terrain_horizon = ()
         if hasattr(self, "live_view") and isinstance(self.live_view, TerrainStarLiveSkyView):
             self.live_view.set_terrain_horizon(None)
-            if current_key is None:
-                self.live_view.set_terrain_status("Terrain: waiting for location")
-            else:
-                self.live_view.set_terrain_status("Terrain: checking local data")
+            self.live_view.set_terrain_status(
+                "Terrain: waiting for location" if current_key is None else "Terrain: preparing"
+            )
 
-    def _terrain_pack_changed(self) -> None:
+    def _terrain_cache_changed(self) -> None:
         self._terrain_location_key = None
         self._terrain_horizon = ()
-        if hasattr(self, "live_view") and isinstance(self.live_view, TerrainStarLiveSkyView):
-            self.live_view.set_terrain_horizon(None)
-            self.live_view.set_terrain_status("Terrain: checking imported pack")
         self._ensure_terrain_horizon(self.selected_name, force=True)
 
     def _ensure_terrain_horizon(self, profile_name: str | None, *, force: bool = False) -> None:
         if not profile_name:
             return
-
         location_key = self._location_key(profile_name)
-        if location_key is None:
+        if location_key is None or (not force and location_key == self._terrain_location_key):
             return
-        if not force and location_key == self._terrain_location_key:
-            return
-
         if self._terrain_load_in_progress:
             self._pending_terrain_profile = profile_name
             return
-
         profile = next((item for item in self.profiles if item.name == profile_name), None)
         if profile is None:
             return
-
         self._terrain_load_in_progress = True
         self._pending_terrain_profile = None
         if isinstance(self.live_view, TerrainStarLiveSkyView):
-            self.live_view.set_terrain_status("Terrain: generating locally...")
-
+            self.live_view.set_terrain_status("Terrain: loading required data...")
         threading.Thread(
             target=self._load_terrain_horizon,
             args=(profile_name, location_key, profile.latitude, profile.longitude, profile.altitude_m),
@@ -197,8 +161,7 @@ class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
         altitude_m: float,
     ) -> None:
         try:
-            zoom = self._select_local_terrain_zoom()
-            source = OfflineTerrariumElevationSource(self.terrain_directory, zoom=zoom)
+            source = CachedTerrariumElevationSource(self.terrain_directory, zoom=self.TERRAIN_ZOOM)
             horizon = calculate_horizon_profile(
                 source,
                 observer_latitude=latitude,
@@ -208,87 +171,27 @@ class Stage12NightAzimuthApp(Stage7NightAzimuthApp):
                 azimuth_step_deg=1.0,
                 max_distance_km=80.0,
             )
-        except FileNotFoundError:
-            self.after(
-                0,
-                self._terrain_horizon_failed,
-                profile_name,
-                location_key,
-                "Terrain: offline pack not installed",
-            )
-            return
-        except MissingTerrainDataError:
-            self.after(
-                0,
-                self._terrain_horizon_failed,
-                profile_name,
-                location_key,
-                "Terrain: installed pack does not cover this location",
-            )
+        except TerrainDownloadError:
+            self.after(0, self._terrain_horizon_failed, profile_name, location_key, "Terrain: data download unavailable")
             return
         except (OSError, ValueError):
-            self.after(
-                0,
-                self._terrain_horizon_failed,
-                profile_name,
-                location_key,
-                "Terrain: local pack unavailable",
-            )
+            self.after(0, self._terrain_horizon_failed, profile_name, location_key, "Terrain: local cache unavailable")
             return
+        self.after(0, self._apply_terrain_horizon, profile_name, location_key, horizon)
 
-        self.after(
-            0,
-            self._apply_terrain_horizon,
-            profile_name,
-            location_key,
-            horizon,
-        )
-
-    def _select_local_terrain_zoom(self) -> int:
-        directory = self.terrain_directory
-        if not directory.is_dir():
-            raise FileNotFoundError(directory)
-
-        levels = sorted(
-            int(child.name)
-            for child in directory.iterdir()
-            if child.is_dir()
-            and child.name.isdigit()
-            and 0 <= int(child.name) <= 14
-        )
-        if not levels:
-            raise ValueError("No supported local terrain zoom level is installed.")
-        return levels[-1]
-
-    def _apply_terrain_horizon(
-        self,
-        profile_name: str,
-        location_key: tuple[str, float, float, float],
-        horizon: tuple,
-    ) -> None:
+    def _apply_terrain_horizon(self, profile_name: str, location_key: tuple[str, float, float, float], horizon: tuple) -> None:
         self._terrain_load_in_progress = False
-        if (
-            profile_name == self.selected_name
-            and location_key == self._location_key(self.selected_name)
-        ):
+        if profile_name == self.selected_name and location_key == self._location_key(self.selected_name):
             self._terrain_location_key = location_key
             self._terrain_horizon = horizon
             if isinstance(self.live_view, TerrainStarLiveSkyView):
                 self.live_view.set_terrain_horizon(horizon)
-                self.live_view.set_terrain_status("Terrain: generated locally")
+                self.live_view.set_terrain_status("Terrain: generated")
         self._start_pending_terrain_horizon()
 
-    def _terrain_horizon_failed(
-        self,
-        profile_name: str,
-        location_key: tuple[str, float, float, float],
-        status: str,
-    ) -> None:
+    def _terrain_horizon_failed(self, profile_name: str, location_key: tuple[str, float, float, float], status: str) -> None:
         self._terrain_load_in_progress = False
-        if (
-            profile_name == self.selected_name
-            and location_key == self._location_key(self.selected_name)
-        ):
+        if profile_name == self.selected_name and location_key == self._location_key(self.selected_name):
             self._terrain_location_key = location_key
             self._terrain_horizon = ()
             if isinstance(self.live_view, TerrainStarLiveSkyView):
