@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-import threading
 import tkinter as tk
 from tkinter import ttk
 
