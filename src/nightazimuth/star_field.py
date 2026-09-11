@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,13 @@ class StarPoint:
 
 
 @dataclass(frozen=True, slots=True)
+class PlanetPoint:
+    name: str
+    azimuth_deg: float
+    elevation_deg: float
+
+
+@dataclass(frozen=True, slots=True)
 class ConstellationLine:
     constellation: str
     start_azimuth_deg: float
@@ -40,6 +48,7 @@ class ConstellationLine:
 @dataclass(frozen=True, slots=True)
 class StarFieldSnapshot:
     stars: tuple[StarPoint, ...]
+    planets: tuple[PlanetPoint, ...]
     constellation_lines: tuple[ConstellationLine, ...]
     calculated_at: datetime
 
@@ -74,7 +83,7 @@ def parse_modern_skyculture(
         for polyline in constellation.get("lines", []):
             if not isinstance(polyline, list) or len(polyline) < 2:
                 continue
-            for start, end in zip(polyline, polyline[1:]):
+            for start, end in pairwise(polyline):
                 try:
                     edges.append((abbreviation, int(start), int(end)))
                 except (TypeError, ValueError):
@@ -84,7 +93,7 @@ def parse_modern_skyculture(
 
 
 class StarFieldEngine:
-    """Calculate a real topocentric star field for an observer."""
+    """Calculate real topocentric stars and major planets for an observer."""
 
     def __init__(
         self,
@@ -99,14 +108,11 @@ class StarFieldEngine:
         self._loader = Loader(str(self.cache_directory), verbose=False, expire=False)
 
     def snapshot(self, *, at: datetime | None = None) -> StarFieldSnapshot:
-        moment = at or datetime.now(timezone.utc)
+        moment = at or datetime.now(UTC)
         if moment.tzinfo is None:
             raise ValueError("Star-field time must be timezone-aware")
-        moment = moment.astimezone(timezone.utc)
+        moment = moment.astimezone(UTC)
 
-        # Hipparcos gives the real stellar coordinates and apparent magnitudes.
-        # Skyfield applies proper motion when constructing Star objects from the
-        # catalogue dataframe.
         with self._loader.open(hipparcos.URL) as handle:
             catalogue = hipparcos.load_dataframe(handle)
         catalogue = catalogue[catalogue["ra_degrees"].notnull()]
@@ -120,12 +126,12 @@ class StarFieldEngine:
 
         bright = catalogue[catalogue["magnitude"] <= self.limiting_magnitude]
         edge_ids = {hip_id for _abbr, start, end in edges for hip_id in (start, end)}
-        wanted_ids = set(int(value) for value in bright.index) | edge_ids
+        wanted_ids = {int(value) for value in bright.index} | edge_ids
         selected_ids = catalogue.index.intersection(sorted(wanted_ids))
         selected = catalogue.loc[selected_ids]
 
-        planets = self._loader("de421.bsp")
-        earth = planets["earth"]
+        ephemeris = self._loader("de421.bsp")
+        earth = ephemeris["earth"]
         topocentric_observer = earth + wgs84.latlon(
             self.observer.latitude,
             self.observer.longitude,
@@ -133,6 +139,7 @@ class StarFieldEngine:
         )
         timescale = self._loader.timescale()
         t = timescale.from_datetime(moment)
+
         apparent = topocentric_observer.at(t).observe(Star.from_dataframe(selected)).apparent()
         altitude, azimuth, _distance = apparent.altaz()
 
@@ -141,10 +148,11 @@ class StarFieldEngine:
             selected.index,
             azimuth.degrees,
             altitude.degrees,
+            strict=True,
         ):
             position_map[int(hip_id)] = (float(az_deg) % 360.0, float(alt_deg))
 
-        bright_ids = set(int(value) for value in bright.index)
+        bright_ids = {int(value) for value in bright.index}
         stars: list[StarPoint] = []
         for hip_id in bright_ids:
             position = position_map.get(hip_id)
@@ -158,6 +166,30 @@ class StarFieldEngine:
                     elevation_deg=position[1],
                     magnitude=magnitude,
                     name=proper_names.get(hip_id),
+                )
+            )
+
+        planet_targets = (
+            ("Mercury", "mercury"),
+            ("Venus", "venus"),
+            ("Mars", "mars"),
+            ("Jupiter", "jupiter barycenter"),
+            ("Saturn", "saturn barycenter"),
+            ("Uranus", "uranus barycenter"),
+            ("Neptune", "neptune barycenter"),
+        )
+        planet_points: list[PlanetPoint] = []
+        for display_name, target_name in planet_targets:
+            apparent_planet = topocentric_observer.at(t).observe(ephemeris[target_name]).apparent()
+            planet_altitude, planet_azimuth, _planet_distance = apparent_planet.altaz()
+            elevation = float(planet_altitude.degrees)
+            if elevation < 0.0:
+                continue
+            planet_points.append(
+                PlanetPoint(
+                    name=display_name,
+                    azimuth_deg=float(planet_azimuth.degrees) % 360.0,
+                    elevation_deg=elevation,
                 )
             )
 
@@ -180,4 +212,4 @@ class StarFieldEngine:
             )
 
         stars.sort(key=lambda star: star.magnitude)
-        return StarFieldSnapshot(tuple(stars), tuple(lines), moment)
+        return StarFieldSnapshot(tuple(stars), tuple(planet_points), tuple(lines), moment)
