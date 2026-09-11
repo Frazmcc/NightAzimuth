@@ -4,16 +4,21 @@ from dataclasses import dataclass
 from io import BytesIO
 import math
 from pathlib import Path
+from typing import Protocol
 
-import httpx
 from PIL import Image
 
 
 EARTH_RADIUS_M = 6_371_000.0
 TILE_SIZE = 256
-TERRARIUM_URL = (
-    "https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png"
-)
+
+
+class ElevationSource(Protocol):
+    def elevation_m(self, latitude: float, longitude: float) -> float: ...
+
+
+class MissingTerrainDataError(RuntimeError):
+    """Raised when the installed offline terrain pack does not cover a requested point."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,11 +27,15 @@ class HorizonPoint:
     elevation_deg: float
 
 
-class TerrariumElevationSource:
-    """Read free Mapzen/Terrain Tiles elevation data from the AWS open-data bucket."""
+class OfflineTerrariumElevationSource:
+    """Read Terrarium elevation tiles from a local-only terrain pack.
 
-    def __init__(self, cache_directory: Path, *, zoom: int = 10) -> None:
-        self.cache_directory = cache_directory
+    The source performs no network access. Tile lookup is derived locally from the
+    observer coordinates and only reads files beneath ``terrain_directory``.
+    """
+
+    def __init__(self, terrain_directory: Path, *, zoom: int = 10) -> None:
+        self.terrain_directory = terrain_directory
         self.zoom = max(0, min(14, int(zoom)))
         self._images: dict[tuple[int, int], Image.Image] = {}
 
@@ -42,31 +51,21 @@ class TerrariumElevationSource:
         if cached is not None:
             return cached
 
-        path = self.cache_directory / str(self.zoom) / str(tile_x) / f"{tile_y}.png"
-        if path.exists():
-            data = path.read_bytes()
-        else:
-            url = TERRARIUM_URL.format(z=self.zoom, x=tile_x, y=tile_y)
-            response = httpx.get(
-                url,
-                timeout=30.0,
-                follow_redirects=True,
-                headers={"User-Agent": "NightAzimuth terrain-horizon prototype"},
+        path = self.terrain_directory / str(self.zoom) / str(tile_x) / f"{tile_y}.png"
+        if not path.is_file():
+            raise MissingTerrainDataError(
+                "The installed offline terrain pack does not cover this observing location. "
+                "No network request was made."
             )
-            response.raise_for_status()
-            data = response.content
-            path.parent.mkdir(parents=True, exist_ok=True)
-            temp = path.with_suffix(".tmp")
-            temp.write_bytes(data)
-            temp.replace(path)
 
+        data = path.read_bytes()
         image = Image.open(BytesIO(data)).convert("RGB")
         self._images[key] = image
         return image
 
 
 def calculate_horizon_profile(
-    source: TerrariumElevationSource,
+    source: ElevationSource,
     *,
     observer_latitude: float,
     observer_longitude: float,
@@ -184,10 +183,7 @@ def _tile_pixel(
 
     x = (longitude + 180.0) / 360.0 * scale
     latitude_rad = math.radians(latitude)
-    y = (
-        1.0
-        - math.asinh(math.tan(latitude_rad)) / math.pi
-    ) / 2.0 * scale
+    y = (1.0 - math.asinh(math.tan(latitude_rad)) / math.pi) / 2.0 * scale
 
     tile_x = int(math.floor(x)) % scale
     tile_y = max(0, min(scale - 1, int(math.floor(y))))
