@@ -21,6 +21,14 @@ if ($runningNightAzimuth) {
     Start-Sleep -Milliseconds 500
 }
 
+# Start every release build from an empty dist directory. This prevents stale
+# files from an earlier local build from being accidentally shipped.
+$distPath = Join-Path $repoRoot "dist"
+if (Test-Path $distPath) {
+    Remove-Item $distPath -Recurse -Force
+}
+New-Item -ItemType Directory -Path $distPath | Out-Null
+
 & .\.venv\Scripts\python.exe -m pip install --upgrade pip
 if ($LASTEXITCODE -ne 0) {
     throw "pip upgrade failed."
@@ -45,13 +53,13 @@ if ($LASTEXITCODE -ne 0) {
     throw "NightAzimuth.exe build failed with exit code $LASTEXITCODE."
 }
 
-$exePath = Join-Path $repoRoot "dist\NightAzimuth.exe"
+$exePath = Join-Path $distPath "NightAzimuth.exe"
 if (-not (Test-Path $exePath)) {
     throw "Build finished without producing $exePath"
 }
 
 $userGuideSource = Join-Path $repoRoot "docs\NightAzimuth_User_Guide.md"
-$userGuideDestination = Join-Path $repoRoot "dist\NightAzimuth_User_Guide.md"
+$userGuideDestination = Join-Path $distPath "NightAzimuth_User_Guide.md"
 if (-not (Test-Path $userGuideSource)) {
     throw "User guide was not found at $userGuideSource"
 }
@@ -60,6 +68,33 @@ if (-not (Test-Path $userGuideDestination)) {
     throw "Build finished without producing $userGuideDestination"
 }
 
+# Release-output allowlist. Nothing else is permitted in dist.
+$expectedReleaseFiles = @(
+    "NightAzimuth.exe",
+    "NightAzimuth_User_Guide.md"
+)
+$releaseFiles = @(Get-ChildItem $distPath -File)
+$releaseDirectories = @(Get-ChildItem $distPath -Directory)
+$unexpectedFiles = @($releaseFiles | Where-Object { $_.Name -notin $expectedReleaseFiles })
+$missingFiles = @($expectedReleaseFiles | Where-Object { -not (Test-Path (Join-Path $distPath $_)) })
+
+if ($releaseDirectories.Count -gt 0) {
+    $names = ($releaseDirectories.Name -join ", ")
+    throw "Unexpected release directories found in dist: $names"
+}
+if ($unexpectedFiles.Count -gt 0) {
+    $names = ($unexpectedFiles.Name -join ", ")
+    throw "Unexpected release files found in dist: $names"
+}
+if ($missingFiles.Count -gt 0) {
+    $names = ($missingFiles -join ", ")
+    throw "Expected release files are missing from dist: $names"
+}
+if ($releaseFiles.Count -ne $expectedReleaseFiles.Count) {
+    throw "Release output contains an unexpected number of files."
+}
+
 Write-Host ""
 Write-Host "Build complete: $exePath"
 Write-Host "User guide: $userGuideDestination"
+Write-Host "Release output validated: only approved files are present in dist."
