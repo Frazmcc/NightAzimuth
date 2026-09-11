@@ -1,10 +1,10 @@
 # Zero-cost offline terrain horizon prototype
 
-This prototype tests whether NightAzimuth can build a useful 360° terrain skyline for the currently selected saved observing location without Google Earth, a paid API, or any location-derived network request.
+This prototype tests whether NightAzimuth can build a useful 360° terrain skyline without Google Earth, a paid API, or any location-derived network request.
 
 ## Privacy model
 
-The selected observing location is read from the existing local NightAzimuth profile store and is used only on the user's own computer.
+Real saved observing locations are read from the existing local NightAzimuth profile store and used only on the user's own computer.
 
 Terrain lookup is local-only. NightAzimuth does not contact a terrain server and does not request map tiles based on the selected location.
 
@@ -22,9 +22,32 @@ The local terrain files use the standard Terrarium tile layout:
 
 Tile names are local file-system data only and are never transmitted by this prototype.
 
+## Synthetic demo mode
+
+A separate `--demo` mode exists specifically so the rendering pipeline can be tested without touching any saved NightAzimuth location data.
+
+Demo mode:
+
+- does not read `%APPDATA%\NightAzimuth\locations.json`
+- does not use a saved profile name
+- uses fixed synthetic observer coordinates at 0°, 0°
+- generates the terrain mathematically in memory
+- reads no terrain files
+- makes no network requests
+- writes only the generated preview image
+
+Run the privacy-safe demo with:
+
+```powershell
+python .\tools\terrain_horizon_preview.py --demo --output .\terrain_horizon_demo.png
+start .\terrain_horizon_demo.png
+```
+
+This is the recommended first test before any real offline terrain pack is installed.
+
 ## Coverage
 
-This design can be used by any NightAzimuth user provided their installed offline terrain pack covers their observing location.
+The real offline terrain path can be used by any NightAzimuth user provided their installed terrain pack covers their observing location.
 
 If a required tile is missing, the calculation stops with a generic message. It does not fall back to an online service and does not reveal the missing tile identifier.
 
@@ -52,9 +75,9 @@ Offline terrain packs can be created from free/open elevation datasets outside N
 
 The current prototype therefore proves the private calculation path, not automatic terrain acquisition. Automatic location-based terrain downloading is intentionally excluded.
 
-## Run the prototype
+## Run against a real saved location later
 
-From an activated NightAzimuth development environment:
+Only after an appropriate offline terrain pack has been installed:
 
 ```powershell
 python .\tools\terrain_horizon_preview.py
