@@ -1,6 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+from PIL import Image
+
 from nightazimuth.terrain_horizon import (
+    MissingTerrainDataError,
+    OfflineTerrariumElevationSource,
+    _tile_pixel,
     apparent_elevation_deg,
     calculate_horizon_profile,
     destination_point,
@@ -37,3 +45,24 @@ def test_horizon_profile_finds_higher_terrain_to_east() -> None:
 
     by_azimuth = {round(point.azimuth_deg): point.elevation_deg for point in horizon}
     assert by_azimuth[90] > by_azimuth[270]
+
+
+def test_offline_source_reads_local_terrarium_tile(tmp_path: Path) -> None:
+    latitude = 0.0
+    longitude = 0.0
+    zoom = 1
+    tile_x, tile_y, _pixel_x, _pixel_y = _tile_pixel(latitude, longitude, zoom)
+    path = tmp_path / str(zoom) / str(tile_x) / f"{tile_y}.png"
+    path.parent.mkdir(parents=True)
+
+    # Terrarium encoding for 100 m: 32868 = 128 * 256 + 100.
+    Image.new("RGB", (256, 256), (128, 100, 0)).save(path)
+
+    source = OfflineTerrariumElevationSource(tmp_path, zoom=zoom)
+    assert source.elevation_m(latitude, longitude) == pytest.approx(100.0)
+
+
+def test_offline_source_never_falls_back_when_tile_is_missing(tmp_path: Path) -> None:
+    source = OfflineTerrariumElevationSource(tmp_path, zoom=10)
+    with pytest.raises(MissingTerrainDataError, match="No network request was made"):
+        source.elevation_m(0.0, 0.0)
