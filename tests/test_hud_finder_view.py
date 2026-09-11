@@ -1,4 +1,4 @@
-from nightazimuth.hud_finder_view import select_finder_satellites
+from nightazimuth.hud_finder_view import pan_live_view_window, select_finder_satellites
 from nightazimuth.sky_map import SkySatellite
 
 
@@ -79,3 +79,33 @@ def test_show_all_returns_all_potentially_visible_candidates() -> None:
     chosen = select_finder_satellites(satellites, show_all=True)
 
     assert [satellite.norad_id for satellite in chosen] == ["1", "2"]
+
+
+def test_pan_can_reach_zenith_without_exceeding_90_degrees() -> None:
+    facing, minimum, maximum = pan_live_view_window(
+        facing_deg=180.0,
+        minimum_elevation_deg=20.0,
+        maximum_elevation_deg=70.0,
+        horizontal_fov_deg=90.0,
+        delta_x_fraction=0.0,
+        delta_y_fraction=0.8,
+    )
+
+    assert facing == 180.0
+    assert maximum == 90.0
+    assert minimum == 40.0
+
+
+def test_pan_wraps_azimuth_across_north() -> None:
+    facing, minimum, maximum = pan_live_view_window(
+        facing_deg=10.0,
+        minimum_elevation_deg=0.0,
+        maximum_elevation_deg=45.0,
+        horizontal_fov_deg=90.0,
+        delta_x_fraction=0.25,
+        delta_y_fraction=0.0,
+    )
+
+    assert facing == 347.5
+    assert minimum == 0.0
+    assert maximum == 45.0
