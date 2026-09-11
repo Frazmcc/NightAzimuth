@@ -52,6 +52,11 @@ def is_vega_star(star: StarPoint) -> bool:
     return star.hip_id == VEGA_HIP_ID or (star.name or "").casefold() == "vega"
 
 
+def vega_locator_text(star: StarPoint) -> str:
+    """Return Vega's live compass heading and elevation for quick real-sky locating."""
+    return f"VEGA  Az {star.azimuth_deg:.0f}\N{DEGREE SIGN}  El {star.elevation_deg:.0f}\N{DEGREE SIGN}"
+
+
 def star_visual_style(star: StarPoint, *, selected: bool) -> StarVisualStyle:
     """Return rendering style, giving Vega a strong blue-white reference marker."""
     if is_vega_star(star):
@@ -152,8 +157,11 @@ class StarLiveSkyView(LiveSkyView):
                     tags=("constellation-line",),
                 )
 
+        vega: StarPoint | None = None
         if self._show_stars:
             for star in snapshot.stars:
+                if is_vega_star(star):
+                    vega = star
                 projection = project_live_view(
                     star.azimuth_deg,
                     star.elevation_deg,
@@ -168,6 +176,9 @@ class StarLiveSkyView(LiveSkyView):
                 y = top + projection.y_fraction * plot_height
                 self._drawn_star_positions.append((star, x, y))
                 self._draw_star(star, x, y)
+
+            if vega is not None:
+                self._draw_vega_locator(vega, left, top)
 
         # Planets are intentionally independent of the Stars checkbox. Major
         # planets remain visible and labelled whenever they are inside the view.
@@ -212,8 +223,8 @@ class StarLiveSkyView(LiveSkyView):
         if automatic_label or style.force_label or selected:
             name = star.name or f"HIP {star.hip_id}"
             label = name
-            if is_vega_star(star) and not selected:
-                label = "VEGA"
+            if is_vega_star(star):
+                label = vega_locator_text(star)
             if selected:
                 label += f"  (mag {star.magnitude:.2f})"
             self.create_text(
@@ -229,6 +240,18 @@ class StarLiveSkyView(LiveSkyView):
                 ),
                 tags=(tag, "star-field"),
             )
+
+    def _draw_vega_locator(self, star: StarPoint, left: float, top: float) -> None:
+        """Show Vega's current heading even when it is outside the current Live view."""
+        self.create_text(
+            left + 8,
+            top + 8,
+            text=vega_locator_text(star),
+            fill="#93c5fd",
+            anchor="nw",
+            font=("Segoe UI", 9, "bold"),
+            tags=("vega-locator", "star-field"),
+        )
 
     def _draw_planet(self, planet: PlanetPoint, x: float, y: float) -> None:
         selected = planet.name == self._selected_planet
