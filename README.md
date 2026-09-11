@@ -24,6 +24,7 @@ Visibility will eventually combine orbital geometry, solar illumination, astrono
 
 ## Documentation
 
+- [`docs/NightAzimuth_User_Guide.md`](docs/NightAzimuth_User_Guide.md) — end-user installation, configuration, privacy, terrain and operating guide. This guide is also copied into the Windows release output by `build_windows.ps1`.
 - [`docs/STAGE_1_REQUIREMENTS.md`](docs/STAGE_1_REQUIREMENTS.md) — approved product requirements.
 - [`docs/STAGE_3_IMPLEMENTATION.md`](docs/STAGE_3_IMPLEMENTATION.md) — core-tracking implementation.
 - [`docs/STAGE_4_IMPLEMENTATION.md`](docs/STAGE_4_IMPLEMENTATION.md) — astronomical visibility, pass prediction, CelesTrak behaviour, and Windows EXE build support.
@@ -45,6 +46,13 @@ git checkout main
 git pull
 .\build_windows.ps1
 .\dist\NightAzimuth.exe
+```
+
+The build produces:
+
+```text
+dist\NightAzimuth.exe
+dist\NightAzimuth_User_Guide.md
 ```
 
 The GUI provides:
@@ -96,6 +104,12 @@ Orbital, Skyfield, Hipparcos, and constellation cache data are stored under:
 
 ```text
 %APPDATA%\NightAzimuth\cache\
+```
+
+Terrain tiles generated for user-entered locations are cached under:
+
+```text
+%APPDATA%\NightAzimuth\terrain\terrarium\
 ```
 
 ## Visibility terminology
