@@ -15,10 +15,20 @@ from .weather_map_stage16 import Stage16WeatherMapRenderer, Stage16WeatherMapSna
 
 
 class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
-    """Add free spatial cloud imagery and an indicative Live-view cloud overlay."""
+    """Add free spatial cloud imagery and 12–24 hour observing guidance."""
 
     CLOUD_REFRESH_MS = 5 * 60 * 1000
     CLOUD_STALE_MINUTES = 25
+    MAP_TIME_CHOICES = {
+        "Now": 0,
+        "+1 hour": 1,
+        "+3 hours": 3,
+        "+6 hours": 6,
+        "+9 hours": 9,
+        "+12 hours": 12,
+        "+18 hours": 18,
+        "+24 hours": 24,
+    }
 
     def __init__(self) -> None:
         self._stage16_weather_map_renderer: Stage16WeatherMapRenderer | None = None
@@ -79,6 +89,18 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
 
         controls = next((item for item in parent.grid_slaves(row=0, column=0) if isinstance(item, ttk.Frame)), None)
         if controls is not None:
+            ttk.Label(controls, text="Map time:").pack(side="left", padx=(12, 4))
+            self.map_time_var = tk.StringVar(master=self, value="Now")
+            map_time = ttk.Combobox(
+                controls,
+                textvariable=self.map_time_var,
+                state="readonly",
+                width=10,
+                values=tuple(self.MAP_TIME_CHOICES),
+            )
+            map_time.pack(side="left")
+            map_time.bind("<<ComboboxSelected>>", self._on_map_time_selected)
+
             ttk.Label(controls, text="Cloud frame:").pack(side="left", padx=(12, 4))
             self.cloud_frame_var = tk.StringVar(master=self, value="Latest")
             self.cloud_frame_combo = ttk.Combobox(
@@ -114,12 +136,26 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
 
     def _cloud_refresh_tick(self) -> None:
         self._cloud_refresh_job = None
-        if getattr(self, "cloud_frame_var", None) is None or self.cloud_frame_var.get() == "Latest":
+        if self._selected_forecast_hours() == 0 and (
+            getattr(self, "cloud_frame_var", None) is None or self.cloud_frame_var.get() == "Latest"
+        ):
             self._refresh_weather_map()
         self._schedule_cloud_refresh()
 
-    def _on_cloud_frame_selected(self, _event: object | None = None) -> None:
+    def _on_map_time_selected(self, _event: object | None = None) -> None:
+        future = self._selected_forecast_hours() > 0
+        if hasattr(self, "cloud_frame_combo"):
+            self.cloud_frame_combo.configure(state="disabled" if future else "readonly")
         self._refresh_weather_map()
+
+    def _selected_forecast_hours(self) -> int:
+        if not hasattr(self, "map_time_var"):
+            return 0
+        return self.MAP_TIME_CHOICES.get(self.map_time_var.get(), 0)
+
+    def _on_cloud_frame_selected(self, _event: object | None = None) -> None:
+        if self._selected_forecast_hours() == 0:
+            self._refresh_weather_map()
 
     def _selected_cloud_time(self) -> datetime | None:
         if not hasattr(self, "cloud_frame_var"):
@@ -254,16 +290,30 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
         self._weather_map_generation += 1
         generation = self._weather_map_generation
         profile_key = (profile.name, profile.latitude, profile.longitude, profile.altitude_m)
+        forecast_hours = self._selected_forecast_hours()
         show_radar = bool(self.show_radar_var.get()) if hasattr(self, "show_radar_var") else True
         show_cloud = bool(self.show_cloud_map_var.get()) if hasattr(self, "show_cloud_map_var") else True
         facing = float(self.live_view.facing_deg) if hasattr(self, "live_view") else 0.0
         fov = float(self.live_view.horizontal_fov_deg) if hasattr(self, "live_view") else 90.0
         requested_cloud_time = self._selected_cloud_time()
-        self.weather_map_status_var.set("Loading map, rain radar and timestamped spatial cloud imagery...")
+        if forecast_hours:
+            self.weather_map_status_var.set(f"Loading +{forecast_hours}h spatial cloud/rain forecast...")
+        else:
+            self.weather_map_status_var.set("Loading map, rain radar and timestamped spatial cloud imagery...")
         observer = self._observer_for_profile(profile)
         threading.Thread(
             target=self._load_stage16_weather_map,
-            args=(profile_key, observer, show_radar, show_cloud, facing, fov, requested_cloud_time, generation),
+            args=(
+                profile_key,
+                observer,
+                show_radar,
+                show_cloud,
+                facing,
+                fov,
+                requested_cloud_time,
+                forecast_hours,
+                generation,
+            ),
             daemon=True,
         ).start()
 
@@ -276,6 +326,7 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
         facing_deg: float,
         horizontal_fov_deg: float,
         cloud_time_utc: datetime | None,
+        forecast_hours: int,
         generation: int,
     ) -> None:
         try:
@@ -290,6 +341,7 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
                 facing_deg=facing_deg,
                 horizontal_fov_deg=horizontal_fov_deg,
                 cloud_time_utc=cloud_time_utc,
+                forecast_hours_ahead=forecast_hours,
             )
             self.after(0, self._apply_stage16_weather_map, profile_key, observer, generation, snapshot)
         except Exception:  # noqa: BLE001
@@ -316,7 +368,22 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
 
         self._weather_map_photo = ImageTk.PhotoImage(snapshot.image)
         self.weather_map_label.configure(image=self._weather_map_photo)
-        self._update_cloud_frame_choices(snapshot.recent_cloud_times_utc)
+        if snapshot.recent_cloud_times_utc:
+            self._update_cloud_frame_choices(snapshot.recent_cloud_times_utc)
+
+        if snapshot.forecast_hours_ahead > 0:
+            valid = (
+                snapshot.forecast_valid_time_utc.strftime("%Y-%m-%d %H:%M UTC")
+                if snapshot.forecast_valid_time_utc is not None
+                else "unknown"
+            )
+            self.weather_map_status_var.set(
+                f"FORECAST +{snapshot.forecast_hours_ahead}h — valid {valid}\n"
+                "Spatial cloud/rain field: MET Norway Locationforecast sampled across the displayed map.\n"
+                "Rain radar and current EUMETSAT satellite imagery are intentionally hidden in future mode.\n"
+                "This is a model forecast for planning, not an exact prediction of future cloud edges."
+            )
+            return
 
         if snapshot.radar_enabled and snapshot.radar_time_utc is not None:
             radar_text = f"Rain radar: {snapshot.radar_time_utc.strftime('%Y-%m-%d %H:%M UTC')}"
@@ -329,7 +396,7 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
         self.weather_map_status_var.set(
             f"Selected location centred on map.\n{radar_text}\n{cloud_text}\n"
             "Green wedge = current Live-view facing/FOV. Use Cloud frame to step backward through recent satellite frames and see movement.\n"
-            "Live cloud elevation alignment remains an estimate."
+            "Use Map time for +1 to +24 hour model forecast frames. Live cloud elevation alignment remains an estimate."
         )
 
         if hasattr(self, "live_view") and isinstance(self.live_view, DirectionalCloudHudFinderView):
