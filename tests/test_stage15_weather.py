@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from nightazimuth.config import ObserverConfig
 from nightazimuth.weather import MetNorwayWeatherProvider, parse_met_no_locationforecast
+from nightazimuth.weather_map import latlon_to_tile_fraction, radar_tile_url
 
 
 def _payload() -> dict:
@@ -82,3 +85,22 @@ def test_weather_cache_key_is_hashed(tmp_path) -> None:
     assert path.name.startswith("met_no_")
     assert "10.0" not in path.name
     assert "20.0" not in path.name
+
+
+def test_web_mercator_tile_conversion_uses_synthetic_coordinates() -> None:
+    x, y = latlon_to_tile_fraction(0.0, 0.0, 2)
+
+    assert x == pytest.approx(2.0)
+    assert y == pytest.approx(2.0)
+
+
+def test_rainviewer_tile_url_uses_public_tile_shape() -> None:
+    url = radar_tile_url(
+        "https://example.invalid",
+        "/v2/radar/1234567890",
+        7,
+        64,
+        42,
+    )
+
+    assert url == "https://example.invalid/v2/radar/1234567890/256/7/64/42/2/1_1.png"
