@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import tkinter as tk
 
-from .hud_finder_view import HudFinderView
+from .hud_finder_view import HudFinderView, select_finder_satellites
 from .live_view import project_live_view, signed_angular_difference
 from .sky_map import SkySatellite
 
@@ -56,8 +56,47 @@ class SmoothHudFinderView(HudFinderView):
         self._schedule_animation()
 
     def set_satellites(self, satellites: list[SkySatellite]) -> None:
+        """Swap refreshed orbital data without blanking/repainting an unchanged Live view.
+
+        A full redraw is still required when the displayed candidate set changes.
+        For the normal periodic refresh, where the same satellites remain selected,
+        keep the existing canvas items in place and simply replace the backing tracks.
+        The next 20 fps animation tick then moves them onto the refreshed prediction.
+        """
+        incoming = list(satellites)
+        if not self._all_satellites or not self._satellites:
+            self._animation_started = time.monotonic()
+            super().set_satellites(incoming)
+            return
+
+        old_ids = tuple(satellite.norad_id for satellite in self._satellites)
+        self._all_satellites = incoming
+        if self._selected_norad not in {satellite.norad_id for satellite in incoming}:
+            self._selected_norad = None
+
+        in_view = self._satellites_in_current_view()
+        refreshed = select_finder_satellites(
+            in_view,
+            selected_norad=None,
+            limit=self.DEFAULT_CANDIDATE_LIMIT,
+            show_all=self._show_all_tracked,
+        )
+        if self._selected_norad is not None and all(
+            satellite.norad_id != self._selected_norad for satellite in refreshed
+        ):
+            selected = next(
+                (satellite for satellite in incoming if satellite.norad_id == self._selected_norad),
+                None,
+            )
+            if selected is not None:
+                refreshed.append(selected)
+
+        new_ids = tuple(satellite.norad_id for satellite in refreshed)
+        self._satellites = refreshed
         self._animation_started = time.monotonic()
-        super().set_satellites(satellites)
+
+        if new_ids != old_ids:
+            self.redraw()
 
     def redraw(self) -> None:
         self._drawn_satellite_positions = {}
