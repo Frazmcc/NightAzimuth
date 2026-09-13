@@ -47,6 +47,7 @@ class WeatherMapRenderer:
         show_radar: bool = True,
         zoom: int = 7,
         radius_tiles: int = 1,
+        radar_time_utc: datetime | None = None,
     ) -> WeatherMapSnapshot:
         if not 0 <= zoom <= 19:
             raise ValueError("Map zoom must be between 0 and 19")
@@ -74,7 +75,7 @@ class WeatherMapRenderer:
 
         radar_time: datetime | None = None
         if show_radar:
-            radar_frame = self._latest_radar_frame()
+            radar_frame = self._radar_frame_at(radar_time_utc)
             if radar_frame is not None:
                 host, frame_path, frame_time = radar_frame
                 radar_time = datetime.fromtimestamp(frame_time, tz=timezone.utc)
@@ -112,6 +113,14 @@ class WeatherMapRenderer:
 
         return WeatherMapSnapshot(image=base, radar_time_utc=radar_time, radar_enabled=show_radar, zoom=zoom)
 
+    def recent_radar_times(self, *, minutes: int = 60) -> tuple[datetime, ...]:
+        cutoff = datetime.now(timezone.utc).timestamp() - max(0, minutes) * 60
+        return tuple(
+            datetime.fromtimestamp(frame_time, tz=timezone.utc)
+            for _, _, frame_time in self._radar_frames()
+            if frame_time >= cutoff
+        )
+
     def _load_osm_tile(self, zoom: int, x: int, y: int) -> Image.Image:
         path = self.cache_directory / "osm" / str(zoom) / str(x) / f"{y}.png"
         if _cache_is_fresh(path, OSM_CACHE_SECONDS):
@@ -131,7 +140,7 @@ class WeatherMapRenderer:
                 return _open_image(path)
             raise WeatherMapError(f"OpenStreetMap tile unavailable: {exc}") from exc
 
-    def _latest_radar_frame(self) -> tuple[str, str, int] | None:
+    def _radar_metadata(self) -> dict[str, Any]:
         path = self.cache_directory / "rainviewer" / "weather-maps.json"
         payload: dict[str, Any] | None = None
         if _cache_is_fresh(path, RAINVIEWER_METADATA_CACHE_SECONDS):
@@ -152,22 +161,39 @@ class WeatherMapRenderer:
             except (httpx.HTTPError, OSError, ValueError, json.JSONDecodeError):
                 if path.exists():
                     payload = _read_json(path)
+        return payload or {}
 
-        if not payload:
-            return None
+    def _radar_frames(self) -> tuple[tuple[str, str, int], ...]:
+        payload = self._radar_metadata()
         host = payload.get("host")
         radar = payload.get("radar")
         past = radar.get("past") if isinstance(radar, dict) else None
-        if not isinstance(host, str) or not isinstance(past, list) or not past:
+        if not isinstance(host, str) or not isinstance(past, list):
+            return ()
+        result: list[tuple[str, str, int]] = []
+        for frame in past:
+            if not isinstance(frame, dict):
+                continue
+            frame_path = frame.get("path")
+            frame_time = frame.get("time")
+            if isinstance(frame_path, str) and isinstance(frame_time, int):
+                result.append((host.rstrip("/"), frame_path, frame_time))
+        return tuple(result)
+
+    def _latest_radar_frame(self) -> tuple[str, str, int] | None:
+        frames = self._radar_frames()
+        return frames[-1] if frames else None
+
+    def _radar_frame_at(self, requested: datetime | None) -> tuple[str, str, int] | None:
+        frames = self._radar_frames()
+        if not frames:
             return None
-        frame = past[-1]
-        if not isinstance(frame, dict):
-            return None
-        frame_path = frame.get("path")
-        frame_time = frame.get("time")
-        if not isinstance(frame_path, str) or not isinstance(frame_time, int):
-            return None
-        return host.rstrip("/"), frame_path, frame_time
+        if requested is None:
+            return frames[-1]
+        if requested.tzinfo is None:
+            raise ValueError("Radar frame time must be timezone-aware")
+        target = requested.astimezone(timezone.utc).timestamp()
+        return min(frames, key=lambda frame: abs(frame[2] - target))
 
     def _load_radar_tile(
         self,
