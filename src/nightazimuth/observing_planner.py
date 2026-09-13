@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from skyfield.api import Loader, wgs84
@@ -23,7 +23,7 @@ class ViewingGuidance:
 
 
 class ObservingPlanner:
-    """Build transparent hourly observing guidance from astronomy + point weather."""
+    """Build transparent observing guidance from astronomy + point weather."""
 
     def __init__(self, observer: ObserverConfig, *, cache_directory: Path) -> None:
         self.observer = observer
@@ -46,11 +46,13 @@ class ObservingPlanner:
         now_utc: datetime | None = None,
     ) -> tuple[ViewingGuidance, ...]:
         moment = (now_utc or datetime.now(timezone.utc)).astimezone(timezone.utc)
-        points = weather.next_points(max(1, hours + 1), moment)
-        result: list[ViewingGuidance] = []
-        for point in points[:hours]:
-            result.append(self._guidance_for_point(point, moment))
-        return tuple(result)
+        horizon = moment + timedelta(hours=max(1, hours))
+        points = [
+            point
+            for point in weather.points
+            if moment <= point.time_utc <= horizon
+        ]
+        return tuple(self._guidance_for_point(point, moment) for point in points)
 
     def _guidance_for_point(self, point: WeatherPoint, now_utc: datetime) -> ViewingGuidance:
         sun_altitude = self._sun_altitude(point.time_utc)
@@ -135,4 +137,8 @@ def _confidence(hours_ahead: float) -> str:
         return "Moderate-high"
     if hours_ahead <= 18.0:
         return "Moderate"
-    return "Lower"
+    if hours_ahead <= 24.0:
+        return "Lower"
+    if hours_ahead <= 48.0:
+        return "Low"
+    return "Very low"
