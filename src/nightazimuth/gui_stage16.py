@@ -89,6 +89,11 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
             font=("Consolas", 9),
         ).pack(anchor="w", fill="x")
 
+    def _apply_live_view_direction(self, *, show_error: bool = True) -> None:
+        super()._apply_live_view_direction(show_error=show_error)
+        if hasattr(self, "weather_map_status_var"):
+            self._refresh_weather_map()
+
     def _on_cloud_overlay_changed(self) -> None:
         if hasattr(self, "live_view") and isinstance(self.live_view, DirectionalCloudHudFinderView):
             self.live_view.set_cloud_overlay_enabled(self.show_cloud_overlay_var.get())
@@ -186,8 +191,6 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
             headline,
             "Time   Rating      Conf.          Cloud  Rain   Sun alt",
         ]
-        # Two-hour sampling keeps the 24-hour planner readable while preserving
-        # the complete hourly data internally for later map/timeline controls.
         for row in rows[::2][:12]:
             stamp = self._planner_local_time(row.time_utc)
             cloud = "--" if row.cloud_percent is None else f"{row.cloud_percent:.0f}%"
@@ -227,11 +230,13 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
         profile_key = (profile.name, profile.latitude, profile.longitude, profile.altitude_m)
         show_radar = bool(self.show_radar_var.get()) if hasattr(self, "show_radar_var") else True
         show_cloud = bool(self.show_cloud_map_var.get()) if hasattr(self, "show_cloud_map_var") else True
+        facing = float(self.live_view.facing_deg) if hasattr(self, "live_view") else 0.0
+        fov = float(self.live_view.horizontal_fov_deg) if hasattr(self, "live_view") else 90.0
         self.weather_map_status_var.set("Loading map, rain radar and spatial cloud imagery...")
         observer = self._observer_for_profile(profile)
         threading.Thread(
             target=self._load_stage16_weather_map,
-            args=(profile_key, observer, show_radar, show_cloud, generation),
+            args=(profile_key, observer, show_radar, show_cloud, facing, fov, generation),
             daemon=True,
         ).start()
 
@@ -241,6 +246,8 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
         observer: object,
         show_radar: bool,
         show_cloud: bool,
+        facing_deg: float,
+        horizontal_fov_deg: float,
         generation: int,
     ) -> None:
         try:
@@ -254,6 +261,8 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
                 show_cloud=show_cloud,
                 zoom=7,
                 radius_tiles=1,
+                facing_deg=facing_deg,
+                horizontal_fov_deg=horizontal_fov_deg,
             )
             self.after(
                 0,
@@ -303,7 +312,8 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
 
         self.weather_map_status_var.set(
             f"Selected location centred on map.\n{radar_text}\n{cloud_text}\n"
-            "Cloud imagery is spatial satellite imagery. The Live overlay is indicative because cloud height is estimated."
+            "Green wedge = current Live-view facing/FOV. Cloud imagery is spatial satellite imagery; "
+            "the Live cloud elevation alignment remains an estimate."
         )
 
         if hasattr(self, "live_view") and isinstance(self.live_view, DirectionalCloudHudFinderView):
