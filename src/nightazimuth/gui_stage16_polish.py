@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import httpx
+import tkinter as tk
+from tkinter import ttk
 
 from .gui_stage16_animation import AnimatedStage16NightAzimuthApp
 from .sky_map import SkySatellite
@@ -9,6 +11,60 @@ from .weather import MetNorwayWeatherProvider, WeatherProviderError
 
 class PolishedStage16NightAzimuthApp(AnimatedStage16NightAzimuthApp):
     """Final Stage 16 UI polish for refresh status and safe weather diagnostics."""
+
+    def _build_live_view(self, parent: ttk.Frame) -> None:
+        """Build the Live view inside a vertically scrollable container.
+
+        The finder itself keeps mouse-wheel zoom.  When the pointer is over the
+        surrounding controls/status panels, the wheel scrolls the whole Live
+        page so the sunset/weather text remains reachable on smaller displays.
+        A permanent scrollbar is also provided on the right.
+        """
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+
+        canvas = tk.Canvas(parent, highlightthickness=0, borderwidth=0)
+        scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+
+        content = ttk.Frame(canvas)
+        content_window = canvas.create_window((0, 0), window=content, anchor="nw")
+
+        def sync_scroll_region(_event: object | None = None) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def match_content_width(event: tk.Event) -> None:
+            canvas.itemconfigure(content_window, width=max(1, event.width))
+
+        content.bind("<Configure>", sync_scroll_region, add="+")
+        canvas.bind("<Configure>", match_content_width, add="+")
+
+        super()._build_live_view(content)
+        self._live_scroll_canvas = canvas
+
+        def is_descendant(widget: tk.Misc | None, ancestor: tk.Misc) -> bool:
+            current = widget
+            while current is not None:
+                if current is ancestor:
+                    return True
+                current = getattr(current, "master", None)
+            return False
+
+        def on_mousewheel(event: tk.Event) -> None:
+            # The finder uses the wheel for zoom, so never steal that gesture.
+            pointer_widget = self.winfo_containing(self.winfo_pointerx(), self.winfo_pointery())
+            if pointer_widget is None or not is_descendant(pointer_widget, canvas):
+                return
+            if hasattr(self, "live_view") and is_descendant(pointer_widget, self.live_view):
+                return
+            delta = int(getattr(event, "delta", 0))
+            if delta:
+                canvas.yview_scroll(-1 if delta > 0 else 1, "units")
+
+        self.bind_all("<MouseWheel>", on_mousewheel, add="+")
+        self.after_idle(sync_scroll_region)
 
     def _apply_tracking_data(
         self,
