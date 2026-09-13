@@ -62,7 +62,7 @@ def test_project_cloud_region_returns_rgba_texture() -> None:
     )
     assert projected.mode == "RGBA"
     assert projected.size == (40, 20)
-    assert max(pixel[3] for pixel in projected.getdata()) > 0
+    assert projected.getchannel("A").getextrema()[1] > 0
 
 
 def test_weather_map_bbox_contains_synthetic_observer() -> None:
