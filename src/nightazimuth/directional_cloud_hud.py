@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 from .cloud_projection import CloudRegion, project_cloud_region
 from .twilight_hud_finder_view import TwilightSmoothHudFinderView
@@ -13,11 +13,16 @@ class DirectionalCloudHudFinderView(TwilightSmoothHudFinderView):
         self._cloud_region: CloudRegion | None = None
         self._cloud_observer: tuple[float, float] | None = None
         self._show_cloud_overlay = False
+        self._cloud_opacity = 0.45
         self._cloud_photo: ImageTk.PhotoImage | None = None
         super().__init__(*args, **kwargs)
 
     def set_cloud_overlay_enabled(self, enabled: bool) -> None:
         self._show_cloud_overlay = bool(enabled)
+        self.redraw()
+
+    def set_cloud_opacity(self, opacity: float) -> None:
+        self._cloud_opacity = max(0.05, min(0.90, float(opacity)))
         self.redraw()
 
     def set_cloud_region(
@@ -36,6 +41,7 @@ class DirectionalCloudHudFinderView(TwilightSmoothHudFinderView):
 
     def redraw(self) -> None:
         super().redraw()
+        self._draw_compass_cues()
         if not self._show_cloud_overlay or self._cloud_region is None or self._cloud_observer is None:
             self._cloud_photo = None
             return
@@ -55,6 +61,10 @@ class DirectionalCloudHudFinderView(TwilightSmoothHudFinderView):
             width=max(120, min(360, width // 2)),
             height=max(80, min(220, height // 2)),
         ).resize((width, height))
+        if texture.mode != "RGBA":
+            texture = texture.convert("RGBA")
+        alpha = texture.getchannel("A").point(lambda value: int(value * self._cloud_opacity))
+        texture.putalpha(alpha)
         self._cloud_photo = ImageTk.PhotoImage(texture)
         self.create_image(
             left,
@@ -64,3 +74,22 @@ class DirectionalCloudHudFinderView(TwilightSmoothHudFinderView):
             tags=("directional-cloud-overlay",),
         )
         self.tag_lower("directional-cloud-overlay")
+
+    def _draw_compass_cues(self) -> None:
+        left, top, right, _bottom = self._plot_bounds()
+        width = max(1.0, right - left)
+        half_fov = self.horizontal_fov_deg / 2.0
+        for azimuth, label in ((0.0, "N"), (45.0, "NE"), (90.0, "E"), (135.0, "SE"), (180.0, "S"), (225.0, "SW"), (270.0, "W"), (315.0, "NW")):
+            delta = ((azimuth - self.facing_deg + 180.0) % 360.0) - 180.0
+            if abs(delta) > half_fov:
+                continue
+            x = left + (delta / self.horizontal_fov_deg + 0.5) * width
+            self.create_text(
+                x,
+                top + 7,
+                text=label,
+                fill="#9ca3af",
+                anchor="n",
+                font=("Segoe UI", 8, "bold"),
+                tags=("cloud-compass-cue",),
+            )
