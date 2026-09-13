@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -53,6 +53,30 @@ def line_of_sight_cloud_distance_km(
     return min(maximum_distance_km, max(0.0, distance))
 
 
+def _sample_bilinear(source: Image.Image, x: float, y: float) -> tuple[int, int, int]:
+    """Bilinearly sample an RGB image to avoid blocky nearest-neighbour cloud edges."""
+    width, height = source.size
+    x = max(0.0, min(width - 1.0, x))
+    y = max(0.0, min(height - 1.0, y))
+    x0 = int(math.floor(x))
+    y0 = int(math.floor(y))
+    x1 = min(width - 1, x0 + 1)
+    y1 = min(height - 1, y0 + 1)
+    fx = x - x0
+    fy = y - y0
+    pixels = source.load()
+    c00 = pixels[x0, y0]
+    c10 = pixels[x1, y0]
+    c01 = pixels[x0, y1]
+    c11 = pixels[x1, y1]
+    values: list[int] = []
+    for channel in range(3):
+        top = c00[channel] * (1.0 - fx) + c10[channel] * fx
+        bottom = c01[channel] * (1.0 - fx) + c11[channel] * fx
+        values.append(int(round(top * (1.0 - fy) + bottom * fy)))
+    return values[0], values[1], values[2]
+
+
 def project_cloud_region(
     region: CloudRegion,
     *,
@@ -81,7 +105,6 @@ def project_cloud_region(
     src_width, src_height = source.size
     output = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     pixels = output.load()
-    src = source.load()
 
     lon_span = region.max_longitude - region.min_longitude
     lat_span = region.max_latitude - region.min_latitude
@@ -115,16 +138,24 @@ def project_cloud_region(
                 continue
             u = (longitude - region.min_longitude) / lon_span
             v = (region.max_latitude - latitude) / lat_span
-            sx = min(src_width - 1, max(0, int(u * src_width)))
-            sy = min(src_height - 1, max(0, int(v * src_height)))
-            red, green, blue = src[sx, sy]
+            sx = u * max(0, src_width - 1)
+            sy = v * max(0, src_height - 1)
+            red, green, blue = _sample_bilinear(source, sx, sy)
 
             # GeoColour uses bright/whitish or bluish tones for cloud. Keep the
             # overlay deliberately subdued and label it as indicative in UI.
             brightness = (red + green + blue) / 3.0
             blue_bias = max(0.0, blue - (red + green) / 2.0)
             strength = max(0.0, min(1.0, (brightness - 75.0) / 150.0 + blue_bias / 255.0))
-            alpha = int(115 * strength)
-            if alpha > 8:
+            # Ease the mask so weak cloud does not form hard-edged slabs.
+            strength = strength * strength * (3.0 - 2.0 * strength)
+            alpha = int(105 * strength)
+            if alpha > 5:
                 pixels[x, y] = (190, 215, 235, alpha)
+
+    # Satellite pixels and the assumed-height projection can otherwise leave
+    # rectangular/blocky boundaries. Blur only the final visual texture; this
+    # is an indicative overlay, not a scientific cloud mask.
+    if width >= 40 and height >= 30:
+        output = output.filter(ImageFilter.GaussianBlur(radius=1.25))
     return output
