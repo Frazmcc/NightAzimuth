@@ -44,6 +44,21 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
                 command=self._on_cloud_overlay_changed,
             )
 
+        controls = next((item for item in parent.grid_slaves(row=0, column=0) if isinstance(item, ttk.Frame)), None)
+        if controls is not None:
+            ttk.Label(controls, text="Cloud opacity:").pack(side="left", padx=(10, 4))
+            self.cloud_opacity_var = tk.DoubleVar(master=self, value=45.0)
+            opacity = ttk.Scale(
+                controls,
+                from_=10.0,
+                to=90.0,
+                orient="horizontal",
+                length=90,
+                variable=self.cloud_opacity_var,
+                command=self._on_cloud_opacity_changed,
+            )
+            opacity.pack(side="left")
+
     def _build_weather_map(self, parent: ttk.Frame) -> None:
         super()._build_weather_map(parent)
         self.show_cloud_map_var = tk.BooleanVar(master=self, value=True)
@@ -60,6 +75,11 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
         if hasattr(self, "live_view") and isinstance(self.live_view, DirectionalCloudHudFinderView):
             self.live_view.set_cloud_overlay_enabled(self.show_cloud_overlay_var.get())
         self._update_live_view_summary()
+
+    def _on_cloud_opacity_changed(self, _value: object | None = None) -> None:
+        if hasattr(self, "live_view") and isinstance(self.live_view, DirectionalCloudHudFinderView):
+            opacity = float(self.cloud_opacity_var.get()) / 100.0
+            self.live_view.set_cloud_opacity(opacity)
 
     def _refresh_weather_map(self) -> None:
         if not hasattr(self, "weather_map_status_var"):
@@ -167,6 +187,8 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
             self.live_view.set_cloud_overlay_enabled(
                 bool(self.show_cloud_overlay_var.get()) if hasattr(self, "show_cloud_overlay_var") else False
             )
+            if hasattr(self, "cloud_opacity_var"):
+                self.live_view.set_cloud_opacity(float(self.cloud_opacity_var.get()) / 100.0)
 
     def _update_live_view_summary(self) -> None:
         super()._update_live_view_summary()
@@ -174,9 +196,11 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
             return
         enabled = bool(getattr(self, "show_cloud_overlay_var", None) and self.show_cloud_overlay_var.get())
         state = "On" if enabled else "Off"
+        opacity = int(getattr(self, "cloud_opacity_var", tk.DoubleVar(master=self, value=45.0)).get())
         self.live_detail_var.set(
             self.live_detail_var.get()
-            + f"\nCloud overlay: {state}\n"
+            + f"\nCloud overlay: {state} ({opacity}% opacity)\n"
+            + "Compass cues show N/NE/E/SE/S/SW/W/NW where they fall inside the current field of view.\n"
             + "Cloud alignment is an estimate from Meteosat imagery using an assumed representative cloud altitude."
         )
 
