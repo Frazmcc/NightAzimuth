@@ -21,7 +21,8 @@ def test_eumetview_request_uses_only_spatial_parameters() -> None:
     )
     assert params["layers"] == EUMETVIEW_LAYER
     assert params["request"] == "GetMap"
-    assert params["bbox"] == "9.00000,19.00000,11.00000,21.00000"
+    assert params["crs"] == "CRS:84"
+    assert params["bbox"] == "19.00000,9.00000,21.00000,11.00000"
     assert "profile" not in params
     assert "name" not in params
 
