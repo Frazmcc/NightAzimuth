@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import math
 
 from PIL import Image, ImageDraw
@@ -19,11 +20,13 @@ class Stage16WeatherMapSnapshot:
     cloud_enabled: bool
     cloud_region: CloudRegion | None
     cloud_from_cache: bool | None
+    cloud_time_utc: datetime | None
+    recent_cloud_times_utc: tuple[datetime, ...]
     zoom: int
 
 
 class Stage16WeatherMapRenderer(WeatherMapRenderer):
-    """Stage 15 map plus optional EUMETView geostationary cloud imagery."""
+    """Stage 15 map plus optional timestamped EUMETView cloud imagery."""
 
     def __init__(self, *, cache_directory, timeout_seconds: float = 20.0) -> None:
         super().__init__(cache_directory=cache_directory, timeout_seconds=timeout_seconds)
@@ -42,6 +45,7 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
         radius_tiles: int = 1,
         facing_deg: float | None = None,
         horizontal_fov_deg: float | None = None,
+        cloud_time_utc: datetime | None = None,
     ) -> Stage16WeatherMapSnapshot:
         base: WeatherMapSnapshot = super().render(
             observer,
@@ -52,6 +56,8 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
         image = base.image
         region: CloudRegion | None = None
         cloud_from_cache: bool | None = None
+        actual_cloud_time: datetime | None = None
+        recent_cloud_times: tuple[datetime, ...] = ()
 
         if show_cloud:
             min_lat, min_lon, max_lat, max_lon = map_bbox_for_view(
@@ -60,6 +66,7 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
                 zoom=zoom,
                 radius_tiles=radius_tiles,
             )
+            recent_cloud_times = self._cloud_provider.recent_frame_times(limit=8)
             cloud: CloudImageSnapshot = self._cloud_provider.load_region(
                 min_latitude=min_lat,
                 min_longitude=min_lon,
@@ -67,11 +74,13 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
                 max_longitude=max_lon,
                 width=base.image.width,
                 height=base.image.height,
+                at_time_utc=cloud_time_utc,
             )
             cloud_image = cloud.image.convert("RGBA")
             cloud_image.putalpha(110)
             image = Image.alpha_composite(base.image.convert("RGBA"), cloud_image).convert("RGB")
             cloud_from_cache = cloud.from_cache
+            actual_cloud_time = cloud.frame_time_utc
             region = CloudRegion(
                 image=cloud.image,
                 min_latitude=min_lat,
@@ -81,7 +90,7 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
                 source_name=cloud.source_name,
                 from_cache=cloud.from_cache,
             )
-            _add_cloud_attribution(image, cloud.from_cache)
+            _add_cloud_attribution(image, cloud)
 
         if facing_deg is not None and horizontal_fov_deg is not None:
             _draw_view_wedge(
@@ -101,6 +110,8 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
             cloud_enabled=show_cloud,
             cloud_region=region,
             cloud_from_cache=cloud_from_cache,
+            cloud_time_utc=actual_cloud_time,
+            recent_cloud_times_utc=recent_cloud_times,
             zoom=base.zoom,
         )
 
@@ -166,48 +177,12 @@ def _draw_view_wedge(
     )
     half = max(2.5, min(90.0, horizontal_fov_deg / 2.0))
     distance_km = 120.0
-    left_lat, left_lon = destination_latlon(
-        observer.latitude,
-        observer.longitude,
-        facing_deg - half,
-        distance_km,
-    )
-    right_lat, right_lon = destination_latlon(
-        observer.latitude,
-        observer.longitude,
-        facing_deg + half,
-        distance_km,
-    )
-    centre_lat, centre_lon = destination_latlon(
-        observer.latitude,
-        observer.longitude,
-        facing_deg,
-        distance_km,
-    )
-    left = _map_pixel_for_latlon(
-        left_lat,
-        left_lon,
-        centre_x=centre_x,
-        centre_y=centre_y,
-        zoom=zoom,
-        radius_tiles=radius_tiles,
-    )
-    right = _map_pixel_for_latlon(
-        right_lat,
-        right_lon,
-        centre_x=centre_x,
-        centre_y=centre_y,
-        zoom=zoom,
-        radius_tiles=radius_tiles,
-    )
-    centre = _map_pixel_for_latlon(
-        centre_lat,
-        centre_lon,
-        centre_x=centre_x,
-        centre_y=centre_y,
-        zoom=zoom,
-        radius_tiles=radius_tiles,
-    )
+    left_lat, left_lon = destination_latlon(observer.latitude, observer.longitude, facing_deg - half, distance_km)
+    right_lat, right_lon = destination_latlon(observer.latitude, observer.longitude, facing_deg + half, distance_km)
+    centre_lat, centre_lon = destination_latlon(observer.latitude, observer.longitude, facing_deg, distance_km)
+    left = _map_pixel_for_latlon(left_lat, left_lon, centre_x=centre_x, centre_y=centre_y, zoom=zoom, radius_tiles=radius_tiles)
+    right = _map_pixel_for_latlon(right_lat, right_lon, centre_x=centre_x, centre_y=centre_y, zoom=zoom, radius_tiles=radius_tiles)
+    centre = _map_pixel_for_latlon(centre_lat, centre_lon, centre_x=centre_x, centre_y=centre_y, zoom=zoom, radius_tiles=radius_tiles)
     draw = ImageDraw.Draw(image, "RGBA")
     draw.polygon((origin, left, right), fill=(34, 197, 94, 30), outline=(34, 197, 94, 180))
     draw.line((origin, centre), fill=(34, 197, 94, 220), width=3)
@@ -233,9 +208,13 @@ def _redraw_observer_marker(
     draw.line((marker_x, marker_y - 12, marker_x, marker_y + 12), fill="black", width=2)
 
 
-def _add_cloud_attribution(image: Image.Image, from_cache: bool) -> None:
+def _add_cloud_attribution(image: Image.Image, cloud: CloudImageSnapshot) -> None:
     draw = ImageDraw.Draw(image)
-    label = "Cloud imagery: EUMETSAT EUMETView / NASA" + (" (cache)" if from_cache else "")
+    if cloud.frame_time_utc is None:
+        stamp = "latest provider frame"
+    else:
+        stamp = cloud.frame_time_utc.strftime("%Y-%m-%d %H:%M UTC")
+    label = f"Cloud: EUMETSAT EUMETView / NASA  |  {stamp}" + ("  |  cache" if cloud.from_cache else "")
     box = draw.textbbox((0, 0), label)
     width = box[2] - box[0]
     height = box[3] - box[1]
