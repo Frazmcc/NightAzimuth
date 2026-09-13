@@ -58,9 +58,9 @@ class DirectionalCloudHudFinderView(TwilightSmoothHudFinderView):
             horizontal_fov_deg=self.horizontal_fov_deg,
             minimum_elevation_deg=self.minimum_elevation_deg,
             maximum_elevation_deg=self.maximum_elevation_deg,
-            width=max(120, min(360, width // 2)),
-            height=max(80, min(220, height // 2)),
-        ).resize((width, height))
+            width=max(180, min(520, width // 2)),
+            height=max(100, min(300, height // 2)),
+        ).resize((width, height), resample=Image.Resampling.LANCZOS)
         if texture.mode != "RGBA":
             texture = texture.convert("RGBA")
         alpha = texture.getchannel("A").point(lambda value: int(value * self._cloud_opacity))
