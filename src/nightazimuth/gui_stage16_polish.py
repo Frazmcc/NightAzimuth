@@ -3,7 +3,6 @@ from __future__ import annotations
 import httpx
 
 from .gui_stage16_animation import AnimatedStage16NightAzimuthApp
-from .location_profiles import LocationProfile
 from .sky_map import SkySatellite
 from .weather import MetNorwayWeatherProvider, WeatherProviderError
 
