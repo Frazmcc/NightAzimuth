@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import math
 
 from PIL import Image, ImageDraw
@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 from .cloud_imagery import CloudImageSnapshot, EumetViewCloudProvider
 from .cloud_projection import CloudRegion, destination_latlon
 from .config import ObserverConfig
+from .spatial_forecast import MetNorwaySpatialForecastProvider, SpatialForecastSnapshot
 from .weather_map import TILE_SIZE, WeatherMapRenderer, WeatherMapSnapshot, latlon_to_tile_fraction
 
 
@@ -22,15 +23,21 @@ class Stage16WeatherMapSnapshot:
     cloud_from_cache: bool | None
     cloud_time_utc: datetime | None
     recent_cloud_times_utc: tuple[datetime, ...]
+    forecast_hours_ahead: int
+    forecast_valid_time_utc: datetime | None
     zoom: int
 
 
 class Stage16WeatherMapRenderer(WeatherMapRenderer):
-    """Stage 15 map plus optional timestamped EUMETView cloud imagery."""
+    """Current satellite/cloud map plus coarse future spatial forecast frames."""
 
     def __init__(self, *, cache_directory, timeout_seconds: float = 20.0) -> None:
         super().__init__(cache_directory=cache_directory, timeout_seconds=timeout_seconds)
         self._cloud_provider = EumetViewCloudProvider(
+            cache_directory=cache_directory,
+            timeout_seconds=max(20.0, timeout_seconds),
+        )
+        self._forecast_provider = MetNorwaySpatialForecastProvider(
             cache_directory=cache_directory,
             timeout_seconds=max(20.0, timeout_seconds),
         )
@@ -46,10 +53,13 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
         facing_deg: float | None = None,
         horizontal_fov_deg: float | None = None,
         cloud_time_utc: datetime | None = None,
+        forecast_hours_ahead: int = 0,
     ) -> Stage16WeatherMapSnapshot:
+        forecast_hours = max(0, min(24, int(forecast_hours_ahead)))
+        future_mode = forecast_hours > 0
         base: WeatherMapSnapshot = super().render(
             observer,
-            show_radar=show_radar,
+            show_radar=show_radar and not future_mode,
             zoom=zoom,
             radius_tiles=radius_tiles,
         )
@@ -58,14 +68,30 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
         cloud_from_cache: bool | None = None
         actual_cloud_time: datetime | None = None
         recent_cloud_times: tuple[datetime, ...] = ()
+        forecast_valid_time: datetime | None = None
 
-        if show_cloud:
-            min_lat, min_lon, max_lat, max_lon = map_bbox_for_view(
-                observer.latitude,
-                observer.longitude,
-                zoom=zoom,
-                radius_tiles=radius_tiles,
+        min_lat, min_lon, max_lat, max_lon = map_bbox_for_view(
+            observer.latitude,
+            observer.longitude,
+            zoom=zoom,
+            radius_tiles=radius_tiles,
+        )
+
+        if future_mode:
+            target = datetime.now(timezone.utc) + timedelta(hours=forecast_hours)
+            forecast: SpatialForecastSnapshot = self._forecast_provider.load_region(
+                south=min_lat,
+                west=min_lon,
+                north=max_lat,
+                east=max_lon,
+                altitude_m=observer.altitude_m,
+                target_time_utc=target,
             )
+            overlay = forecast.image.resize(image.size).convert("RGBA")
+            image = Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
+            forecast_valid_time = forecast.valid_time_utc
+            _add_forecast_attribution(image, forecast, forecast_hours)
+        elif show_cloud:
             recent_cloud_times = self._cloud_provider.recent_frame_times(limit=8)
             cloud: CloudImageSnapshot = self._cloud_provider.load_region(
                 min_latitude=min_lat,
@@ -107,11 +133,13 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
             image=image,
             radar_time_utc=base.radar_time_utc,
             radar_enabled=base.radar_enabled,
-            cloud_enabled=show_cloud,
+            cloud_enabled=show_cloud and not future_mode,
             cloud_region=region,
             cloud_from_cache=cloud_from_cache,
             cloud_time_utc=actual_cloud_time,
             recent_cloud_times_utc=recent_cloud_times,
+            forecast_hours_ahead=forecast_hours,
+            forecast_valid_time_utc=forecast_valid_time,
             zoom=base.zoom,
         )
 
@@ -210,15 +238,27 @@ def _redraw_observer_marker(
 
 def _add_cloud_attribution(image: Image.Image, cloud: CloudImageSnapshot) -> None:
     draw = ImageDraw.Draw(image)
-    if cloud.frame_time_utc is None:
-        stamp = "latest provider frame"
-    else:
-        stamp = cloud.frame_time_utc.strftime("%Y-%m-%d %H:%M UTC")
+    stamp = "latest provider frame" if cloud.frame_time_utc is None else cloud.frame_time_utc.strftime("%Y-%m-%d %H:%M UTC")
     label = f"Cloud: EUMETSAT EUMETView / NASA  |  {stamp}" + ("  |  cache" if cloud.from_cache else "")
-    box = draw.textbbox((0, 0), label)
+    _label(image, label, 8, 8)
+
+
+def _add_forecast_attribution(
+    image: Image.Image,
+    forecast: SpatialForecastSnapshot,
+    hours_ahead: int,
+) -> None:
+    label = (
+        f"FORECAST +{hours_ahead}h  |  {forecast.valid_time_utc.strftime('%Y-%m-%d %H:%M UTC')}  |  "
+        "MET Norway spatial sample  |  model forecast, not radar/satellite"
+    )
+    _label(image, label, 8, 8)
+
+
+def _label(image: Image.Image, text: str, x: int, y: int) -> None:
+    draw = ImageDraw.Draw(image)
+    box = draw.textbbox((0, 0), text)
     width = box[2] - box[0]
     height = box[3] - box[1]
-    x = 8
-    y = 8
     draw.rectangle((x - 4, y - 2, x + width + 4, y + height + 2), fill="white")
-    draw.text((x, y), label, fill="black")
+    draw.text((x, y), text, fill="black")
