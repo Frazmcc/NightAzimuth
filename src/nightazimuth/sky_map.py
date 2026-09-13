@@ -18,6 +18,7 @@ class SkySatellite:
     satellite_sunlit: bool
     sky_dark: bool
     potentially_visible: bool
+    twilight_candidate: bool = False
     future_track: tuple[TrackPoint, ...] = ()
 
 
