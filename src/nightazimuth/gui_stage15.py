@@ -229,7 +229,6 @@ class Stage15NightAzimuthApp(Stage14NightAzimuthApp):
                 f"{_fmt(point.wind_from_direction_deg, '°')}"
             ),
             "Next hours: " + " | ".join(self._forecast_summary(snapshot, now)),
-            "Point forecast only — directional cloud estimation is planned for Stage 16.",
         ]
         self.weather_status_var.set("\n".join(lines))
 
