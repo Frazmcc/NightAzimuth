@@ -54,6 +54,7 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
         horizontal_fov_deg: float | None = None,
         cloud_time_utc: datetime | None = None,
         forecast_hours_ahead: int = 0,
+        radar_time_utc: datetime | None = None,
     ) -> Stage16WeatherMapSnapshot:
         forecast_hours = max(0, min(24, int(forecast_hours_ahead)))
         future_mode = forecast_hours > 0
@@ -62,6 +63,7 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
             show_radar=show_radar and not future_mode,
             zoom=zoom,
             radius_tiles=radius_tiles,
+            radar_time_utc=radar_time_utc,
         )
         image = base.image
         region: CloudRegion | None = None
@@ -237,7 +239,6 @@ def _redraw_observer_marker(
 
 
 def _add_cloud_attribution(image: Image.Image, cloud: CloudImageSnapshot) -> None:
-    draw = ImageDraw.Draw(image)
     stamp = "latest provider frame" if cloud.frame_time_utc is None else cloud.frame_time_utc.strftime("%Y-%m-%d %H:%M UTC")
     label = f"Cloud: EUMETSAT EUMETView / NASA  |  {stamp}" + ("  |  cache" if cloud.from_cache else "")
     _label(image, label, 8, 8)
