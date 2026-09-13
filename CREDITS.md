@@ -22,11 +22,14 @@ NightAzimuth currently uses:
 - MET Norway Locationforecast 2.0 for point weather and cloud forecast data
 - OpenStreetMap standard raster tiles for the Stage 15 weather-map base layer
 - RainViewer public Weather Maps API for recent precipitation-radar tiles
+- EUMETSAT EUMETView Meteosat GeoColour imagery for Stage 16 spatial cloud visualisation
 
 Weather forecast data is provided by the Norwegian Meteorological Institute (MET Norway) and remains subject to its provider terms and attribution requirements.
 
 Map data © OpenStreetMap contributors. Use of OpenStreetMap-hosted tiles is subject to the OpenStreetMap Foundation tile usage policy.
 
 Rain radar data is provided through RainViewer and is subject to RainViewer's public API terms and attribution requirements.
+
+Stage 16 cloud imagery is provided through EUMETSAT EUMETView. The GeoColour product combines EUMETSAT Meteosat imagery with NASA Black Marble background information for its night-time presentation; both EUMETSAT and NASA are credited as requested by the product description.
 
 Third-party components and data remain subject to their own licences, terms, and attribution requirements.
