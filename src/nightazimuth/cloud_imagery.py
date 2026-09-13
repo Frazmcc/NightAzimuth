@@ -115,9 +115,9 @@ def eumetview_getmap_params(
         "request": "GetMap",
         "layers": EUMETVIEW_LAYER,
         "styles": "",
-        "crs": "EPSG:4326",
-        # WMS 1.3.0 EPSG:4326 axis order is latitude,longitude.
-        "bbox": f"{min_latitude:.5f},{min_longitude:.5f},{max_latitude:.5f},{max_longitude:.5f}",
+        "crs": "CRS:84",
+        # CRS:84 preserves normal longitude,latitude order for image x/y.
+        "bbox": f"{min_longitude:.5f},{min_latitude:.5f},{max_longitude:.5f},{max_latitude:.5f}",
         "width": str(width),
         "height": str(height),
         "format": "image/png",
