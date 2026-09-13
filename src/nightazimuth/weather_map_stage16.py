@@ -6,7 +6,7 @@ import math
 from PIL import Image, ImageDraw
 
 from .cloud_imagery import CloudImageSnapshot, EumetViewCloudProvider
-from .cloud_projection import CloudRegion
+from .cloud_projection import CloudRegion, destination_latlon
 from .config import ObserverConfig
 from .weather_map import TILE_SIZE, WeatherMapRenderer, WeatherMapSnapshot, latlon_to_tile_fraction
 
@@ -40,6 +40,8 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
         show_cloud: bool,
         zoom: int = 7,
         radius_tiles: int = 1,
+        facing_deg: float | None = None,
+        horizontal_fov_deg: float | None = None,
     ) -> Stage16WeatherMapSnapshot:
         base: WeatherMapSnapshot = super().render(
             observer,
@@ -47,52 +49,58 @@ class Stage16WeatherMapRenderer(WeatherMapRenderer):
             zoom=zoom,
             radius_tiles=radius_tiles,
         )
-        if not show_cloud:
-            return Stage16WeatherMapSnapshot(
-                image=base.image,
-                radar_time_utc=base.radar_time_utc,
-                radar_enabled=base.radar_enabled,
-                cloud_enabled=False,
-                cloud_region=None,
-                cloud_from_cache=None,
-                zoom=base.zoom,
-            )
+        image = base.image
+        region: CloudRegion | None = None
+        cloud_from_cache: bool | None = None
 
-        min_lat, min_lon, max_lat, max_lon = map_bbox_for_view(
-            observer.latitude,
-            observer.longitude,
-            zoom=zoom,
-            radius_tiles=radius_tiles,
-        )
-        cloud: CloudImageSnapshot = self._cloud_provider.load_region(
-            min_latitude=min_lat,
-            min_longitude=min_lon,
-            max_latitude=max_lat,
-            max_longitude=max_lon,
-            width=base.image.width,
-            height=base.image.height,
-        )
-        cloud_image = cloud.image.convert("RGBA")
-        cloud_image.putalpha(110)
-        merged = Image.alpha_composite(base.image.convert("RGBA"), cloud_image).convert("RGB")
-        _redraw_observer_marker(merged, observer, zoom=zoom, radius_tiles=radius_tiles)
-        _add_cloud_attribution(merged, cloud.from_cache)
-        region = CloudRegion(
-            image=cloud.image,
-            min_latitude=min_lat,
-            min_longitude=min_lon,
-            max_latitude=max_lat,
-            max_longitude=max_lon,
-            source_name=cloud.source_name,
-            from_cache=cloud.from_cache,
-        )
+        if show_cloud:
+            min_lat, min_lon, max_lat, max_lon = map_bbox_for_view(
+                observer.latitude,
+                observer.longitude,
+                zoom=zoom,
+                radius_tiles=radius_tiles,
+            )
+            cloud: CloudImageSnapshot = self._cloud_provider.load_region(
+                min_latitude=min_lat,
+                min_longitude=min_lon,
+                max_latitude=max_lat,
+                max_longitude=max_lon,
+                width=base.image.width,
+                height=base.image.height,
+            )
+            cloud_image = cloud.image.convert("RGBA")
+            cloud_image.putalpha(110)
+            image = Image.alpha_composite(base.image.convert("RGBA"), cloud_image).convert("RGB")
+            cloud_from_cache = cloud.from_cache
+            region = CloudRegion(
+                image=cloud.image,
+                min_latitude=min_lat,
+                min_longitude=min_lon,
+                max_latitude=max_lat,
+                max_longitude=max_lon,
+                source_name=cloud.source_name,
+                from_cache=cloud.from_cache,
+            )
+            _add_cloud_attribution(image, cloud.from_cache)
+
+        if facing_deg is not None and horizontal_fov_deg is not None:
+            _draw_view_wedge(
+                image,
+                observer,
+                zoom=zoom,
+                radius_tiles=radius_tiles,
+                facing_deg=facing_deg,
+                horizontal_fov_deg=horizontal_fov_deg,
+            )
+        _redraw_observer_marker(image, observer, zoom=zoom, radius_tiles=radius_tiles)
+
         return Stage16WeatherMapSnapshot(
-            image=merged,
+            image=image,
             radar_time_utc=base.radar_time_utc,
             radar_enabled=base.radar_enabled,
-            cloud_enabled=True,
+            cloud_enabled=show_cloud,
             cloud_region=region,
-            cloud_from_cache=cloud.from_cache,
+            cloud_from_cache=cloud_from_cache,
             zoom=base.zoom,
         )
 
@@ -121,6 +129,89 @@ def tile_fraction_to_latlon(x: float, y: float, zoom: int) -> tuple[float, float
     n = math.pi - 2.0 * math.pi * y / scale
     latitude = math.degrees(math.atan(math.sinh(n)))
     return latitude, longitude
+
+
+def _map_pixel_for_latlon(
+    latitude: float,
+    longitude: float,
+    *,
+    centre_x: float,
+    centre_y: float,
+    zoom: int,
+    radius_tiles: int,
+) -> tuple[float, float]:
+    x, y = latlon_to_tile_fraction(latitude, longitude, zoom)
+    start_x = math.floor(centre_x) - radius_tiles
+    start_y = math.floor(centre_y) - radius_tiles
+    return (x - start_x) * TILE_SIZE, (y - start_y) * TILE_SIZE
+
+
+def _draw_view_wedge(
+    image: Image.Image,
+    observer: ObserverConfig,
+    *,
+    zoom: int,
+    radius_tiles: int,
+    facing_deg: float,
+    horizontal_fov_deg: float,
+) -> None:
+    centre_x, centre_y = latlon_to_tile_fraction(observer.latitude, observer.longitude, zoom)
+    origin = _map_pixel_for_latlon(
+        observer.latitude,
+        observer.longitude,
+        centre_x=centre_x,
+        centre_y=centre_y,
+        zoom=zoom,
+        radius_tiles=radius_tiles,
+    )
+    half = max(2.5, min(90.0, horizontal_fov_deg / 2.0))
+    distance_km = 120.0
+    left_lat, left_lon = destination_latlon(
+        observer.latitude,
+        observer.longitude,
+        facing_deg - half,
+        distance_km,
+    )
+    right_lat, right_lon = destination_latlon(
+        observer.latitude,
+        observer.longitude,
+        facing_deg + half,
+        distance_km,
+    )
+    centre_lat, centre_lon = destination_latlon(
+        observer.latitude,
+        observer.longitude,
+        facing_deg,
+        distance_km,
+    )
+    left = _map_pixel_for_latlon(
+        left_lat,
+        left_lon,
+        centre_x=centre_x,
+        centre_y=centre_y,
+        zoom=zoom,
+        radius_tiles=radius_tiles,
+    )
+    right = _map_pixel_for_latlon(
+        right_lat,
+        right_lon,
+        centre_x=centre_x,
+        centre_y=centre_y,
+        zoom=zoom,
+        radius_tiles=radius_tiles,
+    )
+    centre = _map_pixel_for_latlon(
+        centre_lat,
+        centre_lon,
+        centre_x=centre_x,
+        centre_y=centre_y,
+        zoom=zoom,
+        radius_tiles=radius_tiles,
+    )
+    draw = ImageDraw.Draw(image, "RGBA")
+    draw.polygon((origin, left, right), fill=(34, 197, 94, 30), outline=(34, 197, 94, 180))
+    draw.line((origin, centre), fill=(34, 197, 94, 220), width=3)
+    draw.text((centre[0] + 4, centre[1] + 2), "LIVE VIEW", fill=(20, 90, 50, 255))
 
 
 def _redraw_observer_marker(
