@@ -6,12 +6,13 @@ import tkinter as tk
 from tkinter import ttk
 
 from .gui_stage16 import Stage16NightAzimuthApp
+from .observing_planner import ObservingPlanner, ViewingGuidance
 from .weather import WeatherSnapshot
 from .weather_map_stage16 import Stage16WeatherMapRenderer
 
 
 class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
-    """Stage 16 weather map with a continuous observed-to-forecast timeline."""
+    """Stage 16 weather map with observed radar/cloud history plus longer planning."""
 
     MAP_TIME_CHOICES = {
         "Now": 0,
@@ -26,29 +27,19 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
         "+18 hours": 18,
         "+24 hours": 24,
     }
-    WEATHER_TIMELINE_MINUTES = (
-        -60,
-        -50,
-        -40,
-        -30,
-        -20,
-        -10,
-        0,
-        60,
-        120,
-        180,
-        240,
-        300,
-        360,
-    )
+    # Observed history only. Forecast data is deliberately excluded from this
+    # timeline so radar/cloud playback cannot be mistaken for future radar.
+    WEATHER_TIMELINE_MINUTES = tuple(range(-24 * 60, 1, 60))
     ANIMATION_INTERVAL_MS = 1800
     LIVE_ORBIT_REFRESH_MS = 120_000
 
     def __init__(self) -> None:
         self._weather_animation_job: str | None = None
         self._weather_animation_playing = False
-        self._weather_animation_step_index = 6
+        self._weather_animation_step_index = len(self.WEATHER_TIMELINE_MINUTES) - 1
         self._weather_animation_speed = 1.0
+        self._seven_day_generation = 0
+        self._seven_day_rows_by_label: dict[str, tuple[ViewingGuidance, ...]] = {}
         super().__init__()
         # Projected satellite tracks cover three minutes. Refresh the orbital
         # solution in the background before that window expires instead of
@@ -58,7 +49,11 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
     def _build_weather_map(self, parent: ttk.Frame) -> None:
         super()._build_weather_map(parent)
 
-        animation = ttk.LabelFrame(parent, text="Animated observing weather — last hour to next 6 hours", padding=(10, 6))
+        animation = ttk.LabelFrame(
+            parent,
+            text="Observed cloud + rain radar — last 24 hours",
+            padding=(10, 6),
+        )
         animation.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         animation.columnconfigure(3, weight=1)
 
@@ -98,7 +93,10 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
         speed.grid(row=0, column=5)
         speed.bind("<<ComboboxSelected>>", self._on_weather_animation_speed_changed)
 
-        self.weather_animation_status_var = tk.StringVar(master=self, value="NOW — observed satellite cloud + rain radar")
+        self.weather_animation_status_var = tk.StringVar(
+            master=self,
+            value="NOW — latest observed EUMETSAT cloud + rain radar",
+        )
         ttk.Label(
             animation,
             textvariable=self.weather_animation_status_var,
@@ -107,9 +105,79 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
 
         ttk.Label(
             animation,
-            text="OBSERVED  -60m  -50  -40  -30  -20  -10  |  NOW  |  +1h  +2  +3  +4  +5  +6h  FORECAST",
+            text="OBSERVED ONLY   -24h        -18h        -12h        -6h        NOW   •   no forecast frames",
             font=("Consolas", 8),
         ).grid(row=2, column=0, columnspan=6, sticky="ew", pady=(3, 0))
+
+        seven_day = ttk.LabelFrame(parent, text="7-day observing planner", padding=(10, 6))
+        seven_day.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        seven_day.columnconfigure(1, weight=1)
+        seven_day.rowconfigure(2, weight=1)
+
+        ttk.Label(seven_day, text="Day:").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        self.seven_day_day_var = tk.StringVar(master=self, value="")
+        self.seven_day_day_combo = ttk.Combobox(
+            seven_day,
+            textvariable=self.seven_day_day_var,
+            state="readonly",
+            width=22,
+            values=(),
+        )
+        self.seven_day_day_combo.grid(row=0, column=1, sticky="w")
+        self.seven_day_day_combo.bind("<<ComboboxSelected>>", self._on_seven_day_day_selected)
+
+        self.seven_day_status_var = tk.StringVar(
+            master=self,
+            value="Waiting for the 7-day weather forecast...",
+        )
+        ttk.Label(
+            seven_day,
+            textvariable=self.seven_day_status_var,
+            justify="left",
+        ).grid(row=1, column=0, columnspan=3, sticky="ew", pady=(5, 5))
+
+        columns = ("time", "rating", "confidence", "cloud", "fog", "rain", "sun")
+        self.seven_day_tree = ttk.Treeview(
+            seven_day,
+            columns=columns,
+            show="headings",
+            height=11,
+        )
+        headings = {
+            "time": "Time",
+            "rating": "Rating",
+            "confidence": "Confidence",
+            "cloud": "Cloud",
+            "fog": "Fog",
+            "rain": "Rain",
+            "sun": "Sun altitude",
+        }
+        widths = {
+            "time": 70,
+            "rating": 95,
+            "confidence": 110,
+            "cloud": 70,
+            "fog": 65,
+            "rain": 70,
+            "sun": 90,
+        }
+        for column in columns:
+            self.seven_day_tree.heading(column, text=headings[column])
+            self.seven_day_tree.column(column, width=widths[column], anchor="center")
+        self.seven_day_tree.grid(row=2, column=0, columnspan=2, sticky="nsew")
+        seven_scroll = ttk.Scrollbar(seven_day, orient="vertical", command=self.seven_day_tree.yview)
+        seven_scroll.grid(row=2, column=2, sticky="ns")
+        self.seven_day_tree.configure(yscrollcommand=seven_scroll.set)
+
+        ttk.Label(
+            seven_day,
+            text=(
+                "Shows the actual forecast intervals supplied by MET Norway. "
+                "Hourly rows are shown where available; later forecast days may use wider provider intervals rather than invented interpolation."
+            ),
+            wraplength=1150,
+            justify="left",
+        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(5, 0))
 
     def _toggle_weather_animation(self) -> None:
         if self._weather_animation_playing:
@@ -177,6 +245,10 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
         self._weather_animation_step_index = index
         if hasattr(self, "weather_animation_index_var"):
             self.weather_animation_index_var.set(index)
+        if hasattr(self, "map_time_var"):
+            self.map_time_var.set("Now")
+        if hasattr(self, "cloud_frame_combo"):
+            self.cloud_frame_combo.configure(state="readonly")
         minutes = self.WEATHER_TIMELINE_MINUTES[index]
         self._set_animation_status(minutes)
         if refresh:
@@ -186,18 +258,25 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
         if not hasattr(self, "weather_animation_status_var"):
             return
         if minutes < 0:
+            hours = abs(minutes) // 60
             self.weather_animation_status_var.set(
-                f"OBSERVED {abs(minutes)} min ago — EUMETSAT cloud + nearest available rain radar"
+                f"OBSERVED {hours}h ago — EUMETSAT cloud + actual rain radar when that historical radar frame is available"
             )
-        elif minutes == 0:
-            self.weather_animation_status_var.set("NOW — latest observed EUMETSAT cloud + rain radar")
         else:
-            self.weather_animation_status_var.set(
-                f"FORECAST +{minutes // 60}h — model cloud + precipitation, not future radar"
-            )
+            self.weather_animation_status_var.set("NOW — latest observed EUMETSAT cloud + rain radar")
 
     def _animation_minutes(self) -> int:
         return self.WEATHER_TIMELINE_MINUTES[self._weather_animation_step_index]
+
+    def _on_map_time_selected(self, _event: object | None = None) -> None:
+        future = self._selected_forecast_hours() > 0
+        if hasattr(self, "cloud_frame_combo"):
+            self.cloud_frame_combo.configure(state="disabled" if future else "readonly")
+        self._stop_weather_animation()
+        if future:
+            Stage16NightAzimuthApp._refresh_weather_map(self)
+        else:
+            self._refresh_weather_map()
 
     def _refresh_weather_map(self) -> None:
         if not hasattr(self, "weather_animation_index_var"):
@@ -208,6 +287,9 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
         profile = self._selected_profile()
         if profile is None:
             super()._refresh_weather_map()
+            return
+        if self._selected_forecast_hours() > 0:
+            Stage16NightAzimuthApp._refresh_weather_map(self)
             return
 
         minutes = self._animation_minutes()
@@ -222,19 +304,14 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
 
         if minutes < 0:
             requested_cloud_time = datetime.now(timezone.utc) + timedelta(minutes=minutes)
-            forecast_hours = 0
             radar_time = requested_cloud_time
-            self.weather_map_status_var.set(f"Loading observed weather from {abs(minutes)} minutes ago...")
-        elif minutes == 0:
-            requested_cloud_time = None
-            forecast_hours = 0
-            radar_time = None
-            self.weather_map_status_var.set("Loading latest observed cloud and rain radar...")
+            self.weather_map_status_var.set(
+                f"Loading observed cloud/radar from {abs(minutes) // 60} hours ago..."
+            )
         else:
             requested_cloud_time = None
-            forecast_hours = minutes // 60
             radar_time = None
-            self.weather_map_status_var.set(f"Loading +{forecast_hours}h cloud/rain model forecast...")
+            self.weather_map_status_var.set("Loading latest observed cloud and rain radar...")
 
         threading.Thread(
             target=self._load_animated_weather_map,
@@ -247,7 +324,6 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
                 fov,
                 requested_cloud_time,
                 radar_time,
-                forecast_hours,
                 generation,
             ),
             daemon=True,
@@ -263,7 +339,6 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
         horizontal_fov_deg: float,
         cloud_time_utc: datetime | None,
         radar_time_utc: datetime | None,
-        forecast_hours: int,
         generation: int,
     ) -> None:
         try:
@@ -279,7 +354,7 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
                 horizontal_fov_deg=horizontal_fov_deg,
                 cloud_time_utc=cloud_time_utc,
                 radar_time_utc=radar_time_utc,
-                forecast_hours_ahead=forecast_hours,
+                forecast_hours_ahead=0,
             )
             self.after(0, self._apply_stage16_weather_map, profile_key, observer, generation, snapshot)
         except Exception:  # noqa: BLE001
@@ -292,6 +367,139 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
         snapshot: WeatherSnapshot,
     ) -> None:
         super()._apply_weather(profile_key, generation, snapshot)
+        if generation == self._weather_generation:
+            self._refresh_seven_day_planner(snapshot)
+
+    def _refresh_seven_day_planner(self, snapshot: WeatherSnapshot | None = None) -> None:
+        if not hasattr(self, "seven_day_status_var"):
+            return
+        profile = self._selected_profile()
+        weather = snapshot or self._weather_snapshot
+        if profile is None or weather is None:
+            self._seven_day_rows_by_label = {}
+            self.seven_day_status_var.set("Waiting for the 7-day weather forecast...")
+            return
+
+        self._seven_day_generation += 1
+        generation = self._seven_day_generation
+        profile_key = (profile.name, profile.latitude, profile.longitude, profile.altitude_m)
+        self.seven_day_status_var.set("Calculating 7-day observing guidance...")
+        observer = self._observer_for_profile(profile)
+        threading.Thread(
+            target=self._load_seven_day_planner,
+            args=(profile_key, observer, weather, generation),
+            daemon=True,
+        ).start()
+
+    def _load_seven_day_planner(
+        self,
+        profile_key: tuple[object, ...],
+        observer: object,
+        weather: WeatherSnapshot,
+        generation: int,
+    ) -> None:
+        try:
+            rows = ObservingPlanner(observer, cache_directory=self.cache_directory).build(
+                weather,
+                hours=7 * 24,
+                now_utc=datetime.now(timezone.utc),
+            )
+            self.after(0, self._apply_seven_day_planner, profile_key, generation, rows)
+        except Exception:  # noqa: BLE001
+            self.after(0, self._seven_day_planner_failed, generation)
+
+    def _apply_seven_day_planner(
+        self,
+        profile_key: tuple[object, ...],
+        generation: int,
+        rows: tuple[ViewingGuidance, ...],
+    ) -> None:
+        if generation != self._seven_day_generation:
+            return
+        profile = self._selected_profile()
+        current_key = None if profile is None else (
+            profile.name,
+            profile.latitude,
+            profile.longitude,
+            profile.altitude_m,
+        )
+        if current_key != profile_key:
+            return
+
+        grouped: dict[str, list[ViewingGuidance]] = {}
+        for row in rows:
+            local = self._planner_local_datetime(row.time_utc)
+            label = local.strftime("%A %d %b")
+            grouped.setdefault(label, []).append(row)
+
+        self._seven_day_rows_by_label = {
+            label: tuple(day_rows)
+            for label, day_rows in grouped.items()
+        }
+        labels = tuple(self._seven_day_rows_by_label)
+        self.seven_day_day_combo.configure(values=labels)
+        current = self.seven_day_day_var.get()
+        if current not in self._seven_day_rows_by_label:
+            self.seven_day_day_var.set(labels[0] if labels else "")
+        self._render_seven_day_day()
+
+    def _seven_day_planner_failed(self, generation: int) -> None:
+        if generation != self._seven_day_generation:
+            return
+        self._seven_day_rows_by_label = {}
+        self.seven_day_status_var.set("7-day observing planner unavailable.")
+        for item in self.seven_day_tree.get_children():
+            self.seven_day_tree.delete(item)
+
+    def _on_seven_day_day_selected(self, _event: object | None = None) -> None:
+        self._render_seven_day_day()
+
+    def _render_seven_day_day(self) -> None:
+        if not hasattr(self, "seven_day_tree"):
+            return
+        for item in self.seven_day_tree.get_children():
+            self.seven_day_tree.delete(item)
+
+        label = self.seven_day_day_var.get()
+        rows = self._seven_day_rows_by_label.get(label, ())
+        if not rows:
+            self.seven_day_status_var.set("No forecast points are available for this day.")
+            return
+
+        good = [row for row in rows if row.rating in {"Very good", "Good"}]
+        if good:
+            first = self._planner_local_datetime(good[0].time_utc).strftime("%H:%M")
+            last = self._planner_local_datetime(good[-1].time_utc).strftime("%H:%M")
+            headline = f"{label}: best useful forecast window {first}–{last}."
+        else:
+            headline = f"{label}: no Good/Very good viewing window in the available forecast."
+        self.seven_day_status_var.set(headline)
+
+        for row in rows:
+            local = self._planner_local_datetime(row.time_utc)
+            cloud = "--" if row.cloud_percent is None else f"{row.cloud_percent:.0f}%"
+            fog = "--" if row.fog_percent is None else f"{row.fog_percent:.0f}%"
+            rain = "--" if row.precipitation_mm is None else f"{row.precipitation_mm:.1f} mm"
+            self.seven_day_tree.insert(
+                "",
+                tk.END,
+                values=(
+                    local.strftime("%H:%M"),
+                    row.rating,
+                    row.confidence,
+                    cloud,
+                    fog,
+                    rain,
+                    f"{row.sun_altitude_deg:+.1f}°",
+                ),
+            )
+
+    def _planner_local_datetime(self, moment: datetime) -> datetime:
+        if self._observing_snapshot is not None:
+            local = self._observing_snapshot.local_time(moment)
+            if local is not None:
+                return local
+        return moment.astimezone(timezone.utc)
 
 
 def main() -> int:
