@@ -1,6 +1,12 @@
+from datetime import datetime, timezone
+
 from PIL import Image
 
-from nightazimuth.cloud_imagery import EUMETVIEW_LAYER, eumetview_getmap_params
+from nightazimuth.cloud_imagery import (
+    EUMETVIEW_LAYER,
+    eumetview_getmap_params,
+    parse_wms_layer_times,
+)
 from nightazimuth.cloud_projection import (
     CloudRegion,
     destination_latlon,
@@ -25,6 +31,32 @@ def test_eumetview_request_uses_only_spatial_parameters() -> None:
     assert params["bbox"] == "19.00000,9.00000,21.00000,11.00000"
     assert "profile" not in params
     assert "name" not in params
+
+
+def test_eumetview_request_can_pin_exact_frame_time() -> None:
+    frame = datetime(2026, 9, 13, 20, 40, tzinfo=timezone.utc)
+    params = eumetview_getmap_params(
+        min_latitude=9.0,
+        min_longitude=19.0,
+        max_latitude=11.0,
+        max_longitude=21.0,
+        width=256,
+        height=256,
+        frame_time_utc=frame,
+    )
+    assert params["time"] == "2026-09-13T20:40:00Z"
+
+
+def test_wms_capabilities_extracts_recent_layer_times() -> None:
+    xml = b"""<?xml version='1.0' encoding='UTF-8'?>
+    <WMS_Capabilities xmlns='http://www.opengis.net/wms'>
+      <Capability><Layer><Layer>
+        <Name>mtg_fd:rgb_geocolour</Name>
+        <Dimension name='time'>2026-09-13T20:00:00Z/2026-09-13T20:30:00Z/PT10M</Dimension>
+      </Layer></Layer></Capability>
+    </WMS_Capabilities>"""
+    values = parse_wms_layer_times(xml, EUMETVIEW_LAYER)
+    assert [value.strftime("%H:%M") for value in values] == ["20:00", "20:10", "20:20", "20:30"]
 
 
 def test_cloud_distance_decreases_as_elevation_rises() -> None:
