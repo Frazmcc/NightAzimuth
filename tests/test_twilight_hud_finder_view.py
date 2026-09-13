@@ -1,6 +1,7 @@
 from nightazimuth.sky_map import SkySatellite
 from nightazimuth.twilight_hud_finder_view import (
     is_live_observing_candidate,
+    live_view_background_for_sky_state,
     select_twilight_finder_satellites,
 )
 
@@ -45,3 +46,15 @@ def test_finder_includes_dark_and_twilight_candidates() -> None:
     chosen = select_twilight_finder_satellites(satellites, show_all=True)
 
     assert [satellite.norad_id for satellite in chosen] == ["dark", "twilight"]
+
+
+def test_live_view_background_darkens_with_solar_state() -> None:
+    assert live_view_background_for_sky_state(4) == "#35566f"
+    assert live_view_background_for_sky_state(3) == "#2a3a5b"
+    assert live_view_background_for_sky_state(2) == "#182645"
+    assert live_view_background_for_sky_state(1) == "#10182f"
+    assert live_view_background_for_sky_state(0) == "#08111f"
+
+
+def test_unknown_sky_state_uses_dark_background() -> None:
+    assert live_view_background_for_sky_state(99) == "#08111f"
