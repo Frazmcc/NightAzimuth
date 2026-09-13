@@ -19,6 +19,7 @@ MAP_USER_AGENT = "NightAzimuth/0.5 (+https://github.com/Frazmcc/NightAzimuth)"
 TILE_SIZE = 256
 OSM_CACHE_SECONDS = 7 * 24 * 60 * 60
 RAINVIEWER_METADATA_CACHE_SECONDS = 5 * 60
+RAINVIEWER_FRAME_TOLERANCE_SECONDS = 15 * 60
 
 
 class WeatherMapError(RuntimeError):
@@ -193,7 +194,10 @@ class WeatherMapRenderer:
         if requested.tzinfo is None:
             raise ValueError("Radar frame time must be timezone-aware")
         target = requested.astimezone(timezone.utc).timestamp()
-        return min(frames, key=lambda frame: abs(frame[2] - target))
+        nearest = min(frames, key=lambda frame: abs(frame[2] - target))
+        if abs(nearest[2] - target) > RAINVIEWER_FRAME_TOLERANCE_SECONDS:
+            return None
+        return nearest
 
     def _load_radar_tile(
         self,
@@ -263,6 +267,6 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(payload), encoding="utf-8")
     temporary.replace(path)
