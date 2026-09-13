@@ -59,6 +59,19 @@ def test_wms_capabilities_extracts_recent_layer_times() -> None:
     assert [value.strftime("%H:%M") for value in values] == ["20:00", "20:10", "20:20", "20:30"]
 
 
+def test_wms_long_interval_keeps_the_newest_provider_frame() -> None:
+    xml = b"""<?xml version='1.0' encoding='UTF-8'?>
+    <WMS_Capabilities xmlns='http://www.opengis.net/wms'>
+      <Capability><Layer><Layer>
+        <Name>mtg_fd:rgb_geocolour</Name>
+        <Dimension name='time'>2024-01-01T00:00:00Z/2026-09-14T00:00:00Z/PT10M</Dimension>
+      </Layer></Layer></Capability>
+    </WMS_Capabilities>"""
+    values = parse_wms_layer_times(xml, EUMETVIEW_LAYER)
+    assert values[-1] == datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc)
+    assert len(values) <= 5000
+
+
 def test_cloud_distance_decreases_as_elevation_rises() -> None:
     low = line_of_sight_cloud_distance_km(10.0)
     high = line_of_sight_cloud_distance_km(60.0)
