@@ -18,6 +18,7 @@ class SkySatellite:
     satellite_sunlit: bool
     sky_dark: bool
     potentially_visible: bool
+    twilight_candidate: bool = False
     future_track: tuple[TrackPoint, ...] = ()
 
 
@@ -87,8 +88,8 @@ class SkyMap(tk.Canvas):
         grid = "#334155"
         text = "#dbeafe"
         muted = "#94a3b8"
-
-        for elevation in (0, 30, 60):
+        self.create_oval(cx - radius, cy - radius, cx + radius, cy + radius, outline=grid, width=2)
+        for elevation in (30, 60):
             ring_radius = radius * (90 - elevation) / 90
             self.create_oval(
                 cx - ring_radius,
@@ -96,35 +97,21 @@ class SkyMap(tk.Canvas):
                 cx + ring_radius,
                 cy + ring_radius,
                 outline=grid,
-                width=2 if elevation == 0 else 1,
             )
-            if elevation:
-                self.create_text(
-                    cx + 6,
-                    cy - ring_radius + 10,
-                    text=f"{elevation}°",
-                    fill=muted,
-                    anchor="w",
-                    font=("Segoe UI", 8),
-                )
+            self.create_text(cx + 5, cy - ring_radius + 5, text=f"{elevation}°", fill=muted, anchor="nw")
 
-        self.create_line(cx - radius, cy, cx + radius, cy, fill=grid)
-        self.create_line(cx, cy - radius, cx, cy + radius, fill=grid)
+        for azimuth, label in ((0, "N"), (90, "E"), (180, "S"), (270, "W")):
+            angle = math.radians(azimuth)
+            x = cx + radius * math.sin(angle)
+            y = cy - radius * math.cos(angle)
+            self.create_line(cx, cy, x, y, fill=grid)
+            label_x = cx + (radius + 20) * math.sin(angle)
+            label_y = cy - (radius + 20) * math.cos(angle)
+            self.create_text(label_x, label_y, text=label, fill=text, font=("Segoe UI", 10, "bold"))
 
-        label_offset = 17
-        self.create_text(cx, cy - radius - label_offset, text="N", fill=text, font=("Segoe UI", 11, "bold"))
-        self.create_text(cx + radius + label_offset, cy, text="E", fill=text, font=("Segoe UI", 11, "bold"))
-        self.create_text(cx, cy + radius + label_offset, text="S", fill=text, font=("Segoe UI", 11, "bold"))
-        self.create_text(cx - radius - label_offset, cy, text="W", fill=text, font=("Segoe UI", 11, "bold"))
-        self.create_text(cx, cy + 10, text="ZENITH", fill=muted, font=("Segoe UI", 7))
+        self.create_text(cx, cy, text="ZENITH", fill=muted, font=("Segoe UI", 8))
 
-    def _draw_satellite(
-        self,
-        satellite: SkySatellite,
-        cx: float,
-        cy: float,
-        radius: float,
-    ) -> None:
+    def _draw_satellite(self, satellite: SkySatellite, cx: float, cy: float, radius: float) -> None:
         x, y = project_sky_position(
             satellite.azimuth_deg,
             satellite.elevation_deg,
@@ -132,29 +119,31 @@ class SkyMap(tk.Canvas):
             center_y=cy,
             radius=radius,
         )
-
         selected = satellite.norad_id == self._selected_norad
-        marker_radius = 6 if selected else 4
-        marker_fill = "#fbbf24" if satellite.potentially_visible else "#60a5fa"
-        outline = "#ffffff" if selected else marker_fill
-        width = 2 if selected else 1
-        tag = f"sat:{satellite.norad_id}"
-
-        self.create_oval(
+        fill = "#facc15" if satellite.potentially_visible else "#38bdf8"
+        marker_radius = 7 if selected else 5
+        item = self.create_oval(
             x - marker_radius,
             y - marker_radius,
             x + marker_radius,
             y + marker_radius,
-            fill=marker_fill,
-            outline=outline,
-            width=width,
-            tags=(tag, "satellite"),
+            fill=fill,
+            outline="#ffffff" if selected else fill,
+            width=2 if selected else 1,
+            tags=(f"sat:{satellite.norad_id}", "satellite"),
         )
-        self.tag_bind(tag, "<Button-1>", lambda _event, item=satellite: self._select(item))
-        self.tag_bind(tag, "<Enter>", lambda _event: self.config(cursor="hand2"))
-        self.tag_bind(tag, "<Leave>", lambda _event: self.config(cursor=""))
+        self.tag_bind(item, "<Button-1>", lambda _event, sat=satellite: self._select_satellite(sat))
+        self.create_text(
+            x + 8,
+            y - 8,
+            text=satellite.name,
+            fill="#f8fafc",
+            anchor="sw",
+            font=("Segoe UI", 8),
+            tags=(f"sat:{satellite.norad_id}", "satellite-label"),
+        )
 
-    def _select(self, satellite: SkySatellite) -> None:
+    def _select_satellite(self, satellite: SkySatellite) -> None:
         self._selected_norad = satellite.norad_id
         self.redraw()
         if self._on_select is not None:
