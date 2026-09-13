@@ -56,12 +56,14 @@ class SmoothHudFinderView(HudFinderView):
         self._schedule_animation()
 
     def set_satellites(self, satellites: list[SkySatellite]) -> None:
-        """Swap refreshed orbital data without blanking/repainting an unchanged Live view.
+        """Update orbital data without ever clearing the Live-view canvas.
 
-        A full redraw is still required when the displayed candidate set changes.
-        For the normal periodic refresh, where the same satellites remain selected,
-        keep the existing canvas items in place and simply replace the backing tracks.
-        The next 20 fps animation tick then moves them onto the refreshed prediction.
+        Periodic orbital refreshes first arrive without predicted tracks. During
+        that phase the current rendered feed remains untouched. Once refreshed
+        tracks arrive, backing data is swapped in place. Satellites entering or
+        leaving the fast-mover set are added/removed individually instead of
+        triggering a full canvas redraw, so stars, grid, terrain and cloud stay
+        continuously visible.
         """
         incoming = list(satellites)
         if not self._all_satellites or not self._satellites:
@@ -69,10 +71,15 @@ class SmoothHudFinderView(HudFinderView):
             super().set_satellites(incoming)
             return
 
-        old_ids = tuple(satellite.norad_id for satellite in self._satellites)
         self._all_satellites = incoming
         if self._selected_norad not in {satellite.norad_id for satellite in incoming}:
             self._selected_norad = None
+
+        # The normal refresh pipeline publishes fresh positions before the new
+        # three-minute tracks have been calculated. Do not replace the rendered
+        # feed with that transient, trackless snapshot.
+        if not any(satellite.future_track for satellite in incoming):
+            return
 
         in_view = self._satellites_in_current_view()
         refreshed = select_finder_satellites(
@@ -91,12 +98,47 @@ class SmoothHudFinderView(HudFinderView):
             if selected is not None:
                 refreshed.append(selected)
 
-        new_ids = tuple(satellite.norad_id for satellite in refreshed)
+        old_by_id = {satellite.norad_id: satellite for satellite in self._satellites}
+        new_by_id = {satellite.norad_id: satellite for satellite in refreshed}
+        old_ids = set(old_by_id)
+        new_ids = set(new_by_id)
+
+        # Remove only satellites that have genuinely left the display set.
+        for norad_id in old_ids - new_ids:
+            self.delete(f"live-sat:{norad_id}")
+            self._drawn_satellite_positions.pop(norad_id, None)
+
         self._satellites = refreshed
         self._animation_started = time.monotonic()
 
-        if new_ids != old_ids:
-            self.redraw()
+        # Add newcomers individually at their current projected position. This
+        # avoids the full redraw that caused the visible refresh flash.
+        left, top, right, bottom = self._plot_bounds()
+        plot_width = max(right - left, 1.0)
+        plot_height = max(bottom - top, 1.0)
+        for norad_id in new_ids - old_ids:
+            satellite = new_by_id[norad_id]
+            projection = project_live_view(
+                satellite.azimuth_deg,
+                satellite.elevation_deg,
+                self.facing_deg,
+                self.horizontal_fov_deg,
+                minimum_elevation_deg=self.minimum_elevation_deg,
+                maximum_elevation_deg=self.maximum_elevation_deg,
+            )
+            if not projection.visible:
+                continue
+            x = left + projection.x_fraction * plot_width
+            y = top + projection.y_fraction * plot_height
+            self._draw_satellite(satellite, x, y)
+
+        # Update the small candidate counter in place. Static sky/background
+        # layers are deliberately left alone.
+        mode = "tracked" if self._show_all_tracked else "fast mover"
+        self.itemconfigure(
+            "finder-candidate-count",
+            text=f"{self._visible_candidate_count()} {mode} candidate(s)",
+        )
 
     def redraw(self) -> None:
         self._drawn_satellite_positions = {}
