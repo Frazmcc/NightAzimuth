@@ -6,15 +6,15 @@ Location-based live satellite tracking with directional sky identification and o
 
 ## Current release
 
-**v0.4.0-beta.1 — first beta pre-release**
+**v0.5.0-beta.1 — twilight observing beta**
 
-This release moves NightAzimuth beyond alpha testing and focuses the Live view on real-world naked-eye observing. It adds broader live satellite coverage, smooth fast-mover tracking, full horizon-to-zenith viewing, mouse panning, clearer named celestial references, and retains terrain-aware masking for the selected observing location.
+This beta adds location-aware sunset/twilight timing, live darkness countdowns, offline time-zone resolution, solar-state Live-view backgrounds, and twilight satellite tracking before the stricter dark-sky threshold is reached.
 
-NightAzimuth has progressed through Stage 13. Saved location profiles remain local to the user's PC, the Windows release is validated against a strict output allowlist, and the end-user configuration/operation guide is included with the release build.
+NightAzimuth has progressed through Stage 14. Saved location profiles remain local to the user's PC, the Windows release is validated against a strict output allowlist, and the end-user configuration/operation guide is included with the release build.
 
 Weather/cloud analysis, satellite brightness/magnitude modelling, camera overlay support, aircraft matching, meteor detection, and unidentified-object classification are not implemented yet.
 
-See [`RELEASE_NOTES_v0.4.0-beta.1.md`](RELEASE_NOTES_v0.4.0-beta.1.md) for release details.
+See [`RELEASE_NOTES_v0.5.0-beta.1.md`](RELEASE_NOTES_v0.5.0-beta.1.md) for release details.
 
 ## Initial goal
 
@@ -75,10 +75,15 @@ The GUI provides:
 - Reset view control
 - broad live satellite tracking using CelesTrak VISUAL + ACTIVE catalogues
 - default fast-mover ranking in the current field of view
+- sunlit twilight satellite candidates after sunset before the dark-sky threshold is reached
 - small named satellite markers with apparent angular speed when available
 - optional All tracked diagnostic mode
 - smooth satellite motion using one-second orbital samples interpolated at about 20 fps
 - short 3-minute projected satellite paths sampled every second
+- location-aware sunset, civil twilight, nautical twilight and complete-darkness countdowns
+- current Sun altitude and sky-state display
+- offline local time-zone resolution for the selected observing location
+- Live-view background colour that follows daylight/twilight/dark state
 - real Hipparcos star-field background
 - Vega emphasised as a blue-white visual reference with live azimuth/elevation
 - bright named reference stars labelled automatically, with more labels appearing as you zoom in
@@ -97,7 +102,7 @@ The GUI provides:
 - manual refresh
 - automatic live refresh
 
-Changing the selected location refreshes calculations for that observer position. NightAzimuth suppresses the previous location's stellar and terrain snapshots while replacement data is calculated.
+Changing the selected location refreshes satellite, celestial, terrain, sunset/twilight and time-zone calculations for that observer position. NightAzimuth suppresses the previous location's stellar and terrain snapshots while replacement data is calculated.
 
 ## Saved application data
 
@@ -121,9 +126,13 @@ Terrain tiles generated for user-entered locations are cached under:
 
 A fresh release does not include saved user locations or personal terrain/cache data. Terrain tile requests are derived from the location the user enters, so the terrain provider can infer the geographic area represented by those requested tiles; the saved NightAzimuth profile file and profile name are not uploaded.
 
+Sunset/twilight and time-zone calculations are performed locally from the selected observing location. No paid sunset or timezone API is used.
+
 ## Visibility terminology
 
 `Potential` means the satellite is illuminated by the Sun while the observer's sky is sufficiently dark. It does **not** mean guaranteed naked-eye visibility.
+
+The Live finder can also show sunlit satellites during civil twilight after sunset. These are observing candidates, but they do not receive the stricter `Potential` status until the dark-sky threshold is met.
 
 Cloud, haze, satellite brightness/magnitude, non-terrain local obstructions, moonlight, and camera sensitivity are not yet included in the result.
 
@@ -145,7 +154,7 @@ The star, planet and galaxy layers are positional observing references. A plotte
 
 ## Technology baseline
 
-The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite, stellar, planetary and deep-sky coordinate calculations, Pandas for Hipparcos catalogue loading, HTTPX for orbital/terrain data retrieval, Pillow for Terrarium elevation-tile decoding, and PyInstaller for Windows EXE packaging.
+The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite, stellar, planetary, solar and deep-sky coordinate calculations, `timezonefinder` for offline coordinate-to-time-zone lookup, Pandas for Hipparcos catalogue loading, HTTPX for orbital/terrain data retrieval, Pillow for Terrarium elevation-tile decoding, and PyInstaller for Windows EXE packaging.
 
 ## Credits
 
