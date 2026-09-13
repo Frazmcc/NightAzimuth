@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 from io import BytesIO
 import json
+import math
 from pathlib import Path
 import time
 from xml.etree import ElementTree
@@ -17,6 +18,7 @@ EUMETVIEW_LAYER = "mtg_fd:rgb_geocolour"
 EUMETVIEW_USER_AGENT = "NightAzimuth/0.5 (+https://github.com/Frazmcc/NightAzimuth)"
 CACHE_SECONDS = 15 * 60
 CAPABILITIES_CACHE_SECONDS = 5 * 60
+MAX_INTERVAL_FRAMES = 5000
 
 
 class CloudImageryError(RuntimeError):
@@ -226,12 +228,14 @@ def _parse_time_dimension(value: str) -> tuple[datetime, ...]:
                 end = _parse_iso_time(parts[1])
                 step = _parse_iso_duration(parts[2])
                 if start is not None and end is not None and step is not None and step.total_seconds() > 0:
-                    current = start
-                    maximum = 5000
-                    while current <= end and maximum > 0:
-                        result.add(current)
-                        current += step
-                        maximum -= 1
+                    span_seconds = max(0.0, (end - start).total_seconds())
+                    step_seconds = step.total_seconds()
+                    frame_count = int(math.floor(span_seconds / step_seconds)) + 1
+                    first_index = max(0, frame_count - MAX_INTERVAL_FRAMES)
+                    for index in range(first_index, frame_count):
+                        current = start + step * index
+                        if current <= end:
+                            result.add(current)
             continue
         parsed = _parse_iso_time(token)
         if parsed is not None:
