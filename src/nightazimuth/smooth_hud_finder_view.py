@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import tkinter as tk
 
-from .hud_finder_view import HudFinderView
+from .hud_finder_view import HudFinderView, select_finder_satellites
 from .live_view import project_live_view, signed_angular_difference
 from .sky_map import SkySatellite
 
@@ -56,8 +56,89 @@ class SmoothHudFinderView(HudFinderView):
         self._schedule_animation()
 
     def set_satellites(self, satellites: list[SkySatellite]) -> None:
+        """Update orbital data without ever clearing the Live-view canvas.
+
+        Periodic orbital refreshes first arrive without predicted tracks. During
+        that phase the current rendered feed remains untouched. Once refreshed
+        tracks arrive, backing data is swapped in place. Satellites entering or
+        leaving the fast-mover set are added/removed individually instead of
+        triggering a full canvas redraw, so stars, grid, terrain and cloud stay
+        continuously visible.
+        """
+        incoming = list(satellites)
+        if not self._all_satellites or not self._satellites:
+            self._animation_started = time.monotonic()
+            super().set_satellites(incoming)
+            return
+
+        self._all_satellites = incoming
+        if self._selected_norad not in {satellite.norad_id for satellite in incoming}:
+            self._selected_norad = None
+
+        # The normal refresh pipeline publishes fresh positions before the new
+        # three-minute tracks have been calculated. Do not replace the rendered
+        # feed with that transient, trackless snapshot.
+        if not any(satellite.future_track for satellite in incoming):
+            return
+
+        in_view = self._satellites_in_current_view()
+        refreshed = select_finder_satellites(
+            in_view,
+            selected_norad=None,
+            limit=self.DEFAULT_CANDIDATE_LIMIT,
+            show_all=self._show_all_tracked,
+        )
+        if self._selected_norad is not None and all(
+            satellite.norad_id != self._selected_norad for satellite in refreshed
+        ):
+            selected = next(
+                (satellite for satellite in incoming if satellite.norad_id == self._selected_norad),
+                None,
+            )
+            if selected is not None:
+                refreshed.append(selected)
+
+        old_by_id = {satellite.norad_id: satellite for satellite in self._satellites}
+        new_by_id = {satellite.norad_id: satellite for satellite in refreshed}
+        old_ids = set(old_by_id)
+        new_ids = set(new_by_id)
+
+        # Remove only satellites that have genuinely left the display set.
+        for norad_id in old_ids - new_ids:
+            self.delete(f"live-sat:{norad_id}")
+            self._drawn_satellite_positions.pop(norad_id, None)
+
+        self._satellites = refreshed
         self._animation_started = time.monotonic()
-        super().set_satellites(satellites)
+
+        # Add newcomers individually at their current projected position. This
+        # avoids the full redraw that caused the visible refresh flash.
+        left, top, right, bottom = self._plot_bounds()
+        plot_width = max(right - left, 1.0)
+        plot_height = max(bottom - top, 1.0)
+        for norad_id in new_ids - old_ids:
+            satellite = new_by_id[norad_id]
+            projection = project_live_view(
+                satellite.azimuth_deg,
+                satellite.elevation_deg,
+                self.facing_deg,
+                self.horizontal_fov_deg,
+                minimum_elevation_deg=self.minimum_elevation_deg,
+                maximum_elevation_deg=self.maximum_elevation_deg,
+            )
+            if not projection.visible:
+                continue
+            x = left + projection.x_fraction * plot_width
+            y = top + projection.y_fraction * plot_height
+            self._draw_satellite(satellite, x, y)
+
+        # Update the small candidate counter in place. Static sky/background
+        # layers are deliberately left alone.
+        mode = "tracked" if self._show_all_tracked else "fast mover"
+        self.itemconfigure(
+            "finder-candidate-count",
+            text=f"{self._visible_candidate_count()} {mode} candidate(s)",
+        )
 
     def redraw(self) -> None:
         self._drawn_satellite_positions = {}
