@@ -12,7 +12,7 @@ NightAzimuth 1.0 combines live satellite tracking, practical sky-finder guidance
 
 The application has progressed through approved Stage 18. Saved observing locations and downloaded caches remain local to the user's PC. External providers receive only the requests required for orbital, weather, imagery, map or terrain data; NightAzimuth does not upload the saved profile file or profile name.
 
-Camera overlays, aircraft matching, meteor detection and unidentified-event classification remain future work and are not claimed by this release.
+Camera overlays, meteor detection and unidentified-event classification remain future work and are not claimed by this release. A free aircraft sightline overlay is being developed separately on Stage 19 and is not part of v1.0.0.
 
 See [`RELEASE_NOTES_v1.0.0.md`](RELEASE_NOTES_v1.0.0.md) for release details.
 
@@ -41,6 +41,7 @@ NightAzimuth keeps orbital geometry, solar illumination, astronomical darkness, 
 - [`docs/STAGE_16_IMPLEMENTATION.md`](docs/STAGE_16_IMPLEMENTATION.md) — spatial cloud imagery, observed history and forecast guidance.
 - [`docs/STAGE_17_IMPLEMENTATION.md`](docs/STAGE_17_IMPLEMENTATION.md) — phase geometry and source-labelled satellite brightness estimates.
 - [`docs/STAGE_18_IMPLEMENTATION.md`](docs/STAGE_18_IMPLEMENTATION.md) — responsive maps, forecast-tab layout and animation performance.
+- [`docs/STAGE_19_IMPLEMENTATION.md`](docs/STAGE_19_IMPLEMENTATION.md) — in-development free aircraft sightline overlay, source policy, privacy and accuracy limits.
 - [`docs/TERRAIN_HORIZON_PROTOTYPE.md`](docs/TERRAIN_HORIZON_PROTOTYPE.md) — terrain-horizon architecture, privacy model, cache/import behaviour and current limitations.
 - [`CREDITS.md`](CREDITS.md) — creator and third-party credits.
 
