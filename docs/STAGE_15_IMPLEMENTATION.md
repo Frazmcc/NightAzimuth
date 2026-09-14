@@ -1,6 +1,6 @@
 # Stage 15 Implementation — Weather & Cloud Foundation
 
-Status: **In testing — not yet accepted**
+Status: **Approved and merged**
 
 Stage 15 adds a replaceable point-weather provider, a location-aware weather/cloud panel, and a 2D weather map with optional rain-radar overlay. It deliberately does **not** claim directional cloud knowledge yet; that remains Stage 16.
 
@@ -93,4 +93,4 @@ Stage 15 does not yet produce a `Very good / Good / Fair / Poor` viewing-quality
 
 ## Stage gate
 
-Stage 15 must remain on its feature branch until local testing is complete and the user explicitly accepts the stage.
+Stage 15 passed its automated checks, Windows build and local visual review, and was explicitly accepted before merge.
