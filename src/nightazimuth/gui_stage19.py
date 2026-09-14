@@ -117,7 +117,6 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         else:
             self._cancel_aircraft_refresh()
             self._aircraft_generation += 1
-            self._aircraft_refresh_in_progress = False
             self._aircraft_snapshot = None
             self._selected_aircraft = None
             self.live_view.clear_aircraft()
@@ -177,8 +176,13 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         generation: int,
         snapshot: AircraftSnapshot,
     ) -> None:
+        if generation != self._aircraft_generation:
+            self._aircraft_refresh_in_progress = False
+            if self.show_aircraft_var.get():
+                self._refresh_aircraft()
+            return
         self._aircraft_refresh_in_progress = False
-        if generation != self._aircraft_generation or not self.show_aircraft_var.get():
+        if not self.show_aircraft_var.get():
             return
         profile = self._selected_profile()
         current_key = None if profile is None else (
@@ -188,6 +192,7 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
             profile.altitude_m,
         )
         if current_key != profile_key or profile is None:
+            self._refresh_aircraft()
             return
 
         sightlines = tuple(
@@ -214,8 +219,13 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         self._schedule_aircraft_refresh()
 
     def _aircraft_failed(self, generation: int, reason: str) -> None:
+        if generation != self._aircraft_generation:
+            self._aircraft_refresh_in_progress = False
+            if self.show_aircraft_var.get():
+                self._refresh_aircraft()
+            return
         self._aircraft_refresh_in_progress = False
-        if generation != self._aircraft_generation or not self.show_aircraft_var.get():
+        if not self.show_aircraft_var.get():
             return
         self._aircraft_snapshot = None
         self._selected_aircraft = None
@@ -297,7 +307,6 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         super()._on_location_changed(event)
         if hasattr(self, "show_aircraft_var") and self.show_aircraft_var.get():
             self._aircraft_generation += 1
-            self._aircraft_refresh_in_progress = False
             self._refresh_aircraft()
 
     def open_aircraft_settings(self) -> None:
