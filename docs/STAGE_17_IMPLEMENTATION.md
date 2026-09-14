@@ -1,6 +1,6 @@
 # Stage 17 — Satellite Brightness and Apparent-Magnitude Estimates
 
-Status: **Phase B in development — not ready for user acceptance**
+Status: **Approved and merged — 14 September 2026**
 
 ## Goal
 
