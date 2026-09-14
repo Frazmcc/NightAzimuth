@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
 
-from nightazimuth.gui_stage16_animation import AnimatedStage16NightAzimuthApp
+from nightazimuth.gui_stage16_animation import (
+    AnimatedStage16NightAzimuthApp,
+    next_weather_timeline_index,
+)
 from nightazimuth.weather_map import WeatherMapRenderer
 
 
@@ -32,3 +35,8 @@ def test_radar_frame_selection_uses_nearest_observed_frame(tmp_path) -> None:
     selected = renderer._radar_frame_at(requested)
     assert selected is not None
     assert selected[1] == "/b"
+
+
+def test_weather_animation_loops_after_latest_frame() -> None:
+    assert next_weather_timeline_index(0, 25) == 1
+    assert next_weather_timeline_index(24, 25) == 0
