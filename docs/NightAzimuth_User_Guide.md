@@ -33,7 +33,7 @@ Current features include:
 - upcoming VISUAL-group passes for the next 24 hours
 - automatic terrain-horizon generation for the selected observing location
 - current point weather including cloud layers, fog, wind and precipitation
-- 2D Weather map with an optional recent rain-radar overlay
+- responsive 2D Weather map with observed cloud/rain-radar history that automatically loops over the previous 24 hours
 - local caching of downloaded orbital, astronomical, weather, map, radar and terrain data
 
 ## 2. Installation and first launch
@@ -180,10 +180,14 @@ This is a point forecast for the observing location. It is **not yet directional
 The **Weather map** tab centres a 2D map on the active observing location.
 
 - The white cross marks the selected observing location.
-- **Rain radar** toggles the recent RainViewer precipitation-radar overlay.
+- **Rain radar** toggles the RainViewer precipitation-radar overlay.
+- **Cloud imagery** toggles the EUMETSAT cloud layer.
+- The observed timeline starts automatically, moves from 24 hours ago to the latest available observation, and then loops.
+- There are no play/pause controls; selecting a future **Map time** temporarily replaces observed playback with the chosen forecast frame. Selecting **Now** restarts the observed loop.
 - **Refresh map** immediately rebuilds the currently displayed map.
-- **Cloud imagery (Stage 16)** is visible but disabled until genuine spatial cloud imagery is implemented.
+- The map scales to the available window while preserving its proportions. Resizing the window reuses the loaded image rather than downloading map tiles again.
 - The base map is provided by OpenStreetMap and the rain-radar overlay is provided by RainViewer.
+- Historical radar is shown only when a sufficiently close provider frame exists; missing historical frames are not invented.
 - Attribution is displayed directly on the map.
 
 NightAzimuth requests only the map tiles required for the currently displayed view. It does not bulk-download map regions. Repeated OpenStreetMap tiles are cached locally for at least seven days before refresh, and radar tiles are cached by frame timestamp.
