@@ -71,7 +71,7 @@ jobs:
             throw "Release asset validation expected exactly three files."
           }
 
-      - name: Publish GitHub prerelease
+      - name: Publish GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,7 +84,6 @@ jobs:
           gh release create $tag `
             --title "NightAzimuth $tag" `
             --notes-file $notes `
-            --prerelease `
             .\release\NightAzimuth-$tag-Windows-x64.exe `
             .\release\NightAzimuth-$tag-User-Guide.md `
             .\release\NightAzimuth-$tag-SHA256.txt
