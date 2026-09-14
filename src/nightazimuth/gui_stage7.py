@@ -468,12 +468,25 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
                 f"Elevation {first.elevation_deg:.1f}° → {last.elevation_deg:.1f}°"
             )
 
+        phase_text = (
+            "Unknown"
+            if satellite.phase_angle_deg is None
+            else f"{satellite.phase_angle_deg:.1f}°"
+        )
+        brightness_text = (
+            "Unknown"
+            if satellite.brightness_estimate is None
+            else f"mag {satellite.brightness_estimate.display_range}"
+        )
+
         self.live_detail_var.set(
             f"{satellite.name}\n\n"
             f"NORAD: {satellite.norad_id}\n"
             f"Azimuth: {satellite.azimuth_deg:.2f}°\n"
             f"Elevation: {satellite.elevation_deg:.2f}°\n"
-            f"Range: {satellite.range_km:.0f} km\n\n"
+            f"Range: {satellite.range_km:.0f} km\n"
+            f"Phase angle: {phase_text}\n"
+            f"Brightness: {brightness_text}\n\n"
             f"{projection_text}\n\n"
             f"Sunlit: {'Yes' if satellite.satellite_sunlit else 'No'}\n"
             f"Dark sky: {'Yes' if satellite.sky_dark else 'No'}\n"
