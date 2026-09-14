@@ -36,8 +36,7 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
     def __init__(self) -> None:
         self._weather_animation_job: str | None = None
         self._weather_animation_playing = False
-        self._weather_animation_step_index = len(self.WEATHER_TIMELINE_MINUTES) - 1
-        self._weather_animation_speed = 1.0
+        self._weather_animation_step_index = 0
         self._seven_day_generation = 0
         self._seven_day_rows_by_label: dict[str, tuple[ViewingGuidance, ...]] = {}
         super().__init__()
@@ -49,65 +48,26 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
     def _build_weather_map(self, parent: ttk.Frame) -> None:
         super()._build_weather_map(parent)
 
-        animation = ttk.LabelFrame(
-            parent,
-            text="Observed cloud + rain radar — last 24 hours",
-            padding=(10, 6),
-        )
-        animation.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(8, 0))
-        animation.columnconfigure(3, weight=1)
-
-        self.weather_animation_play_button = ttk.Button(
-            animation,
-            text="▶ Play",
-            width=9,
-            command=self._toggle_weather_animation,
-        )
-        self.weather_animation_play_button.grid(row=0, column=0, padx=(0, 6))
-        ttk.Button(animation, text="◀", width=3, command=lambda: self._step_weather_animation(-1)).grid(row=0, column=1)
-        ttk.Button(animation, text="▶", width=3, command=lambda: self._step_weather_animation(1)).grid(row=0, column=2, padx=(4, 8))
-
-        self.weather_animation_index_var = tk.IntVar(master=self, value=self._weather_animation_step_index)
-        self.weather_animation_scale = tk.Scale(
-            animation,
-            from_=0,
-            to=len(self.WEATHER_TIMELINE_MINUTES) - 1,
-            orient="horizontal",
-            resolution=1,
-            showvalue=False,
-            variable=self.weather_animation_index_var,
-            command=self._on_weather_animation_scrub,
-            length=520,
-        )
-        self.weather_animation_scale.grid(row=0, column=3, sticky="ew")
-
-        ttk.Label(animation, text="Speed:").grid(row=0, column=4, padx=(10, 4))
-        self.weather_animation_speed_var = tk.StringVar(master=self, value="1×")
-        speed = ttk.Combobox(
-            animation,
-            state="readonly",
-            width=4,
-            textvariable=self.weather_animation_speed_var,
-            values=("1×", "2×", "4×"),
-        )
-        speed.grid(row=0, column=5)
-        speed.bind("<<ComboboxSelected>>", self._on_weather_animation_speed_changed)
-
         self.weather_animation_status_var = tk.StringVar(
             master=self,
-            value="NOW — latest observed EUMETSAT cloud + rain radar",
+            value="OBSERVED 24h ago — automatic history loop loading...",
         )
-        ttk.Label(
-            animation,
-            textvariable=self.weather_animation_status_var,
-            font=("Segoe UI", 9, "bold"),
-        ).grid(row=1, column=0, columnspan=6, sticky="w", pady=(6, 0))
-
-        ttk.Label(
-            animation,
-            text="OBSERVED ONLY   -24h        -18h        -12h        -6h        NOW   •   no forecast frames",
-            font=("Consolas", 8),
-        ).grid(row=2, column=0, columnspan=6, sticky="ew", pady=(3, 0))
+        details_candidates = [
+            item
+            for item in parent.grid_slaves(row=1, column=1)
+            if isinstance(item, ttk.LabelFrame)
+        ]
+        if details_candidates:
+            details = details_candidates[0]
+            ttk.Separator(details, orient="horizontal").pack(side="bottom", fill="x", pady=(8, 6))
+            ttk.Label(
+                details,
+                textvariable=self.weather_animation_status_var,
+                wraplength=280,
+                justify="left",
+                font=("Segoe UI", 9, "bold"),
+            ).pack(side="bottom", anchor="sw", fill="x")
+        self.after_idle(self._start_weather_animation)
 
         seven_day = ttk.LabelFrame(parent, text="7-day observing planner", padding=(10, 6))
         seven_day.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
@@ -179,17 +139,16 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
             justify="left",
         ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(5, 0))
 
-    def _toggle_weather_animation(self) -> None:
-        if self._weather_animation_playing:
-            self._stop_weather_animation()
+    def _start_weather_animation(self) -> None:
+        """Start or resume automatic observed-history playback."""
+
+        if self._selected_forecast_hours() > 0:
             return
         self._weather_animation_playing = True
-        self.weather_animation_play_button.configure(text="Ⅱ Pause")
-        self._schedule_weather_animation_tick(immediate=True)
+        self._schedule_weather_animation_tick()
 
-    def _stop_weather_animation(self) -> None:
+    def _suspend_weather_animation(self) -> None:
         self._weather_animation_playing = False
-        self.weather_animation_play_button.configure(text="▶ Play")
         if self._weather_animation_job is not None:
             try:
                 self.after_cancel(self._weather_animation_job)
@@ -197,54 +156,29 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
                 pass
             self._weather_animation_job = None
 
-    def _schedule_weather_animation_tick(self, *, immediate: bool = False) -> None:
-        if not self._weather_animation_playing:
+    def _schedule_weather_animation_tick(self) -> None:
+        if not self._weather_animation_playing or self._weather_animation_job is not None:
             return
-        if self._weather_animation_job is not None:
-            try:
-                self.after_cancel(self._weather_animation_job)
-            except tk.TclError:
-                pass
-        delay = 1 if immediate else max(250, int(self.ANIMATION_INTERVAL_MS / self._weather_animation_speed))
-        self._weather_animation_job = self.after(delay, self._weather_animation_tick)
+        self._weather_animation_job = self.after(
+            self.ANIMATION_INTERVAL_MS,
+            self._weather_animation_tick,
+        )
 
     def _weather_animation_tick(self) -> None:
         self._weather_animation_job = None
         if not self._weather_animation_playing:
             return
-        next_index = (self._weather_animation_step_index + 1) % len(self.WEATHER_TIMELINE_MINUTES)
+        next_index = next_weather_timeline_index(
+            self._weather_animation_step_index,
+            len(self.WEATHER_TIMELINE_MINUTES),
+        )
+        # The following tick is scheduled only after this frame is applied (or
+        # fails), preventing slow downloads from creating a render backlog.
         self._set_weather_animation_index(next_index, refresh=True)
-        self._schedule_weather_animation_tick()
-
-    def _step_weather_animation(self, direction: int) -> None:
-        self._stop_weather_animation()
-        index = (self._weather_animation_step_index + direction) % len(self.WEATHER_TIMELINE_MINUTES)
-        self._set_weather_animation_index(index, refresh=True)
-
-    def _on_weather_animation_scrub(self, value: str) -> None:
-        try:
-            index = int(round(float(value)))
-        except ValueError:
-            return
-        if index == self._weather_animation_step_index:
-            return
-        self._stop_weather_animation()
-        self._set_weather_animation_index(index, refresh=True)
-
-    def _on_weather_animation_speed_changed(self, _event: object | None = None) -> None:
-        raw = self.weather_animation_speed_var.get().replace("×", "")
-        try:
-            self._weather_animation_speed = max(1.0, float(raw))
-        except ValueError:
-            self._weather_animation_speed = 1.0
-        if self._weather_animation_playing:
-            self._schedule_weather_animation_tick()
 
     def _set_weather_animation_index(self, index: int, *, refresh: bool) -> None:
         index = max(0, min(len(self.WEATHER_TIMELINE_MINUTES) - 1, int(index)))
         self._weather_animation_step_index = index
-        if hasattr(self, "weather_animation_index_var"):
-            self.weather_animation_index_var.set(index)
         if hasattr(self, "map_time_var"):
             self.map_time_var.set("Now")
         if hasattr(self, "cloud_frame_combo"):
@@ -272,14 +206,17 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
         future = self._selected_forecast_hours() > 0
         if hasattr(self, "cloud_frame_combo"):
             self.cloud_frame_combo.configure(state="disabled" if future else "readonly")
-        self._stop_weather_animation()
+        self._suspend_weather_animation()
         if future:
             Stage16NightAzimuthApp._refresh_weather_map(self)
         else:
+            self._weather_animation_step_index = 0
+            self._set_animation_status(self._animation_minutes())
             self._refresh_weather_map()
+            self._start_weather_animation()
 
     def _refresh_weather_map(self) -> None:
-        if not hasattr(self, "weather_animation_index_var"):
+        if not hasattr(self, "weather_animation_status_var"):
             super()._refresh_weather_map()
             return
         if not hasattr(self, "weather_map_status_var"):
@@ -359,6 +296,22 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
             self.after(0, self._apply_stage16_weather_map, profile_key, observer, generation, snapshot)
         except Exception:  # noqa: BLE001
             self.after(0, self._weather_map_failed, generation)
+
+    def _apply_stage16_weather_map(
+        self,
+        profile_key: tuple[object, ...],
+        observer: object,
+        generation: int,
+        snapshot: object,
+    ) -> None:
+        super()._apply_stage16_weather_map(profile_key, observer, generation, snapshot)
+        if generation == self._weather_map_generation and self._weather_animation_playing:
+            self._schedule_weather_animation_tick()
+
+    def _weather_map_failed(self, generation: int) -> None:
+        super()._weather_map_failed(generation)
+        if generation == self._weather_map_generation and self._weather_animation_playing:
+            self._schedule_weather_animation_tick()
 
     def _apply_weather(
         self,
@@ -510,3 +463,10 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def next_weather_timeline_index(current_index: int, frame_count: int) -> int:
+    """Advance one observed frame and loop safely at the end."""
+
+    count = max(1, int(frame_count))
+    return (int(current_index) + 1) % count
