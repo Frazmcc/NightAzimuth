@@ -1,6 +1,6 @@
 # Stage 16 Implementation — Directional Cloud Overlay and Observing Planner
 
-Status: **In testing — not yet accepted as complete**
+Status: **Approved and merged**
 
 Stage 16 extends the Stage 15 weather foundation with spatial cloud imagery, an indicative cloud projection in the Live finder, and transparent 12–24 hour observing guidance.
 
@@ -48,15 +48,18 @@ The user interface displays a two-hour sampling across up to the next 24 hours w
 
 The rating is intentionally explainable rather than opaque. It is currently a planning aid based on astronomy and point weather; it is not a guarantee of visual conditions and does not yet claim exact future cloud-edge positions on the 2D map.
 
-## Still outstanding before Stage 16 completion
+## Completed Stage 16 scope
 
-- explicitly select the newest EUMETView cloud frame and display its observation timestamp and age
-- automatic near-real-time cloud refresh with stale-frame warning
-- recent cloud-frame timeline to show movement
-- spatial forecast cloud/precipitation frames on the 2D map for future hours
-- free/open ECMWF forecast integration where practical, with attribution and no-charge access only
-- add useful satellite-pass opportunity information into hourly guidance
-- keep future imagery clearly labelled as forecast rather than future radar/satellite observation
+The accepted implementation:
+
+- selects recent EUMETView cloud frames and displays observation time, age and staleness
+- refreshes cloud imagery in the background and retains recent frames for movement context
+- keeps observed imagery and provider forecast samples clearly distinguished
+- provides forecast samples out to roughly 24 hours using MET Norway data
+- shows hourly observing guidance while keeping darkness, cloud, precipitation and confidence explainable
+- adds cloud opacity, compass-direction cues and the Live-view field-of-view wedge on the Weather map
+
+Forecast guidance remains a point-weather planning aid. It is not presented as future radar or a precise prediction of individual cloud edges.
 
 ## Privacy and release behaviour
 
@@ -66,4 +69,4 @@ No real/private coordinates are stored in source code, tests, documentation, or 
 
 ## Stage gate
 
-PR #24 remains draft and unmerged until the outstanding Stage 16 work is complete, CI succeeds, local testing is complete, and the user explicitly accepts the completed stage.
+Stage 16 passed its automated checks, Windows build and local visual review, and was explicitly accepted before merge.
