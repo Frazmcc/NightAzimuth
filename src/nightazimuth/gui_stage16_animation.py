@@ -8,7 +8,7 @@ from tkinter import ttk
 from .gui_stage16 import Stage16NightAzimuthApp
 from .observing_planner import ObservingPlanner, ViewingGuidance
 from .weather import WeatherSnapshot
-from .weather_map_stage16 import Stage16WeatherMapRenderer
+from .weather_map_stage16 import Stage16WeatherMapRenderer, Stage16WeatherMapSnapshot
 
 
 class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
@@ -302,7 +302,7 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
         profile_key: tuple[object, ...],
         observer: object,
         generation: int,
-        snapshot: object,
+        snapshot: Stage16WeatherMapSnapshot,
     ) -> None:
         super()._apply_stage16_weather_map(profile_key, observer, generation, snapshot)
         if generation == self._weather_map_generation and self._weather_animation_playing:
