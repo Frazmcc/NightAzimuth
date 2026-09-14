@@ -89,3 +89,43 @@ def estimate_apparent_magnitude(
         source=str(source),
         confidence=str(confidence),
     )
+
+
+_ONEWEB_PHASE_INTERCEPT = 6.531
+_ONEWEB_PHASE_SLOPE = 0.00755
+_ONEWEB_UNCERTAINTY_MAG = 0.8
+
+
+def estimate_supported_satellite(
+    name: str,
+    *,
+    range_km: float,
+    phase_angle_deg: float,
+) -> BrightnessEstimate | None:
+    """Return a source-labelled empirical estimate for a supported design.
+
+    OneWeb's published linear phase function predicts magnitude normalized to
+    1,000 km directly. It must not be passed through the Lambertian model.
+    Generic or ambiguous names remain unsupported instead of receiving a
+    guessed brightness.
+    """
+
+    normalized_name = str(name).strip().upper()
+    if not normalized_name.startswith("ONEWEB-"):
+        return None
+
+    distance = float(range_km)
+    if not math.isfinite(distance) or distance <= 0.0:
+        raise ValueError("Satellite range must be a positive finite value")
+    phase = max(0.0, min(180.0, float(phase_angle_deg)))
+    standard_magnitude = _ONEWEB_PHASE_INTERCEPT + _ONEWEB_PHASE_SLOPE * phase
+    magnitude = standard_magnitude + 5.0 * math.log10(distance / 1000.0)
+    return BrightnessEstimate(
+        apparent_magnitude=magnitude,
+        brighter_bound=magnitude - _ONEWEB_UNCERTAINTY_MAG,
+        fainter_bound=magnitude + _ONEWEB_UNCERTAINTY_MAG,
+        phase_angle_deg=phase,
+        range_km=distance,
+        source="Mallama 2022 OneWeb empirical phase function",
+        confidence="Family model; wide uncertainty",
+    )
