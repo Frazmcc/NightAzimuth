@@ -55,6 +55,26 @@ def test_parser_uses_labelled_baro_fallback_and_rejects_old_or_ground_positions(
     assert rows[0].altitude_source == "barometric"
 
 
+def test_parser_preserves_zero_geometric_vertical_rate() -> None:
+    rows = parse_readsb_aircraft(
+        {
+            "ac": [
+                {
+                    "hex": "level1",
+                    "lat": 1,
+                    "lon": 2,
+                    "alt_geom": 8_000,
+                    "geom_rate": 0,
+                    "baro_rate": 900,
+                    "seen_pos": 1,
+                }
+            ]
+        }
+    )
+
+    assert rows[0].vertical_rate_fpm == 0
+
+
 def test_same_latitude_longitude_above_observer_is_overhead() -> None:
     aircraft = _aircraft(latitude=0, longitude=0, altitude_m=10_000)
     line = aircraft_sightline(
