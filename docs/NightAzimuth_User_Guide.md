@@ -55,6 +55,16 @@ NightAzimuth uses internet data sources for current orbital data, point weather,
 
 For normal use, configure NightAzimuth through the **Settings** window. You do not need to manually edit a configuration file to add a location.
 
+### Appearance
+
+Use the **Appearance** selector in Settings:
+
+- **System** follows the current Windows application theme whenever NightAzimuth starts.
+- **Light** always uses the normal light interface.
+- **Dark** uses a dark interface across the main window, Settings, tabs, controls, tables and scrolling panels.
+
+The change is applied immediately and remembered for the next launch. It does not alter the astronomical daylight/twilight background inside the Live finder.
+
 ### Add a location
 
 1. Select **Settings** in the top-right of the main window.
@@ -230,6 +240,7 @@ Fast-mover ranking is also separate from brightness. A satellite can move quickl
 | Purpose | Default Windows location |
 |---|---|
 | Saved locations | `%APPDATA%\NightAzimuth\locations.json` |
+| Appearance preference | `%APPDATA%\NightAzimuth\preferences.json` |
 | Orbital / astronomical cache | `%APPDATA%\NightAzimuth\cache\` |
 | Point-weather cache | `%APPDATA%\NightAzimuth\cache\weather\` |
 | 2D map / rain-radar cache | `%APPDATA%\NightAzimuth\cache\weather_map\` |
