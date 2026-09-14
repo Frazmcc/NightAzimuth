@@ -1,6 +1,6 @@
 # Stage 17 — Satellite Brightness and Apparent-Magnitude Estimates
 
-Status: **Phase A in development — not ready for user acceptance**
+Status: **Phase B in development — not ready for user acceptance**
 
 ## Goal
 
@@ -36,7 +36,13 @@ The first implementation slice adds a tested, provider-independent calculation c
 - source and confidence fields carried with every estimate
 - validation for invalid vectors, ranges and uncertainty
 
-The core does not yet place magnitude values in the GUI. It exists separately so empirical catalogues and spacecraft-specific models can be added without coupling them to Tkinter.
+The calculation core remains separate so empirical catalogues and spacecraft-specific models can be added without coupling them to Tkinter.
+
+## Phase B integration
+
+The live calculation now derives the Sun–satellite–observer phase angle in a common geocentric frame. The selected-satellite panel displays that angle and carries an optional typed brightness estimate. Until a supported calibration is attached, it explicitly displays **Brightness: Unknown**.
+
+This is deliberate. The published OneWeb value of 7.18 is a mean magnitude normalized to 1,000 km, not a full-phase magnitude; applying the generic Lambert correction to it as though it were full-phase would mislabel the model. OneWeb will use its published empirical phase function in the next slice.
 
 ## Formula
 
