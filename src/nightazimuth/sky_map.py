@@ -5,6 +5,7 @@ import math
 import tkinter as tk
 from typing import Callable
 
+from .brightness import BrightnessEstimate
 from .track_prediction import TrackPoint
 
 
@@ -19,6 +20,8 @@ class SkySatellite:
     sky_dark: bool
     potentially_visible: bool
     twilight_candidate: bool = False
+    phase_angle_deg: float | None = None
+    brightness_estimate: BrightnessEstimate | None = None
     future_track: tuple[TrackPoint, ...] = ()
 
 
