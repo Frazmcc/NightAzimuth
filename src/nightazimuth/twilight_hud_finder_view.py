@@ -66,6 +66,7 @@ class TwilightSmoothHudFinderView(SmoothHudFinderView):
         if background != self._last_sky_background:
             self.configure(background=background)
             self._last_sky_background = background
+            self.refresh_constellation_style()
 
     def _animation_tick(self) -> None:
         self._apply_observing_background()

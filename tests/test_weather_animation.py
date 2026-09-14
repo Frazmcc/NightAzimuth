@@ -4,13 +4,13 @@ from nightazimuth.gui_stage16_animation import AnimatedStage16NightAzimuthApp
 from nightazimuth.weather_map import WeatherMapRenderer
 
 
-def test_weather_animation_spans_last_hour_to_next_six_hours() -> None:
+def test_weather_animation_spans_last_24_hours_to_now() -> None:
     offsets = AnimatedStage16NightAzimuthApp.WEATHER_TIMELINE_MINUTES
-    assert offsets[0] == -60
-    assert offsets[6] == 0
-    assert offsets[-1] == 360
-    assert offsets[:7] == (-60, -50, -40, -30, -20, -10, 0)
-    assert offsets[7:] == (60, 120, 180, 240, 300, 360)
+
+    assert offsets == tuple(range(-24 * 60, 1, 60))
+    assert offsets[0] == -1440
+    assert offsets[-1] == 0
+    assert len(offsets) == 25
 
 
 def test_animation_map_choices_include_each_next_six_hours() -> None:

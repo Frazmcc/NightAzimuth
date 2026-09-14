@@ -55,6 +55,16 @@ NightAzimuth uses internet data sources for current orbital data, point weather,
 
 For normal use, configure NightAzimuth through the **Settings** window. You do not need to manually edit a configuration file to add a location.
 
+### Appearance
+
+Use the **Appearance** selector in Settings:
+
+- **System** follows the current Windows application theme whenever NightAzimuth starts.
+- **Light** always uses the normal light interface.
+- **Dark** uses a dark interface across the main window, Settings, tabs, controls, tables and scrolling panels.
+
+The change is applied immediately and remembered for the next launch. It does not alter the astronomical daylight/twilight background inside the Live finder.
+
 ### Add a location
 
 1. Select **Settings** in the top-right of the main window.
@@ -127,8 +137,9 @@ The **Live** view is the main observing screen. It is designed to behave more li
 - **Reset view:** returns to the configured facing direction and the normal full 0–90° elevation range.
 - **Stars:** toggles the star layer.
 - **Constellations:** toggles constellation guide lines.
+- **Constellation contrast:** `Auto` adapts line colour and thickness to darkness, twilight, daylight and the cloud overlay. Use `Subtle` for a quieter reference layer or `Strong` when you need maximum visibility.
 - **All tracked:** exposes the broader potentially-visible satellite set for identification. Leave this off for the cleanest observing view.
-- **Cloud overlay (Stage 16):** shown disabled during Stage 15. NightAzimuth does not yet pretend that point cloud percentages describe a specific direction in the sky.
+- **Cloud overlay:** projects the selected spatial cloud frame into the Live view as an indicative directional layer. When it is enabled, `Auto` raises constellation contrast so the guide lines remain readable.
 
 ### What is shown in Live view
 
@@ -229,6 +240,7 @@ Fast-mover ranking is also separate from brightness. A satellite can move quickl
 | Purpose | Default Windows location |
 |---|---|
 | Saved locations | `%APPDATA%\NightAzimuth\locations.json` |
+| Appearance preference | `%APPDATA%\NightAzimuth\preferences.json` |
 | Orbital / astronomical cache | `%APPDATA%\NightAzimuth\cache\` |
 | Point-weather cache | `%APPDATA%\NightAzimuth\cache\weather\` |
 | 2D map / rain-radar cache | `%APPDATA%\NightAzimuth\cache\weather_map\` |

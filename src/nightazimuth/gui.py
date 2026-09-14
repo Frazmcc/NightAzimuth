@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from . import COPYRIGHT, __version__
+from .appearance import APPEARANCE_MODES, AppearancePreferenceStore, appearance_uses_dark_mode
 from .celestrak import CelestrakClient, CelestrakError
 from .config import ObserverConfig
 from .location_profiles import LocationProfile, LocationProfileStore
@@ -13,6 +14,21 @@ from .passes import PassPredictor
 from .sky_map import SkyMap, SkySatellite
 from .tracker import SatelliteTracker
 from .visibility import VisibilityEngine
+
+
+def configure_supported_options(widget: tk.Misc, **options: object) -> None:
+    """Configure only options exposed by this exact Tk or ttk widget."""
+
+    supported = set(widget.keys())
+    applicable = {name: value for name, value in options.items() if name in supported}
+    if not applicable:
+        return
+    try:
+        widget.configure(**applicable)
+    except tk.TclError:
+        # A platform theme may advertise but reject a colour option. Appearance
+        # changes must never prevent the application from starting.
+        return
 
 
 class NightAzimuthApp(tk.Tk):
@@ -23,6 +39,11 @@ class NightAzimuthApp(tk.Tk):
         self.minsize(1000, 650)
 
         self.store = LocationProfileStore()
+        self.appearance_store = AppearancePreferenceStore(self.store.path.parent / "preferences.json")
+        self.appearance_mode = self.appearance_store.load()
+        self._default_ttk_theme = ttk.Style(self).theme_use()
+        self._apply_appearance_theme()
+
         self.profiles, self.selected_name = self.store.load()
         self._refresh_in_progress = False
         self._sky_satellites: list[SkySatellite] = []
@@ -30,6 +51,7 @@ class NightAzimuthApp(tk.Tk):
         self._auto_refresh_ms = 30_000
 
         self._build_ui()
+        self.apply_appearance(self)
         self._refresh_location_selector()
         if self._selected_profile() is not None:
             self.after(250, self.refresh_data)
@@ -37,6 +59,117 @@ class NightAzimuthApp(tk.Tk):
     @property
     def cache_directory(self) -> Path:
         return self.store.path.parent / "cache"
+
+    def set_appearance_mode(self, mode: str) -> None:
+        """Persist and immediately apply the selected application appearance."""
+
+        self.appearance_mode = self.appearance_store.save(mode)
+        self._apply_appearance_theme()
+        self.apply_appearance(self)
+
+    def _apply_appearance_theme(self) -> None:
+        dark = appearance_uses_dark_mode(self.appearance_mode)
+        style = ttk.Style(self)
+        if dark:
+            if style.theme_use() != "clam":
+                style.theme_use("clam")
+            background = "#111827"
+            surface = "#1f2937"
+            field = "#0f172a"
+            foreground = "#e5e7eb"
+            selected = "#2563eb"
+            style.configure(".", background=background, foreground=foreground)
+            style.configure("TFrame", background=background)
+            style.configure("TLabel", background=background, foreground=foreground)
+            style.configure("TLabelframe", background=background, foreground=foreground)
+            style.configure("TLabelframe.Label", background=background, foreground=foreground)
+            style.configure("TButton", background=surface, foreground=foreground, bordercolor="#4b5563")
+            style.map("TButton", background=[("active", "#374151"), ("pressed", "#4b5563")])
+            style.configure("TCheckbutton", background=background, foreground=foreground)
+            style.map("TCheckbutton", background=[("active", background)])
+            style.configure("TEntry", fieldbackground=field, foreground=foreground, insertcolor=foreground)
+            style.configure(
+                "TCombobox",
+                fieldbackground=field,
+                background=surface,
+                foreground=foreground,
+                arrowcolor=foreground,
+            )
+            style.map(
+                "TCombobox",
+                fieldbackground=[("readonly", field)],
+                foreground=[("readonly", foreground)],
+                selectbackground=[("readonly", field)],
+                selectforeground=[("readonly", foreground)],
+            )
+            style.configure("TNotebook", background=background, borderwidth=0)
+            style.configure("TNotebook.Tab", background=surface, foreground=foreground, padding=(8, 4))
+            style.map(
+                "TNotebook.Tab",
+                background=[("selected", "#374151"), ("active", "#2b3647")],
+            )
+            style.configure(
+                "Treeview",
+                background=field,
+                fieldbackground=field,
+                foreground=foreground,
+                bordercolor="#374151",
+            )
+            style.map(
+                "Treeview",
+                background=[("selected", selected)],
+                foreground=[("selected", "#ffffff")],
+            )
+            style.configure("Treeview.Heading", background=surface, foreground=foreground)
+            style.map("Treeview.Heading", background=[("active", "#374151")])
+            style.configure("TScrollbar", background=surface, troughcolor=field, arrowcolor=foreground)
+            style.configure("TScale", background=background, troughcolor=field)
+            self.option_add("*TCombobox*Listbox.background", field)
+            self.option_add("*TCombobox*Listbox.foreground", foreground)
+            self.option_add("*TCombobox*Listbox.selectBackground", selected)
+            self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+        else:
+            if style.theme_use() != self._default_ttk_theme:
+                style.theme_use(self._default_ttk_theme)
+            background = "#f0f0f0"
+            self.option_add("*TCombobox*Listbox.background", "#ffffff")
+            self.option_add("*TCombobox*Listbox.foreground", "#000000")
+            self.option_add("*TCombobox*Listbox.selectBackground", "#0078d7")
+            self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+        self.configure(background=background)
+
+    def apply_appearance(self, widget: tk.Misc) -> None:
+        """Apply colours to classic Tk widgets not controlled by ttk styles."""
+
+        dark = appearance_uses_dark_mode(self.appearance_mode)
+        background = "#111827" if dark else "#f0f0f0"
+        field = "#0f172a" if dark else "#ffffff"
+        foreground = "#e5e7eb" if dark else "#000000"
+        selected = "#2563eb" if dark else "#0078d7"
+
+        if isinstance(widget, (tk.Tk, tk.Toplevel)):
+            configure_supported_options(widget, background=background)
+        elif isinstance(widget, tk.Listbox):
+            configure_supported_options(
+                widget,
+                background=field,
+                foreground=foreground,
+                selectbackground=selected,
+                selectforeground="#ffffff",
+            )
+        elif isinstance(widget, tk.Scale):
+            configure_supported_options(
+                widget,
+                background=background,
+                foreground=foreground,
+                troughcolor=field,
+                highlightbackground=background,
+            )
+        elif isinstance(widget, tk.Canvas) and widget is getattr(self, "_live_scroll_canvas", None):
+            configure_supported_options(widget, background=background)
+
+        for child in widget.winfo_children():
+            self.apply_appearance(child)
 
     def _build_ui(self) -> None:
         header = ttk.Frame(self, padding=12)
@@ -367,9 +500,11 @@ class SettingsWindow(tk.Toplevel):
         self.latitude_var = tk.StringVar()
         self.longitude_var = tk.StringVar()
         self.altitude_var = tk.StringVar(value="0")
+        self.appearance_var = tk.StringVar(value=app.appearance_mode)
 
         self._build_ui()
         self._refresh_list()
+        self.app.apply_appearance(self)
 
     def _build_ui(self) -> None:
         outer = ttk.Frame(self, padding=16)
@@ -405,7 +540,29 @@ class SettingsWindow(tk.Toplevel):
         ttk.Button(form, text="Use this location", command=self._use_profile).grid(
             row=6, column=0, columnspan=2, sticky="ew", pady=4
         )
+
+        ttk.Separator(form, orient="horizontal").grid(
+            row=7, column=0, columnspan=2, sticky="ew", pady=(14, 8)
+        )
+        ttk.Label(form, text="Appearance").grid(row=8, column=0, sticky="w", pady=6)
+        appearance = ttk.Combobox(
+            form,
+            textvariable=self.appearance_var,
+            values=APPEARANCE_MODES,
+            state="readonly",
+            width=12,
+        )
+        appearance.grid(row=8, column=1, sticky="w", pady=6)
+        appearance.bind("<<ComboboxSelected>>", self._on_appearance_changed)
+        ttk.Label(
+            form,
+            text="System follows the Windows app theme when NightAzimuth starts.",
+            wraplength=330,
+        ).grid(row=9, column=0, columnspan=2, sticky="w", pady=(0, 4))
         form.columnconfigure(1, weight=1)
+
+    def _on_appearance_changed(self, _event: object | None = None) -> None:
+        self.app.set_appearance_mode(self.appearance_var.get())
 
     def _refresh_list(self) -> None:
         self.location_list.delete(0, tk.END)
