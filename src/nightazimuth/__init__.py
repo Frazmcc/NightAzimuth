@@ -2,6 +2,6 @@
 
 __all__ = ["COPYRIGHT", "CREATOR", "__version__"]
 
-__version__ = "0.5.0-beta.1"
+__version__ = "1.0.0"
 CREATOR = "Logic Lurker"
 COPYRIGHT = "Created by Logic Lurker © 2026"
