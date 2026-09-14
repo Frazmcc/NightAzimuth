@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import math
 from typing import Protocol
 from urllib.parse import urlparse
 
 import httpx
 
-from .aircraft import AircraftDataError, AircraftSnapshot, parse_readsb_aircraft
+from .aircraft import AircraftDataError, AircraftPosition, AircraftSnapshot, parse_readsb_aircraft
 
 
 ADSB_LOL_API_ROOT = "https://api.adsb.lol"
 ADSB_LOL_ATTRIBUTION = "Aircraft data: ADSB.lol — ODbL 1.0"
 DEFAULT_LOCAL_READSB_URL = "http://127.0.0.1:8080/data/aircraft.json"
 USER_AGENT = "NightAzimuth/1.0 (free aircraft sightline overlay)"
+_EARTH_RADIUS_NM = 3440.065
 
 
 class AircraftProvider(Protocol):
@@ -30,8 +32,14 @@ class AdsbLolAircraftProvider:
         latitude, longitude, radius = _validated_query(latitude, longitude, radius_nm)
         url = f"{ADSB_LOL_API_ROOT}/v2/point/{latitude:.6f}/{longitude:.6f}/{radius:.1f}"
         payload = self._get_json(url)
+        aircraft = _within_radius(
+            parse_readsb_aircraft(payload),
+            latitude=latitude,
+            longitude=longitude,
+            radius_nm=radius,
+        )
         return AircraftSnapshot(
-            aircraft=parse_readsb_aircraft(payload),
+            aircraft=aircraft,
             fetched_at_utc=datetime.now(timezone.utc),
             source_name="ADSB.lol",
             attribution=ADSB_LOL_ATTRIBUTION,
@@ -69,7 +77,7 @@ class LocalReadsbAircraftProvider:
         self.timeout_seconds = timeout_seconds
 
     def load(self, latitude: float, longitude: float, radius_nm: float) -> AircraftSnapshot:
-        _validated_query(latitude, longitude, radius_nm)
+        latitude, longitude, radius = _validated_query(latitude, longitude, radius_nm)
         try:
             if self._client is not None:
                 response = self._client.get(self.url, headers={"User-Agent": USER_AGENT})
@@ -82,8 +90,14 @@ class LocalReadsbAircraftProvider:
             raise AircraftDataError("Local aircraft receiver refresh failed.") from exc
         if not isinstance(payload, dict):
             raise AircraftDataError("Local aircraft receiver returned an unexpected response.")
+        aircraft = _within_radius(
+            parse_readsb_aircraft(payload),
+            latitude=latitude,
+            longitude=longitude,
+            radius_nm=radius,
+        )
         return AircraftSnapshot(
-            aircraft=parse_readsb_aircraft(payload),
+            aircraft=aircraft,
             fetched_at_utc=datetime.now(timezone.utc),
             source_name="Local readsb/dump1090",
             attribution="Aircraft data: local receiver",
@@ -112,3 +126,30 @@ def _validated_query(latitude: float, longitude: float, radius_nm: float) -> tup
     if not 1.0 <= radius <= 250.0:
         raise ValueError("Aircraft search radius must be between 1 and 250 nautical miles.")
     return lat, lon, radius
+
+
+def _within_radius(
+    aircraft: tuple[AircraftPosition, ...],
+    *,
+    latitude: float,
+    longitude: float,
+    radius_nm: float,
+) -> tuple[AircraftPosition, ...]:
+    return tuple(
+        item
+        for item in aircraft
+        if _great_circle_distance_nm(latitude, longitude, item.latitude, item.longitude) <= radius_nm
+    )
+
+
+def _great_circle_distance_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    haversine = (
+        math.sin(delta_phi / 2.0) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
+    )
+    central_angle = 2.0 * math.atan2(math.sqrt(haversine), math.sqrt(max(0.0, 1.0 - haversine)))
+    return _EARTH_RADIUS_NM * central_angle
