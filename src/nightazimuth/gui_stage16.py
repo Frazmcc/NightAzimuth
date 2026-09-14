@@ -75,6 +75,23 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
                 command=self._on_cloud_opacity_changed,
             ).pack(side="left")
 
+            ttk.Separator(controls, orient="vertical").pack(side="left", fill="y", padx=10)
+            ttk.Label(controls, text="Constellation contrast:").pack(side="left", padx=(0, 4))
+            self.constellation_contrast_var = tk.StringVar(master=self, value="Auto")
+            constellation_contrast = ttk.Combobox(
+                controls,
+                textvariable=self.constellation_contrast_var,
+                values=("Auto", "Subtle", "Strong"),
+                width=8,
+                state="readonly",
+            )
+            constellation_contrast.pack(side="left")
+            constellation_contrast.bind(
+                "<<ComboboxSelected>>",
+                self._on_constellation_contrast_changed,
+            )
+            self.live_view.set_constellation_contrast("Auto")
+
     def _build_weather_map(self, parent: ttk.Frame) -> None:
         super()._build_weather_map(parent)
         self.show_cloud_map_var = tk.BooleanVar(master=self, value=True)
@@ -166,6 +183,10 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
         super()._apply_live_view_direction(show_error=show_error)
         if hasattr(self, "weather_map_status_var"):
             self._refresh_weather_map()
+
+    def _on_constellation_contrast_changed(self, _event: object | None = None) -> None:
+        if hasattr(self, "live_view") and hasattr(self.live_view, "set_constellation_contrast"):
+            self.live_view.set_constellation_contrast(self.constellation_contrast_var.get())
 
     def _on_cloud_overlay_changed(self) -> None:
         if hasattr(self, "live_view") and isinstance(self.live_view, DirectionalCloudHudFinderView):
