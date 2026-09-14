@@ -24,6 +24,7 @@ NightAzimuth currently uses:
 - RainViewer public Weather Maps API for recent precipitation-radar tiles
 - EUMETSAT EUMETView Meteosat GeoColour imagery for Stage 16 spatial cloud visualisation
 - Anthony Mallama's published OneWeb photometry and empirical phase function for source-labelled OneWeb brightness estimates
+- ADSB.lol live aircraft data for the optional Stage 19 aircraft layer (ODbL 1.0)
 
 Weather forecast data is provided by the Norwegian Meteorological Institute (MET Norway) and remains subject to its provider terms and attribution requirements.
 
@@ -34,5 +35,7 @@ Rain radar data is provided through RainViewer and is subject to RainViewer's pu
 Stage 16 cloud imagery is provided through EUMETSAT EUMETView. The GeoColour product combines EUMETSAT Meteosat imagery with NASA Black Marble background information for its night-time presentation; both EUMETSAT and NASA are credited as requested by the product description.
 
 The OneWeb apparent-magnitude model is based on Anthony Mallama, *OneWeb Satellite Brightness — Characterized From 80,000 Visible Light Magnitudes* (arXiv:2203.05513). NightAzimuth widens the published scatter when presenting its family-level estimate and does not claim measured photometry for a predicted pass.
+
+When the optional internet aircraft layer is enabled, nearby aircraft data is provided by ADSB.lol and licensed under the Open Data Commons Open Database License (ODbL) 1.0. NightAzimuth displays the attribution in the Live finder and does not persist an aircraft-position database. A user-configured local readsb/dump1090 receiver is also supported.
 
 Third-party components and data remain subject to their own licences, terms, and attribution requirements.
