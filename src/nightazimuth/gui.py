@@ -16,6 +16,21 @@ from .tracker import SatelliteTracker
 from .visibility import VisibilityEngine
 
 
+def configure_supported_options(widget: tk.Misc, **options: object) -> None:
+    """Configure only options exposed by this exact Tk or ttk widget."""
+
+    supported = set(widget.keys())
+    applicable = {name: value for name, value in options.items() if name in supported}
+    if not applicable:
+        return
+    try:
+        widget.configure(**applicable)
+    except tk.TclError:
+        # A platform theme may advertise but reject a colour option. Appearance
+        # changes must never prevent the application from starting.
+        return
+
+
 class NightAzimuthApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -133,23 +148,25 @@ class NightAzimuthApp(tk.Tk):
         selected = "#2563eb" if dark else "#0078d7"
 
         if isinstance(widget, (tk.Tk, tk.Toplevel)):
-            widget.configure(background=background)
+            configure_supported_options(widget, background=background)
         elif isinstance(widget, tk.Listbox):
-            widget.configure(
+            configure_supported_options(
+                widget,
                 background=field,
                 foreground=foreground,
                 selectbackground=selected,
                 selectforeground="#ffffff",
             )
         elif isinstance(widget, tk.Scale):
-            widget.configure(
+            configure_supported_options(
+                widget,
                 background=background,
                 foreground=foreground,
                 troughcolor=field,
                 highlightbackground=background,
             )
         elif isinstance(widget, tk.Canvas) and widget is getattr(self, "_live_scroll_canvas", None):
-            widget.configure(background=background)
+            configure_supported_options(widget, background=background)
 
         for child in widget.winfo_children():
             self.apply_appearance(child)
