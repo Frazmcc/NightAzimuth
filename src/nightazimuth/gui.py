@@ -117,6 +117,10 @@ class NightAzimuthApp(tk.Tk):
             if style.theme_use() != self._default_ttk_theme:
                 style.theme_use(self._default_ttk_theme)
             background = "#f0f0f0"
+            self.option_add("*TCombobox*Listbox.background", "#ffffff")
+            self.option_add("*TCombobox*Listbox.foreground", "#000000")
+            self.option_add("*TCombobox*Listbox.selectBackground", "#0078d7")
+            self.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
         self.configure(background=background)
 
     def apply_appearance(self, widget: tk.Misc) -> None:
