@@ -40,17 +40,15 @@ The core does not yet place magnitude values in the GUI. It exists separately so
 
 ## Formula
 
-For an intrinsic full-phase magnitude (M_0) at 1,000 km, range (r), phase angle (alpha), and Lambertian phase fraction (Phi(alpha)):
+For an intrinsic full-phase magnitude `M0` at 1,000 km, range `r`, phase angle `alpha`, and Lambertian phase fraction `Phi`:
 
-[
-Phi(alpha) = rac{sin(alpha) + (pi-alpha)cos(alpha)}{pi}
-]
+```text
+Phi(alpha) = [sin(alpha) + (pi - alpha) * cos(alpha)] / pi
 
-[
-m = M_0 + 5log_{10}left(rac{r}{1000}ight) - 2.5log_{10}left(Phi(alpha)ight)
-]
+m = M0 + 5 * log10(r / 1000) - 2.5 * log10(Phi(alpha))
+```
 
-This is a baseline diffuse-sphere model, not a spacecraft-attitude or flare predictor.
+Angles are evaluated in radians inside the phase function. This is a baseline diffuse-sphere model, not a spacecraft-attitude or flare predictor.
 
 ## Calibration-source policy
 
