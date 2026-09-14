@@ -8,6 +8,7 @@ from nightazimuth.brightness import (
     estimate_apparent_magnitude,
     lambertian_phase_fraction,
     phase_angle_degrees,
+    estimate_supported_satellite,
 )
 
 
@@ -77,3 +78,41 @@ def test_apparent_magnitude_rejects_invalid_range(range_km: float) -> None:
 
 def test_phase_angle_clamps_floating_point_cosine() -> None:
     assert phase_angle_degrees((1.0, 0.0, 0.0), (1.0, 0.0, 0.0)) == pytest.approx(0.0)
+
+
+def test_oneweb_uses_published_empirical_phase_function() -> None:
+    estimate = estimate_supported_satellite(
+        "ONEWEB-0123",
+        range_km=1000.0,
+        phase_angle_deg=90.0,
+    )
+
+    assert estimate is not None
+    assert estimate.apparent_magnitude == pytest.approx(6.531 + 0.00755 * 90.0)
+    assert estimate.brighter_bound == pytest.approx(estimate.apparent_magnitude - 0.8)
+    assert estimate.fainter_bound == pytest.approx(estimate.apparent_magnitude + 0.8)
+    assert "OneWeb empirical" in estimate.source
+
+
+def test_oneweb_empirical_model_applies_range_without_lambert_correction() -> None:
+    estimate = estimate_supported_satellite(
+        "oneweb-0456",
+        range_km=2000.0,
+        phase_angle_deg=0.0,
+    )
+
+    assert estimate is not None
+    assert estimate.apparent_magnitude == pytest.approx(6.531 + 5.0 * math.log10(2.0))
+
+
+def test_unsupported_or_ambiguous_satellite_remains_unknown() -> None:
+    assert estimate_supported_satellite(
+        "STARLINK-1234",
+        range_km=550.0,
+        phase_angle_deg=60.0,
+    ) is None
+    assert estimate_supported_satellite(
+        "ONEWEB",
+        range_km=1200.0,
+        phase_angle_deg=60.0,
+    ) is None
