@@ -60,7 +60,14 @@ def constellation_visual_style(
         1: ConstellationVisualStyle("#7183a3", 1),
         2: ConstellationVisualStyle("#7dd3fc", 2),
         3: ConstellationVisualStyle("#bae6fd", 2),
-        4: ConstellationVisualStyle("#102a3b", 2),
+        4: ConstellationVisualStyle("#9abed1", 2),
+    }
+    cloud_boost = {
+        0: ConstellationVisualStyle("#94a3b8", 2),
+        1: ConstellationVisualStyle("#9fb3d9", 2),
+        2: ConstellationVisualStyle("#a5ddf7", 2),
+        3: ConstellationVisualStyle("#c8e9f8", 2),
+        4: ConstellationVisualStyle("#a8d4e8", 2),
     }
     strong = {
         0: ConstellationVisualStyle("#cbd5e1", 2),
@@ -75,7 +82,7 @@ def constellation_visual_style(
     if mode == "Strong":
         return strong[state]
     if cloud_overlay_enabled:
-        return strong[state]
+        return cloud_boost[state]
     return automatic[state]
 
 
