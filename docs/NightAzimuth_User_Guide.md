@@ -177,7 +177,7 @@ This is a point forecast for the observing location. It is **not yet directional
 
 ### Weather map
 
-The **Weather map** tab centres a 2D map on the active observing location.
+The **Weather map** tab centres a large 2D map on the active observing location. Forecast-planning tables are kept on the separate **Forecast** tab so the radar image remains the main feature here.
 
 - The white cross marks the selected observing location.
 - **Rain radar** toggles the RainViewer precipitation-radar overlay.
@@ -193,6 +193,14 @@ The **Weather map** tab centres a 2D map on the active observing location.
 NightAzimuth requests only the map tiles required for the currently displayed view. It does not bulk-download map regions. Repeated OpenStreetMap tiles are cached locally for at least seven days before refresh, and radar tiles are cached by frame timestamp.
 
 Because map/radar tile coordinates are derived from the selected observing location, those providers can infer the geographic area being viewed. The saved NightAzimuth profile name and `locations.json` file are not sent.
+
+### Forecast
+
+The **Forecast** tab keeps planning information separate from the main radar display:
+
+- **Next 24 hours** shows the combined darkness, point-cloud, fog and precipitation guidance.
+- **7-day observing planner** lets you select a forecast day and review the provider's available intervals.
+- Later forecast days may use wider intervals when that is what MET Norway supplies; NightAzimuth does not invent hourly values.
 
 ### Fast movers
 
