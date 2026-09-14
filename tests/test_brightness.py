@@ -73,3 +73,7 @@ def test_apparent_magnitude_rejects_invalid_range(range_km: float) -> None:
             source="test",
             confidence="test",
         )
+
+
+def test_phase_angle_clamps_floating_point_cosine() -> None:
+    assert phase_angle_degrees((1.0, 0.0, 0.0), (1.0, 0.0, 0.0)) == pytest.approx(0.0)
