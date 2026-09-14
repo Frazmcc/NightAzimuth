@@ -1,6 +1,6 @@
 # NightAzimuth User Guide
 
-**Installation, Configuration and Use**  
+**Version 1.0.0 — Installation, Configuration and Use**  
 **Created by Logic Lurker © 2026**
 
 This guide explains what a normal Windows user needs to configure and how to use NightAzimuth.
@@ -173,7 +173,7 @@ The Live view also shows point-weather information for the active observing loca
 - a short upcoming hourly cloud/rain summary
 - weather source, source-data age, and whether the value came from a live fetch or local cache
 
-This is a point forecast for the observing location. It is **not yet directional cloud information**.
+This panel is a point forecast for the observing location. The optional Live-view cloud overlay is a separate directional estimate projected from spatial EUMETSAT imagery.
 
 ### Weather map
 

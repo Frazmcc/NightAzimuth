@@ -15,7 +15,7 @@ from PIL import Image
 
 EUMETVIEW_WMS_URL = "https://view.eumetsat.int/geoserver/wms"
 EUMETVIEW_LAYER = "mtg_fd:rgb_geocolour"
-EUMETVIEW_USER_AGENT = "NightAzimuth/0.5 (+https://github.com/Frazmcc/NightAzimuth)"
+EUMETVIEW_USER_AGENT = "NightAzimuth/1.0 (+https://github.com/Frazmcc/NightAzimuth)"
 CACHE_SECONDS = 15 * 60
 CAPABILITIES_CACHE_SECONDS = 5 * 60
 MAX_INTERVAL_FRAMES = 5000

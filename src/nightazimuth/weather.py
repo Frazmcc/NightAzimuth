@@ -12,7 +12,7 @@ import httpx
 from .config import ObserverConfig
 
 MET_NO_LOCATIONFORECAST_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
-MET_NO_USER_AGENT = "NightAzimuth/0.5 (+https://github.com/Frazmcc/NightAzimuth)"
+MET_NO_USER_AGENT = "NightAzimuth/1.0 (+https://github.com/Frazmcc/NightAzimuth)"
 
 
 class WeatherProviderError(RuntimeError):

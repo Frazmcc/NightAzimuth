@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nightazimuth"
-version = "0.5.0b1"
+version = "1.0.0"
 description = "Location-based live satellite tracking with directional sky identification and observing guidance."
 readme = "README.md"
 requires-python = ">=3.11"

@@ -15,7 +15,7 @@ from .config import ObserverConfig
 
 OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 RAINVIEWER_MAPS_URL = "https://api.rainviewer.com/public/weather-maps.json"
-MAP_USER_AGENT = "NightAzimuth/0.5 (+https://github.com/Frazmcc/NightAzimuth)"
+MAP_USER_AGENT = "NightAzimuth/1.0 (+https://github.com/Frazmcc/NightAzimuth)"
 TILE_SIZE = 256
 OSM_CACHE_SECONDS = 7 * 24 * 60 * 60
 RAINVIEWER_METADATA_CACHE_SECONDS = 5 * 60
