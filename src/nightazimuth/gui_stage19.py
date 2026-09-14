@@ -30,6 +30,7 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         self._aircraft_refresh_in_progress = False
         self._aircraft_snapshot: AircraftSnapshot | None = None
         self._selected_aircraft: AircraftSightline | None = None
+        self._aircraft_above_horizon_count = 0
         self._aircraft_internet_confirmed = False
         super().__init__()
 
@@ -119,6 +120,7 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
             self._aircraft_generation += 1
             self._aircraft_snapshot = None
             self._selected_aircraft = None
+            self._aircraft_above_horizon_count = 0
             self.live_view.clear_aircraft()
             self._set_aircraft_off_status()
 
@@ -209,13 +211,14 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         )
         self._aircraft_snapshot = snapshot
         self._selected_aircraft = None
+        self._aircraft_above_horizon_count = len(sightlines)
         self.live_view.set_aircraft(
             sightlines,
             observer_latitude=profile.latitude,
             observer_longitude=profile.longitude,
             observer_altitude_m=profile.altitude_m,
         )
-        self._render_aircraft_status(total=len(sightlines))
+        self._render_aircraft_status(total=self._aircraft_above_horizon_count)
         self._schedule_aircraft_refresh()
 
     def _aircraft_failed(self, generation: int, reason: str) -> None:
@@ -229,6 +232,7 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
             return
         self._aircraft_snapshot = None
         self._selected_aircraft = None
+        self._aircraft_above_horizon_count = 0
         self.live_view.clear_aircraft()
         self.aircraft_status_var.set(
             f"Aircraft unavailable: {reason}\n"
@@ -255,7 +259,7 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
 
     def _on_aircraft_selected(self, sightline: AircraftSightline) -> None:
         self._selected_aircraft = sightline
-        self._render_aircraft_status(total=len(self._aircraft_snapshot.aircraft) if self._aircraft_snapshot else 0)
+        self._render_aircraft_status(total=self._aircraft_above_horizon_count)
 
     def _render_aircraft_status(self, *, total: int) -> None:
         snapshot = self._aircraft_snapshot
