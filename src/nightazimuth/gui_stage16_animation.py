@@ -45,6 +45,29 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
         # rebuilding the Live view every few seconds.
         self._auto_refresh_ms = self.LIVE_ORBIT_REFRESH_MS
 
+    def _build_ui(self) -> None:
+        super()._build_ui()
+        notebook = self._find_notebook(self)
+        if notebook is None:
+            return
+
+        forecast_tab = ttk.Frame(notebook, padding=8)
+        weather_index = next(
+            (
+                index
+                for index, tab_id in enumerate(notebook.tabs())
+                if notebook.tab(tab_id, "text") == "Weather map"
+            ),
+            2,
+        )
+        notebook.insert(weather_index + 1, forecast_tab, text="Forecast")
+
+        # Stage 16 originally placed this panel beneath the map. Rebuild it in
+        # the dedicated Forecast tab so the radar map owns the available height.
+        if hasattr(self, "observing_planner_frame"):
+            self.observing_planner_frame.destroy()
+        self._build_forecast_tab(forecast_tab)
+
     def _build_weather_map(self, parent: ttk.Frame) -> None:
         super()._build_weather_map(parent)
 
@@ -69,8 +92,21 @@ class AnimatedStage16NightAzimuthApp(Stage16NightAzimuthApp):
             ).pack(side="bottom", anchor="sw", fill="x")
         self.after_idle(self._start_weather_animation)
 
+    def _build_forecast_tab(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
+
+        next_day = ttk.LabelFrame(parent, text="Next 24 hours", padding=(10, 6))
+        next_day.grid(row=0, column=0, sticky="ew")
+        ttk.Label(
+            next_day,
+            textvariable=self.planner_status_var,
+            justify="left",
+            font=("Consolas", 9),
+        ).pack(anchor="w", fill="x")
+
         seven_day = ttk.LabelFrame(parent, text="7-day observing planner", padding=(10, 6))
-        seven_day.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        seven_day.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
         seven_day.columnconfigure(1, weight=1)
         seven_day.rowconfigure(2, weight=1)
 
