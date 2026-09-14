@@ -313,6 +313,7 @@ class Stage14NightAzimuthApp(Stage13NightAzimuthApp):
                     sky_dark=status.sky_dark,
                     potentially_visible=status.potentially_visible,
                     twilight_candidate=twilight_candidate,
+                    phase_angle_deg=status.phase_angle_deg,
                 )
                 sky_satellites.append(satellite)
                 live_rows.append(
