@@ -6,6 +6,7 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
+from .brightness import estimate_supported_satellite
 from .celestrak import CelestrakClient, CelestrakError
 from .gui_stage13 import Stage13NightAzimuthApp
 from .live_catalog import merge_orbital_catalogues
@@ -313,6 +314,16 @@ class Stage14NightAzimuthApp(Stage13NightAzimuthApp):
                     sky_dark=status.sky_dark,
                     potentially_visible=status.potentially_visible,
                     twilight_candidate=twilight_candidate,
+                    phase_angle_deg=status.phase_angle_deg,
+                    brightness_estimate=(
+                        estimate_supported_satellite(
+                            item.name,
+                            range_km=item.range_km,
+                            phase_angle_deg=status.phase_angle_deg,
+                        )
+                        if status.satellite_sunlit
+                        else None
+                    ),
                 )
                 sky_satellites.append(satellite)
                 live_rows.append(
