@@ -32,6 +32,13 @@ class AircraftHudFinderView(DirectionalCloudHudFinderView):
     def aircraft_in_view_count(self) -> int:
         return sum(1 for item in self._aircraft if self._projection(item).visible)
 
+    def focus_low_sky(self, maximum_elevation_deg: float = 20.0) -> None:
+        """Zoom the vertical view to the low sky without altering true aircraft elevation."""
+        maximum = max(5.0, min(60.0, float(maximum_elevation_deg)))
+        self._minimum_elevation_deg = 0.0
+        self._maximum_elevation_deg = maximum
+        self.redraw()
+
     def set_aircraft(
         self,
         aircraft: tuple[AircraftSightline, ...],
