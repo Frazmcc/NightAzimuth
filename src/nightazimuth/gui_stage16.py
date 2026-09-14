@@ -133,6 +133,7 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
             value="24-hour observing planner: waiting for weather and location...",
         )
         planner = ttk.LabelFrame(parent, text="12–24 hour observing planner", padding=(10, 6))
+        self.observing_planner_frame = planner
         planner.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(8, 0))
         ttk.Label(
             planner,
