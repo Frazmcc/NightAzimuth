@@ -23,8 +23,8 @@ def _response(request: httpx.Request) -> httpx.Response:
             {
                 "hex": "abc123",
                 "flight": "TEST1",
-                "lat": 0.1,
-                "lon": 0.2,
+                "lat": 1.1,
+                "lon": 2.0,
                 "alt_geom": 10_000,
                 "seen_pos": 1,
             }
@@ -122,7 +122,9 @@ def test_aircraft_preferences_round_trip_without_positions(tmp_path) -> None:
     store.save(expected)
 
     assert store.load() == expected
-    text = path.read_text(encoding="utf-8")
-    assert "latitude" not in text
-    assert "longitude" not in text
-    assert "aircraft" not in text.casefold().replace("aircraft-preferences", "")
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert set(raw) == {"source", "local_receiver_url", "radius_nm"}
+    assert "latitude" not in raw
+    assert "longitude" not in raw
+    assert "positions" not in raw
+    assert "aircraft_history" not in raw
