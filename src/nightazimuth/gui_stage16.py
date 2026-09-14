@@ -5,8 +5,6 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
-from PIL import ImageTk
-
 from .directional_cloud_hud import DirectionalCloudHudFinderView
 from .gui_stage15 import Stage15NightAzimuthApp
 from .observing_planner import ObservingPlanner, ViewingGuidance
@@ -387,8 +385,7 @@ class Stage16NightAzimuthApp(Stage15NightAzimuthApp):
         if current_key != profile_key:
             return
 
-        self._weather_map_photo = ImageTk.PhotoImage(snapshot.image)
-        self.weather_map_label.configure(image=self._weather_map_photo)
+        self._show_weather_map_image(snapshot.image)
         if snapshot.recent_cloud_times_utc:
             self._update_cloud_frame_choices(snapshot.recent_cloud_times_utc)
 
