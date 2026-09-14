@@ -127,8 +127,9 @@ The **Live** view is the main observing screen. It is designed to behave more li
 - **Reset view:** returns to the configured facing direction and the normal full 0–90° elevation range.
 - **Stars:** toggles the star layer.
 - **Constellations:** toggles constellation guide lines.
+- **Constellation contrast:** `Auto` adapts line colour and thickness to darkness, twilight, daylight and the cloud overlay. Use `Subtle` for a quieter reference layer or `Strong` when you need maximum visibility.
 - **All tracked:** exposes the broader potentially-visible satellite set for identification. Leave this off for the cleanest observing view.
-- **Cloud overlay (Stage 16):** shown disabled during Stage 15. NightAzimuth does not yet pretend that point cloud percentages describe a specific direction in the sky.
+- **Cloud overlay:** projects the selected spatial cloud frame into the Live view as an indicative directional layer. When it is enabled, `Auto` raises constellation contrast so the guide lines remain readable.
 
 ### What is shown in Live view
 
