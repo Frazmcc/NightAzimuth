@@ -13,6 +13,7 @@ from .location_profiles import LocationProfile, LocationProfileStore
 from .passes import PassPredictor
 from .sky_map import SkyMap, SkySatellite
 from .tracker import SatelliteTracker
+from .ui_layout import responsive_window_geometry
 from .visibility import VisibilityEngine
 
 
@@ -35,8 +36,12 @@ class NightAzimuthApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("NightAzimuth")
-        self.geometry("1220x780")
-        self.minsize(1000, 650)
+        width, height, left, top = responsive_window_geometry(
+            self.winfo_screenwidth(),
+            self.winfo_screenheight(),
+        )
+        self.geometry(f"{width}x{height}+{left}+{top}")
+        self.minsize(900, 600)
 
         self.store = LocationProfileStore()
         self.appearance_store = AppearancePreferenceStore(self.store.path.parent / "preferences.json")
