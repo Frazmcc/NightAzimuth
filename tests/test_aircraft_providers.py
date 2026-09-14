@@ -74,6 +74,34 @@ def test_local_provider_reads_exact_configured_aircraft_json_url() -> None:
     assert snapshot.source_name == "Local readsb/dump1090"
 
 
+def test_local_provider_enforces_configured_radius() -> None:
+    def response(request: httpx.Request) -> httpx.Response:
+        payload = {
+            "aircraft": [
+                {
+                    "hex": "near01",
+                    "lat": 0.1,
+                    "lon": 0.0,
+                    "alt_geom": 10_000,
+                    "seen_pos": 1,
+                },
+                {
+                    "hex": "far001",
+                    "lat": 2.0,
+                    "lon": 0.0,
+                    "alt_geom": 10_000,
+                    "seen_pos": 1,
+                },
+            ]
+        }
+        return httpx.Response(200, request=request, content=json.dumps(payload).encode())
+
+    with httpx.Client(transport=httpx.MockTransport(response)) as client:
+        snapshot = LocalReadsbAircraftProvider(client=client).load(0, 0, 40)
+
+    assert [aircraft.hex_id for aircraft in snapshot.aircraft] == ["near01"]
+
+
 @pytest.mark.parametrize(
     "url",
     ["", "ftp://receiver/aircraft.json", "receiver/aircraft.json", "http://user:secret@receiver/data"],
