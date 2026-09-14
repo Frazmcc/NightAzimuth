@@ -1,6 +1,6 @@
 # Stage 18 — GUI Performance and Responsive Map Sizing
 
-Status: **Ready for local user testing — not yet approved**
+Status: **Approved and merged — 14 September 2026**
 
 ## Goal
 
