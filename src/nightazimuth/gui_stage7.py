@@ -473,11 +473,17 @@ class Stage7NightAzimuthApp(NightAzimuthApp):
             if satellite.phase_angle_deg is None
             else f"{satellite.phase_angle_deg:.1f}°"
         )
-        brightness_text = (
-            "Unknown"
-            if satellite.brightness_estimate is None
-            else f"mag {satellite.brightness_estimate.display_range}"
-        )
+        if not satellite.satellite_sunlit:
+            brightness_text = "Not sunlit"
+        elif satellite.brightness_estimate is None:
+            brightness_text = "Unknown"
+        else:
+            brightness_text = (
+                f"mag {satellite.brightness_estimate.display_range}\n"
+                f"Confidence: {satellite.brightness_estimate.confidence}\n"
+                f"Source: {satellite.brightness_estimate.source}\n"
+                "Flares/glints are not predicted"
+            )
 
         self.live_detail_var.set(
             f"{satellite.name}\n\n"
