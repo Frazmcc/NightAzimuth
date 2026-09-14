@@ -44,3 +44,7 @@ This stage will remain on a draft pull request until automated checks, the Windo
 - release output allowlist passed
 
 Local visual acceptance is still required before merge.
+
+## Layout revision after visual review
+
+The Weather map was still too small because the 24-hour and 7-day planner panels consumed most of the tab height. Both planning sections now live in a dedicated **Forecast** tab. The Weather map tab is reserved for the map, layer/time controls and compact map status, allowing the radar image to use the main content area.
