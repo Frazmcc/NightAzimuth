@@ -34,6 +34,7 @@ The first implementation slice adds a tested, provider-independent calculation c
 - explicit caller-supplied uncertainty
 - brighter and fainter estimate bounds
 - source and confidence fields carried with every estimate
+- a OneWeb family model based on 80,000 visible-light magnitudes, matched only to `ONEWEB-` names
 - validation for invalid vectors, ranges and uncertainty
 
 The calculation core remains separate so empirical catalogues and spacecraft-specific models can be added without coupling them to Tkinter.
@@ -42,7 +43,7 @@ The calculation core remains separate so empirical catalogues and spacecraft-spe
 
 The live calculation now derives the Sun–satellite–observer phase angle in a common geocentric frame. The selected-satellite panel displays that angle and carries an optional typed brightness estimate. Until a supported calibration is attached, it explicitly displays **Brightness: Unknown**.
 
-This is deliberate. The published OneWeb value of 7.18 is a mean magnitude normalized to 1,000 km, not a full-phase magnitude; applying the generic Lambert correction to it as though it were full-phase would mislabel the model. OneWeb will use its published empirical phase function in the next slice.
+This is deliberate. The published OneWeb value of 7.18 is a mean magnitude normalized to 1,000 km, not a full-phase magnitude; applying the generic Lambert correction to it as though it were full-phase would mislabel the model. OneWeb now uses the paper's all-data linear empirical phase function, `M1000 = 6.531 + 0.00755 * alpha`, followed only by inverse-square range scaling. The displayed ±0.8 magnitude range is intentionally wider than the paper's 0.63-mag RMS to acknowledge unmodelled variability and ageing of the 2021 observations. The source and family-level confidence are displayed with the result. Other families—including ambiguous Starlink generations—remain **Unknown**.
 
 ## Formula
 
@@ -105,4 +106,5 @@ Stage 17 is complete only when:
 - [McCants: Intrinsic Magnitude Definitions](https://www.mmccants.org/tles/intrmagdef.html)
 - [Mallama: A Flat-Panel Brightness Model for Starlink Satellites](https://arxiv.org/abs/2003.07805)
 - [Mallama: OneWeb Satellite Brightness Characterized from 80,000 Magnitudes](https://arxiv.org/abs/2203.05513)
+- [Mallama: Secular Brightness Trends of Starlink and OneWeb Satellites](https://arxiv.org/abs/2604.13145)
 - [Romero-Colmenares et al.: Diffuse and Specular Brightness Models Applied to LEO Satellites](https://www.aanda.org/articles/aa/full_html/2026/05/aa59054-26/aa59054-26.html)
