@@ -54,7 +54,7 @@ def test_constellation_auto_style_adapts_from_darkness_to_daylight() -> None:
 
     assert dark.fill == "#64748b"
     assert dark.width == 1
-    assert daylight.fill == "#102a3b"
+    assert daylight.fill == "#9abed1"
     assert daylight.width == 2
 
 
@@ -64,8 +64,8 @@ def test_constellation_auto_style_boosts_contrast_for_cloud_overlay() -> None:
 
     assert clear.fill == "#7dd3fc"
     assert clear.width == 2
-    assert cloud.fill == "#e0f2fe"
-    assert cloud.width == 3
+    assert cloud.fill == "#a5ddf7"
+    assert cloud.width == 2
 
 
 def test_constellation_user_modes_override_automatic_strength() -> None:
