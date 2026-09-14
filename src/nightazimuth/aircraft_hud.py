@@ -21,6 +21,7 @@ class AircraftHudFinderView(DirectionalCloudHudFinderView):
         **kwargs: object,
     ) -> None:
         self._aircraft: tuple[AircraftSightline, ...] = ()
+        self._aircraft_future: dict[str, AircraftSightline] = {}
         self._show_aircraft = False
         self._selected_aircraft_hex: str | None = None
         self._on_aircraft_select = on_aircraft_select
@@ -39,18 +40,30 @@ class AircraftHudFinderView(DirectionalCloudHudFinderView):
         observer_longitude: float,
         observer_altitude_m: float,
     ) -> None:
-        self._aircraft = aircraft
+        self._aircraft = tuple(sorted(aircraft, key=lambda item: item.slant_range_km))
         self._aircraft_observer = (
             float(observer_latitude),
             float(observer_longitude),
             float(observer_altitude_m),
         )
+        self._aircraft_future = {}
+        for item in self._aircraft:
+            future_position = project_aircraft_position(item.aircraft, self.PREDICTION_SECONDS)
+            if future_position is item.aircraft:
+                continue
+            self._aircraft_future[item.aircraft.hex_id] = aircraft_sightline(
+                future_position,
+                observer_latitude=self._aircraft_observer[0],
+                observer_longitude=self._aircraft_observer[1],
+                observer_altitude_m=self._aircraft_observer[2],
+            )
         if self._selected_aircraft_hex not in {item.aircraft.hex_id for item in aircraft}:
             self._selected_aircraft_hex = None
         self.redraw()
 
     def clear_aircraft(self) -> None:
         self._aircraft = ()
+        self._aircraft_future = {}
         self._selected_aircraft_hex = None
         self.redraw()
 
@@ -65,10 +78,7 @@ class AircraftHudFinderView(DirectionalCloudHudFinderView):
         left, top, right, bottom = self._plot_bounds()
         width = max(right - left, 1.0)
         height = max(bottom - top, 1.0)
-        visible = sorted(
-            (item for item in self._aircraft if self._projection(item).visible),
-            key=lambda item: item.slant_range_km,
-        )
+        visible = tuple(item for item in self._aircraft if self._projection(item).visible)
         for index, item in enumerate(visible):
             projection = self._projection(item)
             x = left + projection.x_fraction * width
@@ -106,18 +116,9 @@ class AircraftHudFinderView(DirectionalCloudHudFinderView):
         width: float,
         height: float,
     ) -> None:
-        observer = self._aircraft_observer
-        if observer is None:
+        future = self._aircraft_future.get(item.aircraft.hex_id)
+        if future is None:
             return
-        future_position = project_aircraft_position(item.aircraft, self.PREDICTION_SECONDS)
-        if future_position is item.aircraft:
-            return
-        future = aircraft_sightline(
-            future_position,
-            observer_latitude=observer[0],
-            observer_longitude=observer[1],
-            observer_altitude_m=observer[2],
-        )
         projection = self._projection(future)
         if not projection.visible:
             return
