@@ -102,8 +102,7 @@ def parse_readsb_aircraft(
                 ground_speed_knots=_nonnegative_float(raw.get("gs")),
                 ground_track_deg=_normalised_angle(raw.get("track")),
                 true_heading_deg=_normalised_angle(raw.get("true_heading")),
-                vertical_rate_fpm=_finite_float(raw.get("geom_rate"))
-                or _finite_float(raw.get("baro_rate")),
+                vertical_rate_fpm=_vertical_rate(raw),
                 position_age_seconds=position_age,
             )
         )
@@ -211,6 +210,13 @@ def _airborne_altitude(raw: Mapping[str, object]) -> tuple[float | None, str]:
     if barometric is not None:
         return barometric, "barometric"
     return None, ""
+
+
+def _vertical_rate(raw: Mapping[str, object]) -> float | None:
+    geometric = _finite_float(raw.get("geom_rate"))
+    if geometric is not None:
+        return geometric
+    return _finite_float(raw.get("baro_rate"))
 
 
 def _finite_float(value: object) -> float | None:
