@@ -1,6 +1,6 @@
 # Stage 18 — GUI Performance and Responsive Map Sizing
 
-Status: **In development — not ready for user acceptance**
+Status: **Ready for local user testing — not yet approved**
 
 ## Goal
 
@@ -24,3 +24,23 @@ The timeline remains labelled as observed history. Forecast frames are never ins
 ## Acceptance gate
 
 This stage will remain on a draft pull request until automated checks, the Windows build, local visual testing and explicit user approval are complete.
+
+## Implemented result
+
+- the initial window uses approximately 90% of the available display, subject to sensible size caps
+- the Weather map expands and contracts with its panel while preserving aspect ratio
+- window resize events are debounced for 120 ms
+- resizing reuses the in-memory rendered map and does not trigger tile downloads
+- manual animation controls have been removed
+- observed playback starts automatically at 24 hours ago
+- the frame after Now loops back to 24 hours ago
+- the next animation frame is scheduled only after the current render succeeds or fails, preventing background-thread backlog
+
+## Automated validation
+
+- 114 tests passed
+- Ruff correctness checks passed
+- Windows PyInstaller build passed
+- release output allowlist passed
+
+Local visual acceptance is still required before merge.
