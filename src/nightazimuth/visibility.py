@@ -7,6 +7,7 @@ from typing import Any
 
 from skyfield.api import EarthSatellite, Loader, wgs84
 
+from .brightness import phase_angle_degrees
 from .config import ObserverConfig
 
 
@@ -16,6 +17,7 @@ class VisibilityStatus:
     satellite_sunlit: bool
     sky_dark: bool
     potentially_visible: bool
+    phase_angle_deg: float
 
 
 class VisibilityEngine:
@@ -70,12 +72,25 @@ class VisibilityEngine:
         sun_altitude, _, _ = apparent_sun.altaz()
         sun_altitude_deg = float(sun_altitude.degrees)
 
-        satellite_sunlit = bool(satellite.at(t).is_sunlit(self._ephemeris))
+        satellite_at = satellite.at(t)
+        satellite_sunlit = bool(satellite_at.is_sunlit(self._ephemeris))
         sky_dark = sun_altitude_deg <= self.darkness_threshold_deg
+
+        # All three positions below are expressed in the same geocentric frame.
+        # Subtracting the satellite position produces the two satellite-centred
+        # vectors required for the Sun-satellite-observer phase angle.
+        sun_geocentric_km = self._earth.at(t).observe(self._sun).position.km
+        observer_geocentric_km = self._observer.at(t).position.km
+        satellite_geocentric_km = satellite_at.position.km
+        phase_angle_deg = phase_angle_degrees(
+            sun_geocentric_km - satellite_geocentric_km,
+            observer_geocentric_km - satellite_geocentric_km,
+        )
 
         return VisibilityStatus(
             sun_altitude_deg=sun_altitude_deg,
             satellite_sunlit=satellite_sunlit,
             sky_dark=sky_dark,
             potentially_visible=satellite_sunlit and sky_dark,
+            phase_angle_deg=phase_angle_deg,
         )
