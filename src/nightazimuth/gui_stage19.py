@@ -78,6 +78,11 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
                 text="Aircraft settings…",
                 command=self.open_aircraft_settings,
             ).pack(side="left", padx=(6, 0))
+            ttk.Button(
+                controls,
+                text="Low sky 0–20°",
+                command=self._focus_aircraft_low_sky,
+            ).pack(side="left", padx=(6, 0))
 
         self.aircraft_status_var = tk.StringVar(master=self)
         details = next(
@@ -93,6 +98,9 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
                 justify="left",
             ).pack(anchor="nw", fill="x")
         self._set_aircraft_off_status()
+
+    def _focus_aircraft_low_sky(self) -> None:
+        self.live_view.focus_low_sky(20.0)
 
     def _on_aircraft_layer_changed(self) -> None:
         enabled = self.show_aircraft_var.get()
