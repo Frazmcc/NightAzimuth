@@ -5,10 +5,11 @@ import threading
 import tkinter as tk
 from tkinter import ttk
 
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
 from .gui_stage14 import Stage14NightAzimuthApp
 from .weather import MetNorwayWeatherProvider, WeatherSnapshot
+from .ui_layout import fitted_image_size
 from .weather_map import WeatherMapRenderer, WeatherMapSnapshot
 
 
@@ -25,6 +26,8 @@ class Stage15NightAzimuthApp(Stage14NightAzimuthApp):
         self._weather_map_renderer: WeatherMapRenderer | None = None
         self._weather_map_generation = 0
         self._weather_map_photo: ImageTk.PhotoImage | None = None
+        self._weather_map_source_image: Image.Image | None = None
+        self._weather_map_resize_job: str | None = None
         super().__init__()
         self._refresh_weather()
         if hasattr(self, "weather_map_status_var"):
@@ -84,6 +87,8 @@ class Stage15NightAzimuthApp(Stage14NightAzimuthApp):
         map_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 10))
         map_frame.columnconfigure(0, weight=1)
         map_frame.rowconfigure(0, weight=1)
+        self.weather_map_frame = map_frame
+        map_frame.bind("<Configure>", self._on_weather_map_resize, add="+")
         self.weather_map_label = ttk.Label(map_frame, anchor="center")
         self.weather_map_label.grid(row=0, column=0, sticky="nsew")
 
@@ -251,6 +256,7 @@ class Stage15NightAzimuthApp(Stage14NightAzimuthApp):
         if profile is None:
             self._weather_map_generation += 1
             self._weather_map_photo = None
+            self._weather_map_source_image = None
             self.weather_map_label.configure(image="")
             self.weather_map_status_var.set("No location configured. Open Settings to add one.")
             return
@@ -305,8 +311,7 @@ class Stage15NightAzimuthApp(Stage14NightAzimuthApp):
         if current_key != profile_key:
             return
 
-        self._weather_map_photo = ImageTk.PhotoImage(snapshot.image)
-        self.weather_map_label.configure(image=self._weather_map_photo)
+        self._show_weather_map_image(snapshot.image)
         if snapshot.radar_enabled and snapshot.radar_time_utc is not None:
             radar_text = f"Rain radar frame: {snapshot.radar_time_utc.strftime('%Y-%m-%d %H:%M UTC')}"
         elif snapshot.radar_enabled:
@@ -317,6 +322,44 @@ class Stage15NightAzimuthApp(Stage14NightAzimuthApp):
             f"Selected location centred on map.\n{radar_text}\n"
             "Map requests contain only the area needed for this view; saved profile names are not sent."
         )
+
+    def _show_weather_map_image(self, image: Image.Image) -> None:
+        """Display a map scaled to the panel while retaining the full source image."""
+
+        self._weather_map_source_image = image.copy()
+        self._render_weather_map_for_current_size()
+
+    def _on_weather_map_resize(self, _event: object | None = None) -> None:
+        """Debounce resize work so dragging the window remains responsive."""
+
+        if self._weather_map_resize_job is not None:
+            try:
+                self.after_cancel(self._weather_map_resize_job)
+            except tk.TclError:
+                pass
+        self._weather_map_resize_job = self.after(120, self._render_weather_map_for_current_size)
+
+    def _render_weather_map_for_current_size(self) -> None:
+        self._weather_map_resize_job = None
+        source = self._weather_map_source_image
+        if source is None or not hasattr(self, "weather_map_frame"):
+            return
+        available_width = self.weather_map_frame.winfo_width()
+        available_height = self.weather_map_frame.winfo_height()
+        if available_width < 40 or available_height < 40:
+            return
+        width, height = fitted_image_size(
+            source.width,
+            source.height,
+            available_width,
+            available_height,
+        )
+        if (width, height) == source.size:
+            displayed = source
+        else:
+            displayed = source.resize((width, height), Image.Resampling.LANCZOS)
+        self._weather_map_photo = ImageTk.PhotoImage(displayed)
+        self.weather_map_label.configure(image=self._weather_map_photo)
 
     def _weather_map_failed(self, generation: int) -> None:
         if generation != self._weather_map_generation:
