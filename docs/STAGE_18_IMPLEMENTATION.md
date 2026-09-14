@@ -23,7 +23,7 @@ The timeline remains labelled as observed history. Forecast frames are never ins
 
 ## Acceptance gate
 
-This stage will remain on a draft pull request until automated checks, the Windows build, local visual testing and explicit user approval are complete.
+Stage 18 remained on a draft pull request until automated checks, the Windows build, local visual testing and explicit user approval were complete.
 
 ## Implemented result
 
@@ -43,7 +43,7 @@ This stage will remain on a draft pull request until automated checks, the Windo
 - Windows PyInstaller build passed
 - release output allowlist passed
 
-Local visual acceptance is still required before merge.
+Local visual testing was completed and the stage was explicitly approved before merge.
 
 ## Layout revision after visual review
 
