@@ -23,6 +23,7 @@ NightAzimuth currently uses:
 - OpenStreetMap standard raster tiles for the Stage 15 weather-map base layer
 - RainViewer public Weather Maps API for recent precipitation-radar tiles
 - EUMETSAT EUMETView Meteosat GeoColour imagery for Stage 16 spatial cloud visualisation
+- Anthony Mallama's published OneWeb photometry and empirical phase function for source-labelled OneWeb brightness estimates
 
 Weather forecast data is provided by the Norwegian Meteorological Institute (MET Norway) and remains subject to its provider terms and attribution requirements.
 
@@ -31,5 +32,7 @@ Map data © OpenStreetMap contributors. Use of OpenStreetMap-hosted tiles is sub
 Rain radar data is provided through RainViewer and is subject to RainViewer's public API terms and attribution requirements.
 
 Stage 16 cloud imagery is provided through EUMETSAT EUMETView. The GeoColour product combines EUMETSAT Meteosat imagery with NASA Black Marble background information for its night-time presentation; both EUMETSAT and NASA are credited as requested by the product description.
+
+The OneWeb apparent-magnitude model is based on Anthony Mallama, *OneWeb Satellite Brightness — Characterized From 80,000 Visible Light Magnitudes* (arXiv:2203.05513). NightAzimuth widens the published scatter when presenting its family-level estimate and does not claim measured photometry for a predicted pass.
 
 Third-party components and data remain subject to their own licences, terms, and attribution requirements.
