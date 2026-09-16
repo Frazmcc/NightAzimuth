@@ -14,7 +14,7 @@ dependencies = [
   "pandas>=2.2,<4",
   "pillow>=10,<13",
   "skyfield>=1.55,<2",
-  "timezonefinder>=6.5,<9",
+  "timezonefinder>=6.5,<10",
 ]
 
 [project.optional-dependencies]
