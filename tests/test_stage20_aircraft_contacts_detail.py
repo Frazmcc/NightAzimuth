@@ -8,4 +8,5 @@ def test_rc_places_selected_aircraft_detail_inside_aircraft_contacts() -> None:
     assert 'DRAWER_AIRCRAFT = "aircraft"' in source
     assert "self._stage20_open_drawer = DRAWER_AIRCRAFT" in source
     assert "self._copy_selected_aircraft_detail()" in source
+    assert "self._update_live_view_summary()" in source
     assert "DRAWER_DETAILS" not in source
