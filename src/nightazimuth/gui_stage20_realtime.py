@@ -32,6 +32,7 @@ class Stage20RealtimeNightAzimuthApp(Stage20CleanNightAzimuthApp):
         self._satellite_info_text_var: tk.StringVar | None = None
         self._satellite_info_image_label: ttk.Label | None = None
         self._satellite_info_photo: ImageTk.PhotoImage | None = None
+        self._selected_satellite_norad: str | None = None
         super().__init__()
         self._remove_prank_button()
 
@@ -115,6 +116,11 @@ class Stage20RealtimeNightAzimuthApp(Stage20CleanNightAzimuthApp):
             panel.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
 
     def _on_live_satellite_selected(self, satellite: SkySatellite) -> None:
+        if next_satellite_selection(self._selected_satellite_norad, satellite.norad_id) is None:
+            self._deselect_live_satellite()
+            return
+
+        self._selected_satellite_norad = satellite.norad_id
         super()._on_live_satellite_selected(satellite)
         self._stage20_open_drawer = DRAWER_SATELLITE
         self._apply_stage20_drawer_state()
@@ -130,6 +136,31 @@ class Stage20RealtimeNightAzimuthApp(Stage20CleanNightAzimuthApp):
 
         # Ensure any clicked object enters the next realtime prediction set even
         # when it was not one of the automatic closest/highest satellites.
+        self._start_track_prediction(
+            self.selected_name,
+            list(getattr(self, "_sky_satellites", ())),
+            self._track_generation,
+        )
+
+    def _deselect_live_satellite(self) -> None:
+        """Clear selection-only prioritisation and return Live Sky to automatic filtering."""
+        self._selected_satellite_norad = None
+        self._satellite_info_generation += 1
+        self.live_view.select_norad(None)
+
+        if self._stage20_open_drawer == DRAWER_SATELLITE:
+            self._stage20_open_drawer = None
+            self._apply_stage20_drawer_state()
+
+        if self._satellite_info_text_var is not None:
+            self._satellite_info_text_var.set(
+                "Select a satellite in Live Sky to load verified information."
+            )
+        self._set_satellite_image(None, "No satellite selected")
+        self._update_live_view_summary()
+
+        # Rebuild the realtime prediction pool without a selected NORAD pinned
+        # into it. User-selected display controls remain untouched.
         self._start_track_prediction(
             self.selected_name,
             list(getattr(self, "_sky_satellites", ())),
@@ -260,6 +291,12 @@ class Stage20RealtimeNightAzimuthApp(Stage20CleanNightAzimuthApp):
     def destroy(self) -> None:
         self._satellite_info_generation += 1
         super().destroy()
+
+
+def next_satellite_selection(current_norad: str | None, clicked_norad: str) -> str | None:
+    """Toggle a satellite selection: clicking the selected object deselects it."""
+    clicked = str(clicked_norad).strip()
+    return None if current_norad == clicked else clicked
 
 
 def format_satellite_information(satellite: SkySatellite, metadata: SatelliteMetadata) -> str:
