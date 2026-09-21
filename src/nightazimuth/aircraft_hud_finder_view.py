@@ -2,12 +2,47 @@ from __future__ import annotations
 
 from collections.abc import Callable
 import math
+import time
 import tkinter as tk
 
 from .aircraft_live import SkyAircraft
 from .aircraft_motion import AircraftPositionState
-from .live_view import project_live_view
+from .live_view import project_live_view, signed_angular_difference
 from .twilight_hud_finder_view import TwilightSmoothHudFinderView
+
+
+def interpolated_aircraft_sky_position(
+    aircraft: SkyAircraft,
+    elapsed_seconds: float,
+) -> tuple[float, float]:
+    """Interpolate along a short aircraft sky projection for smooth rendering."""
+    points = aircraft.future_track
+    if not points:
+        return aircraft.azimuth_deg, aircraft.elevation_deg
+    if elapsed_seconds <= points[0].seconds_from_now:
+        return points[0].azimuth_deg, points[0].elevation_deg
+    if elapsed_seconds >= points[-1].seconds_from_now:
+        return points[-1].azimuth_deg, points[-1].elevation_deg
+
+    previous = points[0]
+    for following in points[1:]:
+        if elapsed_seconds <= following.seconds_from_now:
+            span = following.seconds_from_now - previous.seconds_from_now
+            if span <= 0:
+                return following.azimuth_deg, following.elevation_deg
+            fraction = (elapsed_seconds - previous.seconds_from_now) / span
+            azimuth_delta = signed_angular_difference(
+                following.azimuth_deg,
+                previous.azimuth_deg,
+            )
+            azimuth = (previous.azimuth_deg + azimuth_delta * fraction) % 360.0
+            elevation = previous.elevation_deg + (
+                following.elevation_deg - previous.elevation_deg
+            ) * fraction
+            return azimuth, elevation
+        previous = following
+
+    return points[-1].azimuth_deg, points[-1].elevation_deg
 
 
 class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
@@ -25,6 +60,8 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
         self._selected_icao24: str | None = None
         self._show_aircraft = True
         self._on_aircraft_select = on_aircraft_select
+        self._aircraft_animation_started = time.monotonic()
+        self._drawn_aircraft_positions: dict[str, tuple[float, float]] = {}
         super().__init__(*args, **kwargs)
 
     @property
@@ -37,22 +74,28 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
 
     def set_aircraft(self, aircraft: list[SkyAircraft]) -> None:
         self._aircraft = list(aircraft)
+        self._aircraft_animation_started = time.monotonic()
         if self._selected_icao24 not in {item.icao24 for item in aircraft}:
             self._selected_icao24 = None
-        self.redraw()
+        self._redraw_aircraft_only()
 
     def set_show_aircraft(self, show: bool) -> None:
         self._show_aircraft = bool(show)
-        self.redraw()
+        self._redraw_aircraft_only()
 
     def select_aircraft(self, icao24: str | None) -> None:
         self._selected_icao24 = None if icao24 is None else icao24.strip().lower()
-        self.redraw()
+        self._redraw_aircraft_only()
 
     def redraw(self) -> None:
+        self._drawn_aircraft_positions = {}
         super().redraw()
         if self._show_aircraft:
             self._draw_aircraft_layer()
+
+    def _animation_tick(self) -> None:
+        self._animate_aircraft()
+        super()._animation_tick()
 
     def _on_pan_start(self, event: tk.Event) -> None:
         if self.find_withtag("current"):
@@ -62,6 +105,14 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
                 self._pan_origin = None
                 return
         super()._on_pan_start(event)
+
+    def _redraw_aircraft_only(self) -> None:
+        self.delete("live-aircraft")
+        self.delete("aircraft-track")
+        self.delete("aircraft-summary")
+        self._drawn_aircraft_positions = {}
+        if self._show_aircraft:
+            self._draw_aircraft_layer()
 
     def _aircraft_in_current_view(self) -> list[SkyAircraft]:
         result: list[SkyAircraft] = []
@@ -110,6 +161,7 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
                 y,
                 show_label=aircraft.icao24 in label_ids,
             )
+            self._drawn_aircraft_positions[aircraft.icao24] = (x, y)
 
         self.create_text(
             right - 6,
@@ -120,6 +172,37 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
             font=("Segoe UI", 8, "bold"),
             tags=("aircraft-summary",),
         )
+
+    def _animate_aircraft(self) -> None:
+        if not self._show_aircraft or not self._aircraft:
+            return
+        elapsed = max(0.0, time.monotonic() - self._aircraft_animation_started)
+        left, top, right, bottom = self._plot_bounds()
+        plot_width = max(right - left, 1.0)
+        plot_height = max(bottom - top, 1.0)
+
+        for aircraft in self._aircraft:
+            old_position = self._drawn_aircraft_positions.get(aircraft.icao24)
+            if old_position is None or not aircraft.future_track:
+                continue
+            azimuth, elevation = interpolated_aircraft_sky_position(aircraft, elapsed)
+            projection = project_live_view(
+                azimuth,
+                elevation,
+                self.facing_deg,
+                self.horizontal_fov_deg,
+                minimum_elevation_deg=self.minimum_elevation_deg,
+                maximum_elevation_deg=self.maximum_elevation_deg,
+            )
+            if not projection.visible:
+                continue
+            new_x = left + projection.x_fraction * plot_width
+            new_y = top + projection.y_fraction * plot_height
+            dx = new_x - old_position[0]
+            dy = new_y - old_position[1]
+            if dx or dy:
+                self.move(f"live-aircraft:{aircraft.icao24}", dx, dy)
+                self._drawn_aircraft_positions[aircraft.icao24] = (new_x, new_y)
 
     def _draw_aircraft_track(
         self,
@@ -157,7 +240,7 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
                 fill="#22d3ee",
                 width=1,
                 dash=(3, 4),
-                tags=(f"live-aircraft:{aircraft.icao24}", "aircraft-track"),
+                tags=(f"live-aircraft:{aircraft.icao24}", "aircraft-track", "live-aircraft"),
             )
 
     def _draw_aircraft(
@@ -238,7 +321,7 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
 
     def _select_aircraft(self, aircraft: SkyAircraft) -> None:
         self._selected_icao24 = aircraft.icao24
-        self.redraw()
+        self._redraw_aircraft_only()
         if self._on_aircraft_select is not None:
             self._on_aircraft_select(aircraft)
 
