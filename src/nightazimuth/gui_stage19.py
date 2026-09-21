@@ -9,6 +9,7 @@ from .aircraft_adsb_lol import AdsbLolProvider
 from .aircraft_hud_finder_view import AircraftTwilightFinderView
 from .aircraft_live import SkyAircraft, build_sky_aircraft
 from .aircraft_motion import AircraftMotionHistory
+from .aircraft_routes import AdsbLolRouteProvider, AircraftRoute, AirportInfo
 from .aircraft_sources import AircraftSourceCoordinator
 from .gui_stage16_polish import PolishedStage16NightAzimuthApp
 
@@ -31,9 +32,11 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
             max_history_age_seconds=120.0,
             prediction_limit_seconds=15.0,
         )
+        self._route_provider = AdsbLolRouteProvider()
         self._aircraft_snapshot: AircraftSnapshot | None = None
         self._aircraft_refresh_job: str | None = None
         self._aircraft_generation = 0
+        self._aircraft_route_generation = 0
         self._aircraft_fetch_in_progress = False
         self._aircraft_ready = False
         super().__init__()
@@ -59,6 +62,7 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         if not self._aircraft_ready:
             return
         self._aircraft_generation += 1
+        self._aircraft_route_generation += 1
         self._aircraft_motion.clear()
         self._aircraft_sources.clear_last_good()
         self._aircraft_snapshot = None
@@ -158,10 +162,41 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         self._aircraft_refresh_job = self.after(self.AIRCRAFT_RETRY_MS, self._refresh_aircraft)
 
     def _on_live_aircraft_selected(self, aircraft: SkyAircraft) -> None:
-        self.live_detail_var.set(format_aircraft_detail(aircraft))
+        self._aircraft_route_generation += 1
+        generation = self._aircraft_route_generation
+        base_detail = format_aircraft_detail(aircraft)
+        if not aircraft.callsign:
+            self.live_detail_var.set(base_detail + "\n\nRoute: Unknown")
+            return
+
+        self.live_detail_var.set(base_detail + "\n\nRoute: looking up...")
+        threading.Thread(
+            target=self._load_aircraft_route,
+            args=(aircraft, generation),
+            daemon=True,
+        ).start()
+
+    def _load_aircraft_route(self, aircraft: SkyAircraft, generation: int) -> None:
+        route = self._route_provider.lookup(aircraft.callsign)
+        self.after(0, self._apply_aircraft_route, aircraft, generation, route)
+
+    def _apply_aircraft_route(
+        self,
+        aircraft: SkyAircraft,
+        generation: int,
+        route: AircraftRoute | None,
+    ) -> None:
+        if not self._aircraft_ready or generation != self._aircraft_route_generation:
+            return
+        if not isinstance(self.live_view, AircraftTwilightFinderView):
+            return
+        if self.live_view.selected_icao24 != aircraft.icao24:
+            return
+        self.live_detail_var.set(format_aircraft_detail(aircraft, route=route))
 
     def destroy(self) -> None:
         self._aircraft_ready = False
+        self._aircraft_route_generation += 1
         if self._aircraft_refresh_job is not None:
             try:
                 self.after_cancel(self._aircraft_refresh_job)
@@ -171,7 +206,11 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         super().destroy()
 
 
-def format_aircraft_detail(aircraft: SkyAircraft) -> str:
+def format_aircraft_detail(
+    aircraft: SkyAircraft,
+    *,
+    route: AircraftRoute | None = None,
+) -> str:
     altitude_ft = aircraft.altitude_m / 0.3048
     speed_knots = (
         None
@@ -235,14 +274,42 @@ def format_aircraft_detail(aircraft: SkyAircraft) -> str:
             lines.append(f"Registration: {aircraft.registration}")
         if aircraft.operator:
             lines.append(f"Operator: {aircraft.operator}")
+
     lines.extend(
         (
             f"Position: {aircraft.position_state.value}",
             f"Position age: {aircraft.position_age_seconds:.1f} s",
             f"Source: {aircraft.source_label}",
+            "",
         )
     )
+    lines.extend(format_route_detail(route))
     return "\n".join(lines)
+
+
+def format_route_detail(route: AircraftRoute | None) -> list[str]:
+    if route is None or route.departure is None or route.arrival is None:
+        return ["Route: Unknown"]
+
+    lines = ["Route"]
+    lines.extend(_format_airport("Departure", route.departure))
+    if route.intermediate_airports:
+        via = " → ".join(airport.display_code for airport in route.intermediate_airports)
+        lines.append(f"Via: {via}")
+    lines.extend(_format_airport("Arrival", route.arrival))
+    lines.append(f"Route source: {route.source_label}")
+    return lines
+
+
+def _format_airport(label: str, airport: AirportInfo) -> list[str]:
+    lines = [
+        f"{label}: {airport.display_code}",
+        f"  {airport.name}",
+    ]
+    if airport.location:
+        lines.append(f"  Location: {airport.location}")
+    lines.append(f"  Country: {airport.display_country}")
+    return lines
 
 
 def main() -> int:
