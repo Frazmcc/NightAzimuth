@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import threading
 import tkinter as tk
 from tkinter import ttk
 
 from .aircraft import AircraftSnapshot
 from .aircraft_live import SkyAircraft
+from .aircraft_routes import AircraftRoute
 from .gui_stage19 import aircraft_contact_row, filter_aircraft_contacts
 from .gui_stage20_satellites import Stage20SatelliteNightAzimuthApp, build_local_pass_hud
 from .sky_map import SkySatellite
@@ -179,7 +181,12 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             daemon=True,
         ).start()
 
-    def _apply_aircraft_route(self, aircraft: SkyAircraft, generation: int, route: object) -> None:
+    def _apply_aircraft_route(
+        self,
+        aircraft: SkyAircraft,
+        generation: int,
+        route: AircraftRoute | None,
+    ) -> None:
         if not self._aircraft_ready or generation != self._aircraft_route_generation:
             return
         if self.live_view.selected_icao24 != aircraft.icao24:
