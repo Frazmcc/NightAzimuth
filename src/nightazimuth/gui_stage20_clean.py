@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 import tkinter as tk
 from tkinter import ttk
 
 from .aircraft import AircraftSnapshot
 from .aircraft_live import SkyAircraft
-from .gui_stage20 import DRAWER_AIRCRAFT, DRAWER_DETAILS
 from .gui_stage20_satellites import Stage20SatelliteNightAzimuthApp, build_local_pass_hud
 from .sky_map import SkySatellite
 from .stage20_clean_live_view import Stage20CleanLiveSkyView
@@ -186,7 +186,7 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
                 widget.destroy()
 
 
-def _walk_widgets(parent: tk.Misc):
+def _walk_widgets(parent: tk.Misc) -> Iterator[tk.Misc]:
     for child in parent.winfo_children():
         yield child
         yield from _walk_widgets(child)
