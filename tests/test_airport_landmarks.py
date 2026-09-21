@@ -14,6 +14,7 @@ def _provider(*, compressed: bool = False) -> AirportLandmarkProvider:
         "DDDD,large_airport,Delta International,2.80,0.00,yes,DDD\n"
         "EEEE,small_airport,Local Strip,0.05,0.00,no,EEE\n"
         "FFFF,heliport,City Heliport,0.08,0.00,no,FFF\n"
+        "GGGG,medium_airport,Golf Regional,0.10,0.00,no,GGG\n"
     )
     payload = csv_text.encode("utf-8")
     if compressed:
@@ -28,7 +29,7 @@ def _provider(*, compressed: bool = False) -> AirportLandmarkProvider:
 
 def test_airports_are_derived_from_runtime_dataset_and_observer_location() -> None:
     airports = _provider().nearby(0.0, 0.0, max_distance_km=140.0, limit=4)
-    assert [airport.iata for airport in airports] == ["BBB", "CCC", "AAA", "EEE"]
+    assert [airport.iata for airport in airports] == ["BBB", "CCC", "AAA", "GGG"]
 
 
 def test_airport_visibility_respects_current_view_sector() -> None:
@@ -40,6 +41,11 @@ def test_airport_visibility_respects_current_view_sector() -> None:
 def test_large_airports_are_preferred_over_closer_small_airports() -> None:
     airports = _provider().nearby(0.0, 0.0, max_distance_km=80.0, limit=2)
     assert [airport.iata for airport in airports] == ["BBB", "AAA"]
+
+
+def test_scheduled_medium_airports_are_preferred_over_closer_unscheduled_medium_airports() -> None:
+    airports = _provider().nearby(0.0, 0.0, max_distance_km=80.0, limit=3)
+    assert [airport.iata for airport in airports] == ["BBB", "AAA", "GGG"]
 
 
 def test_provider_accepts_gzip_payload_without_assuming_the_endpoint_is_gzipped() -> None:
