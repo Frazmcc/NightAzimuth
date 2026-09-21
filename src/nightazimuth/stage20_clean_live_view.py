@@ -47,7 +47,6 @@ class Stage20CleanLiveSkyView(Stage20LiveSkyView):
             tags=(tag, "live-satellite"),
         )
 
-        # Keep labels scarce: ISS, selected contact and the highest-priority fast movers.
         if satellite.norad_id in priority_ids and (
             is_iss or selected or satellite in self._satellites[: self.MAX_FAST_LABELS]
         ):
@@ -62,7 +61,11 @@ class Stage20CleanLiveSkyView(Stage20LiveSkyView):
                 tags=(tag,),
             )
 
-        self.tag_bind(tag, "<Button-1>", lambda _event, item=satellite: self._select(item))
+        self.tag_bind(
+            tag,
+            "<Button-1>",
+            lambda _event, item=satellite: self._select(item),
+        )
         self.tag_bind(tag, "<Enter>", lambda _event: self.config(cursor="hand2"))
         self.tag_bind(tag, "<Leave>", lambda _event: self.config(cursor=""))
 
@@ -107,11 +110,19 @@ class Stage20CleanLiveSkyView(Stage20LiveSkyView):
                 text=f"{prefix}{identity} • {type_text}",
                 fill=_aircraft_label_colour(aircraft),
                 anchor="sw",
-                font=("Segoe UI", 8, "bold" if selected or highlighted else "normal"),
+                font=(
+                    "Segoe UI",
+                    8,
+                    "bold" if selected or highlighted else "normal",
+                ),
                 tags=(tag, "live-aircraft"),
             )
 
-        self.tag_bind(tag, "<Button-1>", lambda _event, item=aircraft: self._select_aircraft(item))
+        self.tag_bind(
+            tag,
+            "<Button-1>",
+            lambda _event, item=aircraft: self._select_aircraft(item),
+        )
         self.tag_bind(tag, "<Enter>", lambda _event: self.config(cursor="hand2"))
         self.tag_bind(tag, "<Leave>", lambda _event: self.config(cursor=""))
 
@@ -135,10 +146,22 @@ class Stage20CleanLiveSkyView(Stage20LiveSkyView):
         outline = "#ffffff" if selected or highlighted else colour
 
         def point(forward: float, side: float) -> tuple[float, float]:
-            return x + dx * forward * scale + sx * side * scale, y + dy * forward * scale + sy * side * scale
+            return (
+                x + dx * forward * scale + sx * side * scale,
+                y + dy * forward * scale + sy * side * scale,
+            )
 
         if icon_type == "helicopter":
-            self.create_oval(x - 3, y - 3, x + 3, y + 3, fill=colour, outline=outline, width=2 if highlighted else 1, tags=tags)
+            self.create_oval(
+                x - 3,
+                y - 3,
+                x + 3,
+                y + 3,
+                fill=colour,
+                outline=outline,
+                width=2 if highlighted else 1,
+                tags=tags,
+            )
             a, b = point(0, -1.25), point(0, 1.25)
             self.create_line(*a, *b, fill=outline, width=2, tags=tags)
             tail = point(-1.25, 0)
@@ -157,15 +180,32 @@ class Stage20CleanLiveSkyView(Stage20LiveSkyView):
             left = point(-0.35, -0.9)
             tail = point(-0.7, 0)
             right = point(-0.35, 0.9)
-            self.create_polygon(*nose, *left, *tail, *right, fill=colour, outline=outline, width=2, tags=tags)
+            self.create_polygon(
+                *nose,
+                *left,
+                *tail,
+                *right,
+                fill=colour,
+                outline=outline,
+                width=2,
+                tags=tags,
+            )
             return
 
         if icon_type == "uav":
-            self.create_rectangle(x - 3, y - 3, x + 3, y + 3, fill="", outline=outline, width=2, tags=tags)
+            self.create_rectangle(
+                x - 3,
+                y - 3,
+                x + 3,
+                y + 3,
+                fill="",
+                outline=outline,
+                width=2,
+                tags=tags,
+            )
             self.create_line(x - 6, y, x + 6, y, fill=outline, width=2, tags=tags)
             return
 
-        # Default fixed-wing aircraft silhouette.
         nose = point(1.3, 0)
         wing_l = point(-0.1, -1.0)
         tail_l = point(-0.65, -0.35)
