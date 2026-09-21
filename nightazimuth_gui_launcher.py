@@ -1,4 +1,4 @@
-from nightazimuth.gui_stage20 import main
+from nightazimuth.gui_stage20_satellites import main
 
 
 if __name__ == "__main__":
