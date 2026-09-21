@@ -29,10 +29,16 @@ class Stage20RealtimeSatelliteLiveSkyView(Stage20AirportLiveSkyView):
         appear to stop or disappear. Keep the Stage 20 display contract here.
         """
         incoming = list(satellites)
-        if self._all_satellites and self._satellites and not any(item.future_track for item in incoming):
+        if (
+            incoming
+            and self._all_satellites
+            and self._satellites
+            and not any(item.future_track for item in incoming)
+        ):
             # A refresh publishes current positions before its background track
             # prediction completes. Hold the current smooth scene until the
-            # complete tracked snapshot is ready.
+            # complete tracked snapshot is ready. An explicit empty list is not
+            # held so a location change can clear the previous observer's sky.
             return
 
         self._all_satellites = incoming
@@ -108,7 +114,8 @@ class Stage20RealtimeSatelliteLiveSkyView(Stage20AirportLiveSkyView):
             if len(projected) >= 2:
                 self._draw_realtime_track_segment(satellite, projected)
 
-        self.tag_lower("realtime-satellite-track", "live-satellite")
+        if self.find_withtag("realtime-satellite-track") and self.find_withtag("live-satellite"):
+            self.tag_lower("realtime-satellite-track", "live-satellite")
 
     def _draw_realtime_track_segment(self, satellite: object, points: list[tuple[float, float]]) -> None:
         norad_id = str(getattr(satellite, "norad_id", ""))
