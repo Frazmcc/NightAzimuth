@@ -75,11 +75,11 @@ def _format_journey(aircraft: SkyAircraft, route: AircraftRoute | None) -> list[
 
     departure = route.departure
     arrival = route.arrival
-    route_line = f"{_airport_summary(departure)}"
+    route_line = f"Departure: {_airport_summary(departure)}"
     if route.intermediate_airports:
         via = " → ".join(airport.display_code for airport in route.intermediate_airports)
         route_line += f" → {via}"
-    route_line += f" → {_airport_summary(arrival)}"
+    route_line += f" • Arrival: {_airport_summary(arrival)}"
 
     lines = [route_line, "Departure time: unavailable from route source"]
     eta = estimate_arrival_time(aircraft, arrival)
@@ -87,7 +87,7 @@ def _format_journey(aircraft: SkyAircraft, route: AircraftRoute | None) -> list[
         lines.append("ETA: Unknown")
     else:
         eta_time, minutes = eta
-        lines.append(f"ETA: {eta_time:%H:%M} UTC (estimated, ~{minutes:d} min)")
+        lines.append(f"ETA (estimated): {eta_time:%H:%M} UTC • ~{minutes:d} min")
     return lines
 
 
