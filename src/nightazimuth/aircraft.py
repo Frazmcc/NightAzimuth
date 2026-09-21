@@ -52,6 +52,11 @@ class AircraftObservation:
     source_id: str
     source_label: str
     source_kind: AircraftSourceKind
+    registration: str | None = None
+    type_code: str | None = None
+    type_description: str | None = None
+    operator: str | None = None
+    military: bool = False
 
     def __post_init__(self) -> None:
         icao = self.icao24.strip().lower()
@@ -65,38 +70,27 @@ class AircraftObservation:
         _require_utc(self.position_observed_at, "position_observed_at")
         if self.contact_observed_at is not None:
             _require_utc(self.contact_observed_at, "contact_observed_at")
-        for name in (
-            "barometric_altitude_m",
-            "geometric_altitude_m",
-            "ground_speed_mps",
-            "track_deg",
-            "vertical_rate_mps",
-        ):
+        for name in ("barometric_altitude_m", "geometric_altitude_m", "ground_speed_mps", "track_deg", "vertical_rate_mps"):
             value = getattr(self, name)
             if value is not None and not isfinite(value):
                 raise ValueError(f"{name} must be finite when supplied")
         if self.track_deg is not None:
             object.__setattr__(self, "track_deg", self.track_deg % 360.0)
-        callsign = (self.callsign or "").strip() or None
-        squawk = (self.squawk or "").strip() or None
-        object.__setattr__(self, "callsign", callsign)
-        object.__setattr__(self, "squawk", squawk)
+        for name in ("callsign", "squawk", "registration", "type_code", "type_description", "operator"):
+            value = (getattr(self, name) or "").strip() or None
+            object.__setattr__(self, name, value)
 
     @property
     def preferred_altitude_m(self) -> float | None:
-        if self.geometric_altitude_m is not None:
-            return self.geometric_altitude_m
-        return self.barometric_altitude_m
+        return self.geometric_altitude_m if self.geometric_altitude_m is not None else self.barometric_altitude_m
 
     def position_age_seconds(self, now: datetime | None = None) -> float:
-        current = _utc_now(now)
-        return max(0.0, (current - self.position_observed_at).total_seconds())
+        return max(0.0, (_utc_now(now) - self.position_observed_at).total_seconds())
 
     def contact_age_seconds(self, now: datetime | None = None) -> float | None:
         if self.contact_observed_at is None:
             return None
-        current = _utc_now(now)
-        return max(0.0, (current - self.contact_observed_at).total_seconds())
+        return max(0.0, (_utc_now(now) - self.contact_observed_at).total_seconds())
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,8 +116,7 @@ class AircraftSnapshot:
     def source_age_seconds(self, now: datetime | None = None) -> float | None:
         if self.source_observed_at is None:
             return None
-        current = _utc_now(now)
-        return max(0.0, (current - self.source_observed_at).total_seconds())
+        return max(0.0, (_utc_now(now) - self.source_observed_at).total_seconds())
 
 
 class AircraftProvider(Protocol):
@@ -131,24 +124,14 @@ class AircraftProvider(Protocol):
     label: str
     source_kind: AircraftSourceKind
 
-    def fetch_snapshot(
-        self,
-        observer: AircraftObserver,
-        radius_km: float,
-    ) -> AircraftSnapshot:
+    def fetch_snapshot(self, observer: AircraftObserver, radius_km: float) -> AircraftSnapshot:
         ...
 
 
-def classify_snapshot_age(
-    age_seconds: float | None,
-    *,
-    live_seconds: float = 15.0,
-    aging_seconds: float = 45.0,
-) -> AircraftSnapshotState:
+def classify_snapshot_age(age_seconds: float | None, *, live_seconds: float = 15.0, aging_seconds: float = 45.0) -> AircraftSnapshotState:
     if age_seconds is None:
         return AircraftSnapshotState.AGING
-    if age_seconds < 0:
-        age_seconds = 0.0
+    age_seconds = max(0.0, age_seconds)
     if age_seconds <= live_seconds:
         return AircraftSnapshotState.LIVE
     if age_seconds <= aging_seconds:
