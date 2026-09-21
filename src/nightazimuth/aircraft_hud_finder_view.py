@@ -46,6 +46,24 @@ def interpolated_aircraft_sky_position(
     return points[-1].azimuth_deg, points[-1].elevation_deg
 
 
+def centred_elevation_window(
+    elevation_deg: float,
+    minimum_elevation_deg: float,
+    maximum_elevation_deg: float,
+) -> tuple[float, float]:
+    """Centre a vertical Live-Finder window on an elevation while staying within 0..90°."""
+    span = max(5.0, min(90.0, maximum_elevation_deg - minimum_elevation_deg))
+    minimum = elevation_deg - span / 2.0
+    maximum = minimum + span
+    if minimum < 0.0:
+        maximum -= minimum
+        minimum = 0.0
+    if maximum > 90.0:
+        minimum -= maximum - 90.0
+        maximum = 90.0
+    return max(0.0, minimum), min(90.0, maximum)
+
+
 class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
     """Twilight finder with an optional observer-centred aircraft overlay."""
 
@@ -73,6 +91,10 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
     def visible_aircraft_count(self) -> int:
         return len(self._aircraft_in_current_view()) if self._show_aircraft else 0
 
+    def aircraft_in_current_view(self) -> list[SkyAircraft]:
+        """Return aircraft currently inside the displayed azimuth/elevation window."""
+        return list(self._aircraft_in_current_view()) if self._show_aircraft else []
+
     def set_aircraft(self, aircraft: list[SkyAircraft]) -> None:
         self._aircraft = list(aircraft)
         self._aircraft_animation_started = time.monotonic()
@@ -87,6 +109,28 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
     def select_aircraft(self, icao24: str | None) -> None:
         self._selected_icao24 = None if icao24 is None else icao24.strip().lower()
         self._redraw_aircraft_only()
+
+    def centre_on_aircraft(self, icao24: str | None = None) -> bool:
+        """Centre the finder on a selected/current aircraft using its smooth projected position."""
+        target_id = (icao24 or self._selected_icao24 or "").strip().lower()
+        if not target_id:
+            return False
+        aircraft = next((item for item in self._aircraft if item.icao24 == target_id), None)
+        if aircraft is None:
+            return False
+
+        elapsed = max(0.0, time.monotonic() - self._aircraft_animation_started)
+        azimuth, elevation = interpolated_aircraft_sky_position(aircraft, elapsed)
+        self._facing_deg = azimuth % 360.0
+        minimum, maximum = centred_elevation_window(
+            elevation,
+            self.minimum_elevation_deg,
+            self.maximum_elevation_deg,
+        )
+        self._minimum_elevation_deg = minimum
+        self._maximum_elevation_deg = maximum
+        self._rebuild_display_satellites()
+        return True
 
     def redraw(self) -> None:
         self._drawn_aircraft_positions = {}
