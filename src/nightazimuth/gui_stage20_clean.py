@@ -6,8 +6,10 @@ from tkinter import ttk
 
 from .aircraft import AircraftSnapshot
 from .aircraft_live import SkyAircraft
+from .gui_stage19 import aircraft_contact_row, filter_aircraft_contacts
 from .gui_stage20_satellites import Stage20SatelliteNightAzimuthApp, build_local_pass_hud
 from .sky_map import SkySatellite
+from .stage20_aircraft_detail import format_stage20_aircraft_detail
 from .stage20_human_vision_live_view import Stage20HumanVisionLiveSkyView
 from .stage20_perceptual_projection import project_perceptual_live_view
 
@@ -44,9 +46,22 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
         # Keep Weather Map and Forecast as dedicated tabs. Only the Live Sky
         # weather/cloud panel and controls are removed for the lower-noise view.
         self._remove_weather_cloud_live_controls(parent)
+        self._remove_aircraft_table_scrollbar()
         self._build_iss_drawer(master)
         self._apply_live_view_direction(show_error=False)
         self._on_star_layer_changed()
+
+    def _remove_aircraft_table_scrollbar(self) -> None:
+        panel = getattr(self, "_stage20_aircraft_panel", None)
+        if panel is None:
+            return
+        for widget in _walk_widgets(panel):
+            if isinstance(widget, ttk.Scrollbar):
+                widget.grid_remove()
+                try:
+                    self.aircraft_table.configure(yscrollcommand="")
+                except tk.TclError:
+                    pass
 
     def _build_iss_drawer(self, master: tk.Misc) -> None:
         self._stage20_iss_text_var = tk.StringVar(
@@ -145,6 +160,73 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             return
         super()._apply_aircraft_snapshot(profile_key, generation, snapshot, contacts)
 
+    def _on_live_aircraft_selected(self, aircraft: SkyAircraft) -> None:
+        if hasattr(self, "aircraft_table") and self.aircraft_table.exists(aircraft.icao24):
+            self.aircraft_table.selection_set(aircraft.icao24)
+            self.aircraft_table.focus(aircraft.icao24)
+
+        self._aircraft_route_generation += 1
+        generation = self._aircraft_route_generation
+        base_detail = format_stage20_aircraft_detail(aircraft)
+        if not aircraft.callsign:
+            self.live_detail_var.set(base_detail)
+            return
+
+        self.live_detail_var.set(base_detail + "\n\nJourney data: looking up route...")
+        threading.Thread(
+            target=self._load_aircraft_route,
+            args=(aircraft, generation),
+            daemon=True,
+        ).start()
+
+    def _apply_aircraft_route(self, aircraft: SkyAircraft, generation: int, route: object) -> None:
+        if not self._aircraft_ready or generation != self._aircraft_route_generation:
+            return
+        if self.live_view.selected_icao24 != aircraft.icao24:
+            return
+        self.live_detail_var.set(format_stage20_aircraft_detail(aircraft, route=route))
+
+    def _refresh_aircraft_contacts_panel(self, *, force: bool = False) -> None:
+        if not hasattr(self, "aircraft_table"):
+            return
+        if not self.aircraft_layer_var.get():
+            visible: list[SkyAircraft] = []
+        else:
+            visible = self.live_view.aircraft_in_current_view()
+
+        visible = prioritise_aircraft_board(visible)
+        max_rows = self._stage20_aircraft_row_limit()
+        shown = visible[:max_rows]
+        rows = tuple(aircraft_contact_row(item) for item in shown)
+
+        if force or rows != self._aircraft_table_signature:
+            selected_icao = self.live_view.selected_icao24
+            self.aircraft_table.delete(*self.aircraft_table.get_children())
+            for aircraft, row in zip(shown, rows, strict=True):
+                self.aircraft_table.insert("", "end", iid=aircraft.icao24, values=row)
+            if selected_icao and self.aircraft_table.exists(selected_icao):
+                self.aircraft_table.selection_set(selected_icao)
+                self.aircraft_table.focus(selected_icao)
+            self._aircraft_table_signature = rows
+
+        filtered_total = len(filter_aircraft_contacts(self._aircraft_contacts, self.aircraft_filter_var.get()))
+        hidden = max(0, len(visible) - len(shown))
+        if not self.aircraft_layer_var.get():
+            status = "Aircraft layer off"
+        elif self._aircraft_snapshot is None:
+            status = "Aircraft: waiting for data..."
+        else:
+            state = self._aircraft_snapshot.state.value.upper()
+            suffix = f" • {hidden} more on Live Sky" if hidden else ""
+            status = f"{state} • {len(shown)} priority contacts shown / {filtered_total} filtered{suffix}"
+        self.aircraft_status_var.set(status)
+
+    def _stage20_aircraft_row_limit(self) -> int:
+        layout = getattr(self, "_stage20_layout", None)
+        if layout is None:
+            return 5
+        return max(3, min(int(layout.table_rows), 6 if not layout.compact else 4))
+
     def _remove_weather_cloud_live_controls(self, parent: tk.Misc) -> None:
         for widget in list(_walk_widgets(parent)):
             try:
@@ -164,12 +246,24 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
                 widget.destroy()
 
 
+def prioritise_aircraft_board(contacts: list[SkyAircraft]) -> list[SkyAircraft]:
+    """Pin emergency/special operations first, then military, then useful normals."""
+    return sorted(
+        contacts,
+        key=lambda aircraft: (
+            -(aircraft.squawk_alert.priority if aircraft.squawk_alert is not None else 0),
+            -int(aircraft.squawk_alert is not None),
+            -int(aircraft.military),
+            aircraft.range_km,
+            -aircraft.elevation_deg,
+            aircraft.icao24,
+        ),
+    )
+
+
 def _install_perceptual_projection() -> None:
     """Route all Stage 20 sky layers through one spherical projection."""
 
-    # Historical rendering modules import project_live_view directly. Stage 20
-    # swaps those module-local references at startup so every object family uses
-    # the same human-eye projection and remains aligned.
     from . import aircraft_hud_finder_view
     from . import gui_stage13
     from . import gui_stage14
