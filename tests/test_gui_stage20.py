@@ -1,4 +1,4 @@
-from nightazimuth.gui_stage20 import compose_live_hud_status
+from nightazimuth.gui_stage20 import compose_live_hud_status, should_hold_last_good_scene
 from nightazimuth.visual_theme import PALETTE
 
 
@@ -33,3 +33,24 @@ def test_stage20_palette_preserves_alert_hierarchy():
     assert PALETTE["critical"] != PALETTE["special"]
     assert PALETTE["special"] != PALETTE["military"]
     assert PALETTE["accent"] != PALETTE["window"]
+
+
+def test_empty_refresh_holds_existing_live_scene():
+    assert should_hold_last_good_scene(
+        incoming_satellite_count=0,
+        current_satellite_count=12,
+    )
+
+
+def test_first_empty_load_does_not_claim_to_have_last_good_scene():
+    assert not should_hold_last_good_scene(
+        incoming_satellite_count=0,
+        current_satellite_count=0,
+    )
+
+
+def test_non_empty_refresh_replaces_existing_scene():
+    assert not should_hold_last_good_scene(
+        incoming_satellite_count=8,
+        current_satellite_count=12,
+    )
