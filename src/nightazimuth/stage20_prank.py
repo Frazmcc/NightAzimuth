@@ -74,6 +74,7 @@ def open_prank_instance(instance: int) -> None:
                 edge,
                 f"--app={uri}",
                 "--new-window",
+                "--autoplay-policy=no-user-gesture-required",
                 "--window-size=720,430",
                 f"--window-position={x},{y}",
             ],
