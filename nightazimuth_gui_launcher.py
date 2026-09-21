@@ -1,4 +1,4 @@
-# Stage 20 human-vision Live Sky launcher: priority aircraft board, journey detail, squawk context and airport landmarks.
+# Stage 20 human-vision Live Sky launcher: priority aircraft board, journey detail, squawk context and dynamic airport landmarks.
 from nightazimuth.gui_stage20_clean import main
 
 
