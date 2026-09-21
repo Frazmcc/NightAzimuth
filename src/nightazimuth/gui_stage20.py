@@ -64,6 +64,13 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
         )
         self.stage20_view_badge.place(relx=0.5, rely=1.0, y=-14, anchor="s")
 
+        self.stage20_fullscreen_hint = ttk.Label(
+            self.live_view,
+            text="F11  FULLSCREEN",
+            style="HudBadge.TLabel",
+        )
+        self.stage20_fullscreen_hint.place(relx=1.0, rely=1.0, x=-14, y=-14, anchor="se")
+
     def _restyle_live_controls(self) -> None:
         if hasattr(self, "aircraft_table"):
             self.aircraft_table.configure(style="Night.Treeview")
