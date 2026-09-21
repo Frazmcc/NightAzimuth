@@ -85,7 +85,11 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             self._stage20_iss_panel.grid_remove()
         if hasattr(self, "stage20_iss_button"):
             self.stage20_iss_button.configure(
-                text="▾  ISS / PASSES" if self._stage20_open_drawer == DRAWER_ISS else "▸  ISS / PASSES"
+                text=(
+                    "▾  ISS / PASSES"
+                    if self._stage20_open_drawer == DRAWER_ISS
+                    else "▸  ISS / PASSES"
+                )
             )
         if self._stage20_open_drawer == DRAWER_ISS and self._stage20_iss_panel is not None:
             self._stage20_iss_panel.grid(
@@ -145,7 +149,7 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             self._refresh_aircraft_contacts_panel(force=True)
             if hasattr(self, "aircraft_status_var"):
                 self.aircraft_status_var.set(
-                    "STALE • ADS-B refresh returned no contacts; holding last known aircraft"
+                    "STALE • no fresh ADS-B contacts; holding last known positions"
                 )
             self._aircraft_refresh_job = self.after(self.AIRCRAFT_RETRY_MS, self._refresh_aircraft)
             return
