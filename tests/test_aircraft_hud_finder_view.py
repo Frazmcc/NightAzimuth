@@ -1,7 +1,36 @@
 import math
 
-from nightazimuth.aircraft_hud_finder_view import _aircraft_colour, _triangle_points
+import pytest
+
+from nightazimuth.aircraft_hud_finder_view import (
+    _aircraft_colour,
+    _triangle_points,
+    interpolated_aircraft_sky_position,
+)
+from nightazimuth.aircraft_live import AircraftSkyTrackPoint, SkyAircraft
 from nightazimuth.aircraft_motion import AircraftPositionState
+
+
+def _aircraft_with_track() -> SkyAircraft:
+    return SkyAircraft(
+        icao24="40621d",
+        callsign="TEST1",
+        azimuth_deg=350.0,
+        elevation_deg=20.0,
+        range_km=10.0,
+        altitude_m=1000.0,
+        track_deg=90.0,
+        ground_speed_mps=100.0,
+        vertical_rate_mps=0.0,
+        position_state=AircraftPositionState.MEASURED,
+        position_age_seconds=0.0,
+        source_id="test",
+        source_label="Test",
+        future_track=(
+            AircraftSkyTrackPoint(0.0, 350.0, 20.0),
+            AircraftSkyTrackPoint(10.0, 10.0, 30.0),
+        ),
+    )
 
 
 def test_triangle_tip_follows_requested_direction():
@@ -29,3 +58,10 @@ def test_aircraft_colour_distinguishes_estimated_and_stale_positions():
     assert estimated != measured
     assert stale != measured
     assert stale != estimated
+
+
+def test_aircraft_sky_animation_wraps_cleanly_across_north():
+    azimuth, elevation = interpolated_aircraft_sky_position(_aircraft_with_track(), 5.0)
+
+    assert azimuth == pytest.approx(0.0)
+    assert elevation == pytest.approx(25.0)
