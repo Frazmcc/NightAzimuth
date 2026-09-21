@@ -7,16 +7,20 @@ from tkinter import ttk
 
 from PIL import Image, ImageTk
 
+from .aircraft_live import SkyAircraft
+from .aircraft_routes import AircraftRoute
 from .celestrak import CelestrakClient, CelestrakError
 from .gui_stage20_clean import Stage20CleanNightAzimuthApp
 from .live_catalog import merge_orbital_catalogues
 from .satellite_metadata import SatelliteMetadata, SatelliteMetadataProvider
 from .sky_map import SkySatellite
+from .stage20_aircraft_detail import format_stage20_aircraft_detail
 from .stage20_live_sky_view import ISS_NORAD_ID
 from .stage20_realtime_satellite_view import Stage20RealtimeSatelliteLiveSkyView
 from .track_prediction import TrackPredictor
 
 DRAWER_SATELLITE = "satellite"
+DRAWER_DETAILS = "details"
 
 
 class Stage20RealtimeNightAzimuthApp(Stage20CleanNightAzimuthApp):
@@ -33,6 +37,9 @@ class Stage20RealtimeNightAzimuthApp(Stage20CleanNightAzimuthApp):
         self._satellite_info_image_label: ttk.Label | None = None
         self._satellite_info_photo: ImageTk.PhotoImage | None = None
         self._selected_satellite_norad: str | None = None
+        self._stage20_aircraft_detail_icao: str | None = None
+        self._stage20_aircraft_detail_route: AircraftRoute | None = None
+        self._stage20_aircraft_route_pending = False
         super().__init__()
         self._remove_prank_button()
 
@@ -115,6 +122,68 @@ class Stage20RealtimeNightAzimuthApp(Stage20CleanNightAzimuthApp):
         if self._stage20_open_drawer == DRAWER_SATELLITE and panel is not None:
             panel.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
 
+    def _on_live_aircraft_selected(self, aircraft: SkyAircraft) -> None:
+        """Keep rich aircraft intelligence visible instead of generic Live summary text."""
+        self._stage20_aircraft_detail_icao = aircraft.icao24
+        self._stage20_aircraft_detail_route = None
+        self._stage20_aircraft_route_pending = bool(aircraft.callsign)
+        super()._on_live_aircraft_selected(aircraft)
+        self._stage20_open_drawer = DRAWER_DETAILS
+        self._apply_stage20_drawer_state()
+        self._refresh_selected_aircraft_detail()
+
+    def _apply_aircraft_route(
+        self,
+        aircraft: SkyAircraft,
+        generation: int,
+        route: AircraftRoute | None,
+    ) -> None:
+        super()._apply_aircraft_route(aircraft, generation, route)
+        if generation != self._aircraft_route_generation:
+            return
+        if getattr(self.live_view, "selected_icao24", None) != aircraft.icao24:
+            return
+        self._stage20_aircraft_detail_icao = aircraft.icao24
+        self._stage20_aircraft_detail_route = route
+        self._stage20_aircraft_route_pending = False
+        self.live_detail_var.set(format_stage20_aircraft_detail(aircraft, route=route))
+
+    def _update_live_view_summary(self) -> None:
+        if self._refresh_selected_aircraft_detail():
+            return
+        super()._update_live_view_summary()
+
+    def _refresh_aircraft_contacts_panel(self, *, force: bool = False) -> None:
+        super()._refresh_aircraft_contacts_panel(force=force)
+        self._refresh_selected_aircraft_detail()
+
+    def _refresh_selected_aircraft_detail(self) -> bool:
+        if not hasattr(self, "live_view"):
+            return False
+        selected_icao = getattr(self.live_view, "selected_icao24", None)
+        if not selected_icao:
+            self._stage20_aircraft_detail_icao = None
+            self._stage20_aircraft_detail_route = None
+            self._stage20_aircraft_route_pending = False
+            return False
+        aircraft = next(
+            (item for item in getattr(self, "_aircraft_contacts", ()) if item.icao24 == selected_icao),
+            None,
+        )
+        if aircraft is None:
+            return False
+
+        route = (
+            self._stage20_aircraft_detail_route
+            if self._stage20_aircraft_detail_icao == selected_icao
+            else None
+        )
+        text = format_stage20_aircraft_detail(aircraft, route=route)
+        if self._stage20_aircraft_route_pending and route is None:
+            text += "\nJourney data: looking up route..."
+        self.live_detail_var.set(text)
+        return True
+
     def _on_live_satellite_selected(self, satellite: SkySatellite) -> None:
         if next_satellite_selection(self._selected_satellite_norad, satellite.norad_id) is None:
             self._deselect_live_satellite()
@@ -134,8 +203,6 @@ class Stage20RealtimeNightAzimuthApp(Stage20CleanNightAzimuthApp):
             daemon=True,
         ).start()
 
-        # Ensure any clicked object enters the next realtime prediction set even
-        # when it was not one of the automatic closest/highest satellites.
         self._start_track_prediction(
             self.selected_name,
             list(getattr(self, "_sky_satellites", ())),
@@ -159,8 +226,6 @@ class Stage20RealtimeNightAzimuthApp(Stage20CleanNightAzimuthApp):
         self._set_satellite_image(None, "No satellite selected")
         self._update_live_view_summary()
 
-        # Rebuild the realtime prediction pool without a selected NORAD pinned
-        # into it. User-selected display controls remain untouched.
         self._start_track_prediction(
             self.selected_name,
             list(getattr(self, "_sky_satellites", ())),
