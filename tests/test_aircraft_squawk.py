@@ -39,6 +39,12 @@ def test_key_special_operations_are_classified():
         "0033": SquawkCategory.PARACHUTING,
         "0036": SquawkCategory.TOWING_INSPECTION,
         "0037": SquawkCategory.ROYAL,
+        "7001": SquawkCategory.MILITARY,
+        "7002": SquawkCategory.DANGER_AREA,
+        "7003": SquawkCategory.DISPLAY,
+        "7004": SquawkCategory.DISPLAY,
+        "7005": SquawkCategory.MILITARY,
+        "7006": SquawkCategory.MILITARY,
         "7007": SquawkCategory.OPEN_SKIES,
     }
     for code, category in expected.items():
@@ -49,6 +55,7 @@ def test_key_special_operations_are_classified():
 
 def test_normal_conspicuity_and_fmc_style_codes_are_not_elevated():
     assert classify_squawk("7000") is None
+    assert classify_squawk("7010") is None
     assert classify_squawk("2000") is None
     assert classify_squawk("2620") is None
 
