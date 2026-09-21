@@ -43,6 +43,12 @@ class Stage20SatelliteNightAzimuthApp(Stage20NightAzimuthApp):
         if profile_name != self.selected_name or not isinstance(self.live_view, Stage20LiveSkyView):
             return
 
+        # Pass prediction is intentionally based on CelesTrak's VISUAL group.
+        # Reusing those NORAD IDs lets the day/night Live Sky distinguish
+        # plausible visual targets without hiding the rest of the active fleet.
+        self.live_view.set_visual_candidate_ids(
+            row[1] for row in pass_rows if len(row) >= 2
+        )
         alerts, iss_status = build_local_pass_hud(
             pass_rows,
             current_satellites=getattr(self, "_sky_satellites", ()),
