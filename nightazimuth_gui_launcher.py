@@ -1,4 +1,4 @@
-# Stage 20 human-vision Live Sky launcher with priority aircraft board, journey detail and squawk context.
+# Stage 20 human-vision Live Sky launcher: priority aircraft board, journey detail and squawk context.
 from nightazimuth.gui_stage20_clean import main
 
 
