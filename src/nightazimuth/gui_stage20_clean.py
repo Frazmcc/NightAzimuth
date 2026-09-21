@@ -9,6 +9,7 @@ from .aircraft_live import SkyAircraft
 from .gui_stage20_satellites import Stage20SatelliteNightAzimuthApp, build_local_pass_hud
 from .sky_map import SkySatellite
 from .stage20_clean_live_view import Stage20CleanLiveSkyView
+from .stage20_perceptual_projection import project_perceptual_live_view
 
 DRAWER_ISS = "iss"
 
@@ -19,6 +20,7 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
     def __init__(self) -> None:
         self._stage20_iss_panel: ttk.LabelFrame | None = None
         self._stage20_iss_text_var: tk.StringVar | None = None
+        _install_perceptual_projection()
         super().__init__()
 
     def _build_live_view(self, parent: tk.Misc) -> None:
@@ -160,6 +162,34 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
                 )
             ):
                 widget.destroy()
+
+
+def _install_perceptual_projection() -> None:
+    """Route all Stage 20 sky layers through one spherical projection."""
+
+    # Historical rendering modules import project_live_view directly. Stage 20
+    # swaps those module-local references at startup so every object family uses
+    # the same human-eye projection and remains aligned.
+    from . import aircraft_hud_finder_view
+    from . import gui_stage13
+    from . import gui_stage14
+    from . import hud_finder_view
+    from . import live_view
+    from . import smooth_hud_finder_view
+    from . import star_live_view
+
+    modules = (
+        live_view,
+        hud_finder_view,
+        star_live_view,
+        smooth_hud_finder_view,
+        aircraft_hud_finder_view,
+        gui_stage13,
+        gui_stage14,
+    )
+    for module in modules:
+        if hasattr(module, "project_live_view"):
+            module.project_live_view = project_perceptual_live_view
 
 
 def _walk_widgets(parent: tk.Misc) -> Iterator[tk.Misc]:
