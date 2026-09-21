@@ -1,3 +1,4 @@
+# Stage 20 low-noise presentation entry point.
 from nightazimuth.gui_stage20_clean import main
 
 
