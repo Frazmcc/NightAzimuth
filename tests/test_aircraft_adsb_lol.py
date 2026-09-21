@@ -7,7 +7,7 @@ from nightazimuth.aircraft import AircraftObserver, AircraftSnapshotState
 from nightazimuth.aircraft_adsb_lol import AdsbLolProvider, FOOT_TO_M, KNOT_TO_MPS
 
 
-def test_adsb_lol_normalises_units_and_ages():
+def test_adsb_lol_normalises_units_ages_and_identity_metadata():
     now = datetime.now(timezone.utc)
     payload = {
         "now": now.timestamp(),
@@ -25,6 +25,11 @@ def test_adsb_lol_normalises_units_and_ages():
                 "squawk": "1234",
                 "seen_pos": 2.0,
                 "seen": 1.0,
+                "r": "ZZ664",
+                "t": "R135",
+                "desc": "BOEING RC-135W RIVET JOINT",
+                "ownOp": "ROYAL AIR FORCE",
+                "dbFlags": 1,
             },
             {"hex": "bad", "lat": None, "lon": -0.2},
         ],
@@ -50,6 +55,11 @@ def test_adsb_lol_normalises_units_and_ages():
     assert aircraft.ground_speed_mps == pytest.approx(200 * KNOT_TO_MPS)
     assert aircraft.position_age_seconds(now) == pytest.approx(2.0, abs=0.1)
     assert aircraft.contact_age_seconds(now) == pytest.approx(1.0, abs=0.1)
+    assert aircraft.registration == "ZZ664"
+    assert aircraft.type_code == "R135"
+    assert aircraft.type_description == "BOEING RC-135W RIVET JOINT"
+    assert aircraft.operator == "ROYAL AIR FORCE"
+    assert aircraft.military is True
 
 
 def test_adsb_lol_ground_contact_does_not_fabricate_barometric_altitude():
