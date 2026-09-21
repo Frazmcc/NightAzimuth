@@ -18,6 +18,8 @@ class AirportRecord:
     name: str
     latitude_deg: float
     longitude_deg: float
+    airport_type: str = ""
+    scheduled_service: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,12 +31,16 @@ class AirportLandmark:
     longitude_deg: float
     distance_km: float
     bearing_deg: float
+    airport_type: str = ""
 
 
 class AirportLandmarkProvider:
-    """Location-neutral airport reference provider backed by global public data."""
+    """Location-neutral major-airport references from a global public dataset."""
 
-    DATA_URL = "https://vrs-standing-data.adsb.lol/airports.csv.gz"
+    # OurAirports publishes a global public-domain CSV and exposes airport class
+    # plus scheduled-service state, which lets NightAzimuth avoid flooding the
+    # horizon with small local strips without hard-coding any region.
+    DATA_URL = "https://davidmegginson.github.io/ourairports-data/airports.csv"
 
     def __init__(
         self,
@@ -83,9 +89,14 @@ class AirportLandmarkProvider:
                         airport.latitude_deg,
                         airport.longitude_deg,
                     ),
+                    airport_type=airport.airport_type,
                 )
             )
-        landmarks.sort(key=lambda item: item.distance_km)
+
+        # Prefer genuinely significant airports over simply taking the nearest
+        # IATA-coded strips. If a location has no large airport nearby, scheduled
+        # medium airports naturally become the next-best references.
+        landmarks.sort(key=_landmark_priority)
         return tuple(landmarks[: max(0, int(limit))])
 
     def _load_records(self) -> tuple[AirportRecord, ...]:
@@ -105,14 +116,16 @@ class AirportLandmarkProvider:
         owns_client = self._client is None
         client = self._client or httpx.Client(
             timeout=self._timeout_seconds,
-            headers={"User-Agent": "NightAzimuth/1.0", "Accept": "application/gzip,text/csv"},
+            headers={"User-Agent": "NightAzimuth/1.1", "Accept": "text/csv,application/gzip"},
             follow_redirects=True,
         )
         try:
             response = client.get(self.DATA_URL)
             response.raise_for_status()
-            raw = gzip.decompress(response.content)
-            text = raw.decode("utf-8-sig")
+            payload = response.content
+            if payload.startswith(b"\x1f\x8b"):
+                payload = gzip.decompress(payload)
+            text = payload.decode("utf-8-sig")
         except (httpx.HTTPError, OSError, UnicodeDecodeError):
             return ()
         finally:
@@ -121,19 +134,33 @@ class AirportLandmarkProvider:
 
         records: list[AirportRecord] = []
         for row in csv.DictReader(io.StringIO(text)):
-            iata = (row.get("IATA") or "").strip().upper()
-            icao = (row.get("ICAO") or "").strip().upper()
-            name = (row.get("Name") or "").strip()
+            iata = _first(row, "iata_code", "IATA", "iata").upper()
+            icao = _first(row, "ident", "ICAO", "icao", "gps_code").upper()
+            name = _first(row, "name", "Name")
+            airport_type = _first(row, "type", "airport_type").lower()
+            scheduled = _first(row, "scheduled_service").lower() in {"yes", "true", "1"}
             if len(iata) != 3 or len(icao) != 4 or not name:
                 continue
+            if airport_type in {"closed", "heliport", "seaplane_base", "balloonport"}:
+                continue
             try:
-                latitude = float(row.get("Latitude") or "")
-                longitude = float(row.get("Longitude") or "")
+                latitude = float(_first(row, "latitude_deg", "latitude", "Latitude"))
+                longitude = float(_first(row, "longitude_deg", "longitude", "Longitude"))
             except ValueError:
                 continue
             if not (-90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0):
                 continue
-            records.append(AirportRecord(iata, icao, name, latitude, longitude))
+            records.append(
+                AirportRecord(
+                    iata=iata,
+                    icao=icao,
+                    name=name,
+                    latitude_deg=latitude,
+                    longitude_deg=longitude,
+                    airport_type=airport_type,
+                    scheduled_service=scheduled,
+                )
+            )
         return tuple(records)
 
 
@@ -147,7 +174,7 @@ def relevant_airport_landmarks(
     max_distance_km: float = 220.0,
     limit: int = 4,
 ) -> tuple[AirportLandmark, ...]:
-    """Resolve nearby airport references solely from the selected observer location."""
+    """Resolve a sparse set of significant airports from the selected location."""
     return _DEFAULT_PROVIDER.nearby(
         observer_latitude_deg,
         observer_longitude_deg,
@@ -164,6 +191,24 @@ def airport_in_view(
     half = max(1.0, horizontal_fov_deg / 2.0)
     delta = (airport.bearing_deg - facing_deg + 180.0) % 360.0 - 180.0
     return abs(delta) <= half
+
+
+def _landmark_priority(airport: AirportLandmark) -> tuple[int, float, str]:
+    if airport.airport_type == "large_airport":
+        class_priority = 0
+    elif airport.airport_type == "medium_airport":
+        class_priority = 1
+    else:
+        class_priority = 2
+    return class_priority, airport.distance_km, airport.icao
+
+
+def _first(row: dict[str, str | None], *names: str) -> str:
+    for name in names:
+        value = row.get(name)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
 
 
 def _great_circle_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
