@@ -4,10 +4,10 @@ from nightazimuth.aircraft_squawk import classify_squawk
 from nightazimuth.gui_stage19 import format_aircraft_detail
 
 
-def _aircraft(*, squawk: str | None = None) -> SkyAircraft:
+def _aircraft(*, squawk: str | None = None, military: bool = False) -> SkyAircraft:
     return SkyAircraft(
         icao24="40621d",
-        callsign="BAW123",
+        callsign="BAW123" if not military else "RCH123",
         azimuth_deg=231.8,
         elevation_deg=27.6,
         range_km=42.7,
@@ -21,6 +21,11 @@ def _aircraft(*, squawk: str | None = None) -> SkyAircraft:
         position_age_seconds=4.2,
         source_id="adsb-lol",
         source_label="adsb.lol",
+        registration="62-3565" if military else None,
+        type_code="K35R" if military else None,
+        type_description="BOEING KC-135R STRATOTANKER" if military else None,
+        operator="UNITED STATES AIR FORCE" if military else None,
+        military=military,
     )
 
 
@@ -39,3 +44,12 @@ def test_aircraft_detail_exposes_state_age_source_and_aviation_units():
 def test_aircraft_detail_leads_with_special_squawk_alert():
     text = format_aircraft_detail(_aircraft(squawk="0023"))
     assert text.startswith("⚠ SEARCH & RESCUE\nSquawk: 0023")
+
+
+def test_military_aircraft_detail_exposes_type_operator_and_registration():
+    text = format_aircraft_detail(_aircraft(military=True))
+    assert "MILITARY" in text
+    assert "Aircraft: BOEING KC-135R STRATOTANKER" in text
+    assert "ICAO type: K35R" in text
+    assert "Operator: UNITED STATES AIR FORCE" in text
+    assert "Registration: 62-3565" in text
