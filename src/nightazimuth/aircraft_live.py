@@ -38,6 +38,8 @@ class SkyAircraft:
     type_description: str | None = None
     operator: str | None = None
     military: bool = False
+    latitude_deg: float | None = None
+    longitude_deg: float | None = None
     future_track: tuple[AircraftSkyTrackPoint, ...] = ()
 
 
@@ -96,6 +98,8 @@ def build_sky_aircraft(
             type_description=observation.type_description,
             operator=observation.operator,
             military=observation.military,
+            latitude_deg=resolved.latitude_deg,
+            longitude_deg=resolved.longitude_deg,
             future_track=tuple(track_points),
         ))
     return sorted(contacts, key=lambda contact: (
