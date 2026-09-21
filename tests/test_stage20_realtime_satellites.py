@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from nightazimuth.gui_stage20_realtime import (
+    format_satellite_information,
+    next_satellite_selection,
+)
 from nightazimuth.satellite_metadata import SatelliteMetadata
 from nightazimuth.sky_map import SkySatellite
 from nightazimuth.stage20_realtime_satellite_view import _remaining_track_points
-from nightazimuth.gui_stage20_realtime import format_satellite_information
 from nightazimuth.track_prediction import TrackPoint
 
 
@@ -32,6 +35,15 @@ def test_remaining_track_starts_at_interpolated_now_and_keeps_future_points() ->
     assert abs(points[0][1] - 25.0) < 0.001
     assert points[1] == (10.0, 30.0)
     assert points[2] == (20.0, 40.0)
+
+
+def test_second_click_on_selected_satellite_deselects_it() -> None:
+    assert next_satellite_selection("12345", "12345") is None
+
+
+def test_clicking_different_satellite_switches_selection() -> None:
+    assert next_satellite_selection("12345", "67890") == "67890"
+    assert next_satellite_selection(None, "67890") == "67890"
 
 
 def test_satellite_information_includes_catalogue_orbit_and_mission_context() -> None:
