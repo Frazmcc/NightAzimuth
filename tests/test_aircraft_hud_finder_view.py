@@ -4,14 +4,16 @@ import pytest
 
 from nightazimuth.aircraft_hud_finder_view import (
     _aircraft_colour,
+    _aircraft_display_colour,
     _triangle_points,
     interpolated_aircraft_sky_position,
 )
 from nightazimuth.aircraft_live import AircraftSkyTrackPoint, SkyAircraft
 from nightazimuth.aircraft_motion import AircraftPositionState
+from nightazimuth.aircraft_squawk import classify_squawk
 
 
-def _aircraft_with_track() -> SkyAircraft:
+def _aircraft_with_track(*, squawk: str | None = None) -> SkyAircraft:
     return SkyAircraft(
         icao24="40621d",
         callsign="TEST1",
@@ -22,6 +24,8 @@ def _aircraft_with_track() -> SkyAircraft:
         track_deg=90.0,
         ground_speed_mps=100.0,
         vertical_rate_mps=0.0,
+        squawk=squawk,
+        squawk_alert=classify_squawk(squawk),
         position_state=AircraftPositionState.MEASURED,
         position_age_seconds=0.0,
         source_id="test",
@@ -35,15 +39,12 @@ def _aircraft_with_track() -> SkyAircraft:
 
 def test_triangle_tip_follows_requested_direction():
     points = _triangle_points(100.0, 50.0, 10.0, (1.0, 0.0))
-
-    tip_x, tip_y = points[0], points[1]
-    assert tip_x == 110.0
-    assert tip_y == 50.0
+    assert points[0] == 110.0
+    assert points[1] == 50.0
 
 
 def test_triangle_geometry_is_finite():
     points = _triangle_points(0.0, 0.0, 5.0, (0.0, -1.0))
-
     assert len(points) == 6
     assert all(math.isfinite(value) for value in points)
 
@@ -53,15 +54,20 @@ def test_aircraft_colour_distinguishes_estimated_and_stale_positions():
     interpolated = _aircraft_colour(AircraftPositionState.INTERPOLATED)
     estimated = _aircraft_colour(AircraftPositionState.EXTRAPOLATED)
     stale = _aircraft_colour(AircraftPositionState.STALE)
-
     assert measured == interpolated
     assert estimated != measured
     assert stale != measured
     assert stale != estimated
 
 
+def test_critical_squawk_overrides_normal_position_colour():
+    normal = _aircraft_display_colour(_aircraft_with_track())
+    emergency = _aircraft_display_colour(_aircraft_with_track(squawk="7700"))
+    assert emergency != normal
+    assert emergency == "#ef4444"
+
+
 def test_aircraft_sky_animation_wraps_cleanly_across_north():
     azimuth, elevation = interpolated_aircraft_sky_position(_aircraft_with_track(), 5.0)
-
     assert azimuth == pytest.approx(0.0)
     assert elevation == pytest.approx(25.0)
