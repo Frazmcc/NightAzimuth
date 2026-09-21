@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from math import atan2, cos, degrees, hypot, radians, sin, sqrt
 
 from .aircraft import AircraftObservation, AircraftObserver
+from .aircraft_motion import ResolvedAircraftPosition
 
 # WGS84 ellipsoid.
 _WGS84_A_M = 6378137.0
@@ -24,7 +25,7 @@ def aircraft_sky_position(
     observer: AircraftObserver,
     aircraft: AircraftObservation,
 ) -> AircraftSkyPosition | None:
-    """Convert an aircraft geodetic fix into observer-relative sky coordinates."""
+    """Convert an aircraft measured geodetic fix into observer-relative sky coordinates."""
     if aircraft.geometric_altitude_m is not None:
         altitude_m = aircraft.geometric_altitude_m
         altitude_source = "geometric"
@@ -34,14 +35,47 @@ def aircraft_sky_position(
     else:
         return None
 
+    return _sky_position_from_geodetic(
+        observer,
+        latitude_deg=aircraft.latitude_deg,
+        longitude_deg=aircraft.longitude_deg,
+        altitude_m=altitude_m,
+        altitude_source=altitude_source,
+    )
+
+
+def resolved_aircraft_sky_position(
+    observer: AircraftObserver,
+    position: ResolvedAircraftPosition,
+) -> AircraftSkyPosition | None:
+    """Project an interpolated/extrapolated aircraft position into the observer's sky."""
+    if position.altitude_m is None:
+        return None
+    return _sky_position_from_geodetic(
+        observer,
+        latitude_deg=position.latitude_deg,
+        longitude_deg=position.longitude_deg,
+        altitude_m=position.altitude_m,
+        altitude_source="resolved",
+    )
+
+
+def _sky_position_from_geodetic(
+    observer: AircraftObserver,
+    *,
+    latitude_deg: float,
+    longitude_deg: float,
+    altitude_m: float,
+    altitude_source: str,
+) -> AircraftSkyPosition | None:
     observer_ecef = _geodetic_to_ecef(
         observer.latitude_deg,
         observer.longitude_deg,
         observer.altitude_m,
     )
     aircraft_ecef = _geodetic_to_ecef(
-        aircraft.latitude_deg,
-        aircraft.longitude_deg,
+        latitude_deg,
+        longitude_deg,
         altitude_m,
     )
     dx = aircraft_ecef[0] - observer_ecef[0]
@@ -54,11 +88,7 @@ def aircraft_sky_position(
     sin_lon, cos_lon = sin(lon), cos(lon)
 
     east = -sin_lon * dx + cos_lon * dy
-    north = (
-        -sin_lat * cos_lon * dx
-        - sin_lat * sin_lon * dy
-        + cos_lat * dz
-    )
+    north = -sin_lat * cos_lon * dx - sin_lat * sin_lon * dy + cos_lat * dz
     up = cos_lat * cos_lon * dx + cos_lat * sin_lon * dy + sin_lat * dz
 
     horizontal = hypot(east, north)
