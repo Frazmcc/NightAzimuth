@@ -17,6 +17,8 @@ class AirportInfo:
     location: str | None
     country_iso2: str | None
     country_name: str | None = None
+    latitude_deg: float | None = None
+    longitude_deg: float | None = None
 
     @property
     def display_code(self) -> str:
@@ -166,6 +168,8 @@ def _parse_airport(row: dict[str, Any]) -> AirportInfo | None:
     country_name = str(
         row.get("country_name") or row.get("country") or ""
     ).strip() or None
+    latitude_deg = _optional_float(row.get("lat"))
+    longitude_deg = _optional_float(row.get("lon"))
     return AirportInfo(
         name=name,
         icao=icao,
@@ -173,4 +177,13 @@ def _parse_airport(row: dict[str, Any]) -> AirportInfo | None:
         location=location,
         country_iso2=country_iso2,
         country_name=country_name,
+        latitude_deg=latitude_deg,
+        longitude_deg=longitude_deg,
     )
+
+
+def _optional_float(value: Any) -> float | None:
+    try:
+        return None if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
