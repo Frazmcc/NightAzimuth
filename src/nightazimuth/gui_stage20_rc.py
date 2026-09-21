@@ -22,8 +22,6 @@ class Stage20ReleaseCandidateApp(Stage20RealtimeNightAzimuthApp):
     def _build_aircraft_controls(self, parent: tk.Misc) -> None:
         super()._build_aircraft_controls(parent)
 
-        # Keep selected-aircraft intelligence with the aircraft priority board.
-        # Users should never have to open Live Finder to inspect an aircraft.
         aircraft_frame = self.aircraft_table.master.master
         aircraft_frame.rowconfigure(2, weight=0)
         self._aircraft_detail_var = tk.StringVar(
@@ -65,13 +63,11 @@ class Stage20ReleaseCandidateApp(Stage20RealtimeNightAzimuthApp):
         super()._on_live_aircraft_selected(aircraft)
         self._copy_selected_aircraft_detail()
 
-        # Aircraft information belongs in Aircraft Contacts. Selecting from
-        # either the sky or the priority board opens that drawer immediately.
         self._stage20_open_drawer = DRAWER_AIRCRAFT
         self._apply_stage20_drawer_state()
 
-        # Restore Live Finder to its generic observer summary rather than
-        # leaving a duplicate copy of the aircraft block there.
+        # Keep Live Finder about the sky; all aircraft intelligence is shown
+        # in Aircraft Contacts beneath the priority board.
         self._update_live_view_summary()
 
     def _apply_aircraft_route(
