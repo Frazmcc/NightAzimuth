@@ -79,7 +79,7 @@ CelesTrak SATCAT remains the primary catalogue/orbit metadata source. Missing en
 
 ### Selected-aircraft detail
 
-Selected aircraft now keep a persistent journey-first detail block in Live Finder instead of being overwritten by generic Live summaries.
+Selected aircraft now show a persistent journey-first detail block directly inside **Aircraft Contacts**, immediately below the priority board. Selecting an aircraft opens Aircraft Contacts automatically; Live Finder is not used for aircraft details.
 
 Where data exists the panel can show:
 
@@ -149,7 +149,7 @@ Before promotion to v1.1.0, test:
 - location switching
 - Live Sky continuity during refreshes
 - ADS-B continuity
-- aircraft selection and persistent rich details
+- aircraft selection and persistent rich details in Aircraft Contacts
 - emergency/special squawk ordering
 - satellite selection/deselection
 - smooth fast-LEO satellite movement and tracks
