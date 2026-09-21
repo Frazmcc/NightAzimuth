@@ -72,7 +72,6 @@ class ResilientAirportLandmarkProvider:
                     airport.longitude_deg,
                 ),
                 airport_type=airport.airport_type,
-                scheduled_service=airport.scheduled_service,
             )
             landmarks.append((landmark, airport.scheduled_service))
 
@@ -125,8 +124,6 @@ class ResilientAirportLandmarkProvider:
                 continue
             if airport_type not in {"large_airport", "medium_airport"}:
                 continue
-            # Medium airports should be useful passenger/transport references;
-            # large airports remain useful even when scheduled_service is absent.
             if airport_type == "medium_airport" and not scheduled:
                 continue
             try:
@@ -170,7 +167,6 @@ class ResilientAirportLandmarkProvider:
                     name=name,
                     latitude_deg=latitude,
                     longitude_deg=longitude,
-                    # The fallback schema does not publish airport class.
                     airport_type="fallback",
                     scheduled_service=True,
                 )
