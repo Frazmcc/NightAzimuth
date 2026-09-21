@@ -11,6 +11,7 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
     """Cinematic, instrument-like presentation layer over the Stage 19 engines."""
 
     HUD_REFRESH_MS = 500
+    HUD_BACKGROUND_REFRESH_MS = 2_000
 
     def __init__(self) -> None:
         self._stage20_fullscreen = False
@@ -67,7 +68,6 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
         if hasattr(self, "aircraft_table"):
             self.aircraft_table.configure(style="Night.Treeview")
 
-        # Give the scrollable Live page the same continuous dark surface as the HUD.
         canvas = getattr(self, "_live_scroll_canvas", None)
         if canvas is not None:
             try:
@@ -91,14 +91,17 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
         return "break"
 
     def _schedule_stage20_hud_tick(self) -> None:
-        if self._stage20_hud_job is None:
-            self._stage20_hud_job = self.after(self.HUD_REFRESH_MS, self._stage20_hud_tick)
+        if self._stage20_hud_job is not None:
+            return
+        delay = self.HUD_REFRESH_MS if self.state() == "normal" else self.HUD_BACKGROUND_REFRESH_MS
+        self._stage20_hud_job = self.after(delay, self._stage20_hud_tick)
 
     def _stage20_hud_tick(self) -> None:
         self._stage20_hud_job = None
         if not self.winfo_exists():
             return
-        self._update_stage20_hud()
+        if self.state() == "normal":
+            self._update_stage20_hud()
         self._schedule_stage20_hud_tick()
 
     def _update_stage20_hud(self) -> None:
@@ -107,23 +110,29 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
             fov = getattr(self.live_view, "horizontal_fov_deg", 90.0)
             self.stage20_view_var.set(f"AZ {facing:05.1f}°  •  FOV {fov:.0f}°")
 
-        parts = ["● LIVE"]
+        aircraft_state: str | None = None
+        aircraft_count: int | None = None
         snapshot = getattr(self, "_aircraft_snapshot", None)
         if snapshot is not None:
-            parts.append(f"ADSB {snapshot.state.value.upper()}")
+            aircraft_state = snapshot.state.value
             if getattr(self, "aircraft_layer_var", None) is not None and self.aircraft_layer_var.get():
                 try:
-                    parts.append(f"{self.live_view.visible_aircraft_count} AC")
+                    aircraft_count = self.live_view.visible_aircraft_count
                 except AttributeError:
-                    pass
+                    aircraft_count = None
 
+        sun_altitude: float | None = None
         observing = getattr(self, "_observing_snapshot", None)
         if observing is not None:
             sun_altitude = getattr(observing, "sun_altitude_deg", None)
-            if sun_altitude is not None:
-                parts.append(f"SUN {sun_altitude:+.1f}°")
 
-        self.stage20_status_var.set("  •  ".join(parts))
+        self.stage20_status_var.set(
+            compose_live_hud_status(
+                aircraft_state=aircraft_state,
+                aircraft_count=aircraft_count,
+                sun_altitude_deg=sun_altitude,
+            )
+        )
 
     def destroy(self) -> None:
         if self._stage20_hud_job is not None:
@@ -133,6 +142,22 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
                 pass
             self._stage20_hud_job = None
         super().destroy()
+
+
+def compose_live_hud_status(
+    *,
+    aircraft_state: str | None,
+    aircraft_count: int | None,
+    sun_altitude_deg: float | None,
+) -> str:
+    parts = ["● LIVE"]
+    if aircraft_state:
+        parts.append(f"ADSB {aircraft_state.upper()}")
+    if aircraft_count is not None:
+        parts.append(f"{max(0, aircraft_count)} AC")
+    if sun_altitude_deg is not None:
+        parts.append(f"SUN {sun_altitude_deg:+.1f}°")
+    return "  •  ".join(parts)
 
 
 def main() -> int:
