@@ -1,5 +1,6 @@
 from nightazimuth.aircraft_live import SkyAircraft
 from nightazimuth.aircraft_motion import AircraftPositionState
+from nightazimuth.aircraft_routes import AircraftRoute, AirportInfo
 from nightazimuth.aircraft_squawk import classify_squawk
 from nightazimuth.gui_stage19 import format_aircraft_detail
 
@@ -29,6 +30,17 @@ def _aircraft(*, squawk: str | None = None, military: bool = False) -> SkyAircra
     )
 
 
+def _route() -> AircraftRoute:
+    return AircraftRoute(
+        callsign="BAW123",
+        airline_code="BAW",
+        airports=(
+            AirportInfo("London Heathrow Airport", "EGLL", "LHR", "London", "GB"),
+            AirportInfo("John F Kennedy International Airport", "KJFK", "JFK", "New York", "US"),
+        ),
+    )
+
+
 def test_aircraft_detail_exposes_state_age_source_and_aviation_units():
     text = format_aircraft_detail(_aircraft())
     assert "BAW123" in text
@@ -39,6 +51,7 @@ def test_aircraft_detail_exposes_state_age_source_and_aviation_units():
     assert "Position: extrapolated" in text
     assert "Position age: 4.2 s" in text
     assert "Source: adsb.lol" in text
+    assert "Route: Unknown" in text
 
 
 def test_aircraft_detail_leads_with_special_squawk_alert():
@@ -53,3 +66,16 @@ def test_military_aircraft_detail_exposes_type_operator_and_registration():
     assert "ICAO type: K35R" in text
     assert "Operator: UNITED STATES AIR FORCE" in text
     assert "Registration: 62-3565" in text
+
+
+def test_route_detail_exposes_departure_arrival_names_locations_and_countries():
+    text = format_aircraft_detail(_aircraft(), route=_route())
+    assert "Departure: LHR / EGLL" in text
+    assert "London Heathrow Airport" in text
+    assert "Location: London" in text
+    assert "Country: GB" in text
+    assert "Arrival: JFK / KJFK" in text
+    assert "John F Kennedy International Airport" in text
+    assert "Location: New York" in text
+    assert "Country: US" in text
+    assert "Route source: adsb.lol standing data" in text
