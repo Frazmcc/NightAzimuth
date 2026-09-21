@@ -14,7 +14,9 @@ from .gui_stage20_satellites import Stage20SatelliteNightAzimuthApp, build_local
 from .sky_map import SkySatellite
 from .stage20_aircraft_detail import format_stage20_aircraft_detail
 from .stage20_airport_live_view import Stage20AirportLiveSkyView
+from .stage20_header import local_clock_text, timezone_name_for_coordinates
 from .stage20_perceptual_projection import project_perceptual_live_view
+from .stage20_prank import open_prank_instance, prank_delays_ms
 
 DRAWER_ISS = "iss"
 
@@ -25,8 +27,14 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
     def __init__(self) -> None:
         self._stage20_iss_panel: ttk.LabelFrame | None = None
         self._stage20_iss_text_var: tk.StringVar | None = None
+        self._stage20_clock_job: str | None = None
+        self._stage20_clock_timezone = "UTC"
+        self._stage20_prank_active = False
         _install_perceptual_projection()
         super().__init__()
+        self._install_stage20_header_extras()
+        self._update_stage20_clock_timezone()
+        self._schedule_stage20_clock_tick()
 
     def _build_live_view(self, parent: tk.Misc) -> None:
         super()._build_live_view(parent)
@@ -53,8 +61,94 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
         self._on_star_layer_changed()
         self._update_airport_landmarks()
 
+    def _install_stage20_header_extras(self) -> None:
+        header = self.location_combo.master
+
+        clock_frame = ttk.Frame(header)
+        clock_frame.pack(side="left", fill="x", expand=True, padx=(22, 10))
+        self.stage20_clock_var = tk.StringVar(master=self, value="--:--:--  UTC+0")
+        self.stage20_clock_label = tk.Label(
+            clock_frame,
+            textvariable=self.stage20_clock_var,
+            background="#050b12",
+            foreground="#39ff14",
+            activebackground="#050b12",
+            activeforeground="#39ff14",
+            font=("Consolas", 22, "bold"),
+            padx=12,
+            pady=2,
+            borderwidth=1,
+            relief="solid",
+            highlightthickness=0,
+        )
+        self.stage20_clock_label.pack(anchor="center")
+
+        self.stage20_prank_button = tk.Button(
+            header,
+            text="DON NOT PRESS",
+            command=self._start_stage20_prank,
+            background="#b91c1c",
+            foreground="#ffffff",
+            activebackground="#ef4444",
+            activeforeground="#ffffff",
+            font=("Segoe UI", 9, "bold"),
+            padx=10,
+            pady=4,
+            relief="raised",
+            cursor="hand2",
+        )
+        self.stage20_prank_button.pack(side="right", padx=(8, 0))
+
+    def _update_stage20_clock_timezone(self) -> None:
+        profile = self._selected_profile()
+        if profile is None:
+            self._stage20_clock_timezone = "UTC"
+            return
+        try:
+            self._stage20_clock_timezone = timezone_name_for_coordinates(
+                profile.latitude,
+                profile.longitude,
+            )
+        except Exception:  # noqa: BLE001
+            self._stage20_clock_timezone = "UTC"
+
+    def _schedule_stage20_clock_tick(self) -> None:
+        if self._stage20_clock_job is None:
+            self._stage20_clock_job = self.after(200, self._stage20_clock_tick)
+
+    def _stage20_clock_tick(self) -> None:
+        self._stage20_clock_job = None
+        if hasattr(self, "stage20_clock_var"):
+            try:
+                self.stage20_clock_var.set(local_clock_text(self._stage20_clock_timezone))
+            except Exception:  # noqa: BLE001
+                self.stage20_clock_var.set("--:--:--  UTC+0")
+        self._stage20_clock_job = self.after(250, self._stage20_clock_tick)
+
+    def _start_stage20_prank(self) -> None:
+        if self._stage20_prank_active:
+            return
+        self._stage20_prank_active = True
+        self.stage20_prank_button.configure(state="disabled", text="I DID WARN YOU")
+        for instance, delay in enumerate(prank_delays_ms(), start=1):
+            self.after(
+                delay,
+                lambda index=instance: threading.Thread(
+                    target=open_prank_instance,
+                    args=(index,),
+                    daemon=True,
+                ).start(),
+            )
+        self.after(7_500, self._reset_stage20_prank_button)
+
+    def _reset_stage20_prank_button(self) -> None:
+        self._stage20_prank_active = False
+        if hasattr(self, "stage20_prank_button") and self.stage20_prank_button.winfo_exists():
+            self.stage20_prank_button.configure(state="normal", text="DON NOT PRESS")
+
     def _on_location_changed(self, event: object | None = None) -> None:
         super()._on_location_changed(event)
+        self._update_stage20_clock_timezone()
         self._update_airport_landmarks()
 
     def _update_airport_landmarks(self) -> None:
@@ -226,6 +320,15 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
                 continue
             if any(phrase in text for phrase in ("cloud overlay", "cloud opacity")):
                 widget.destroy()
+
+    def destroy(self) -> None:
+        if self._stage20_clock_job is not None:
+            try:
+                self.after_cancel(self._stage20_clock_job)
+            except tk.TclError:
+                pass
+            self._stage20_clock_job = None
+        super().destroy()
 
 
 def prioritise_aircraft_board(contacts: list[SkyAircraft]) -> list[SkyAircraft]:
