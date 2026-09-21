@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 
 from .hud_finder_view import apparent_angular_speed_deg_s
+from .sky_map import SkySatellite
 from .smooth_hud_finder_view import interpolated_satellite_position
 from .stage20_airport_live_view import Stage20AirportLiveSkyView
 from .stage20_live_sky_view import ISS_NORAD_ID
@@ -18,6 +19,27 @@ class Stage20RealtimeSatelliteLiveSkyView(Stage20AirportLiveSkyView):
     def __init__(self, *args: object, **kwargs: object) -> None:
         self._last_realtime_track_refresh = 0.0
         super().__init__(*args, **kwargs)
+
+    def set_satellites(self, satellites: list[SkySatellite]) -> None:
+        """Swap Stage 20 satellite data without falling back to legacy filtering.
+
+        Stage 20 intentionally renders every satellite in the current view. The
+        historical SmoothHudFinderView update path re-selected only naked-eye
+        candidates when predicted tracks arrived, which made smooth tracking
+        appear to stop or disappear. Keep the Stage 20 display contract here.
+        """
+        incoming = list(satellites)
+        if self._all_satellites and self._satellites and not any(item.future_track for item in incoming):
+            # A refresh publishes current positions before its background track
+            # prediction completes. Hold the current smooth scene until the
+            # complete tracked snapshot is ready.
+            return
+
+        self._all_satellites = incoming
+        if self._selected_norad not in {item.norad_id for item in incoming}:
+            self._selected_norad = None
+        self._animation_started = time.monotonic()
+        self._rebuild_display_satellites()
 
     def _draw_track(self, satellite: object, left: float, top: float, right: float, bottom: float) -> None:
         # The historical path renderer is anchored to the prediction epoch. Stage
