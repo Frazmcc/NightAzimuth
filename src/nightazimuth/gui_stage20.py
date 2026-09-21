@@ -7,7 +7,13 @@ from .aircraft_hud_finder_view import AircraftTwilightFinderView
 from .gui_stage16_animation import AnimatedStage16NightAzimuthApp
 from .gui_stage19 import Stage19NightAzimuthApp
 from .responsive_layout import ResponsiveLayout, calculate_responsive_layout
+from .sky_map import SkySatellite
 from .visual_theme import PALETTE, apply_stage20_theme
+
+
+DRAWER_NONE = "none"
+DRAWER_DETAILS = "details"
+DRAWER_AIRCRAFT = "aircraft"
 
 
 class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
@@ -23,6 +29,9 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
         self._stage20_resize_job: str | None = None
         self._stage20_layout: ResponsiveLayout | None = None
         self._stage20_layout_signature: tuple[bool, int, int] | None = None
+        self._stage20_open_drawer = DRAWER_NONE
+        self._stage20_details_panel: ttk.LabelFrame | None = None
+        self._stage20_aircraft_panel: ttk.LabelFrame | None = None
         super().__init__()
 
         self._stage20_layout = self._layout_for_dimensions(
@@ -37,8 +46,6 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
         self.configure(background=PALETTE["window"])
         self.title("NightAzimuth — Live Sky Intelligence")
 
-        # Keep the application on one screen at every supported resolution.
-        # Tk/Windows DPI scaling remains authoritative for physical text size.
         min_width = min(980, max(760, int(self.winfo_screenwidth() * 0.68)))
         min_height = min(680, max(540, int(self.winfo_screenheight() * 0.68)))
         self.minsize(min_width, min_height)
@@ -53,10 +60,7 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
         self._schedule_stage20_hud_tick()
 
     def _build_live_view(self, parent: tk.Misc) -> None:
-        """Build Live directly, deliberately bypassing Stage 16's scroll wrapper."""
-        # Preserve the complete Stage 16 Live feature set while skipping only
-        # PolishedStage16NightAzimuthApp._build_live_view(), whose purpose was
-        # to add a vertically scrollable page. Stage 20 must fit in one page.
+        """Build a single-page Live experience with the sky as the primary surface."""
         AnimatedStage16NightAzimuthApp._build_live_view(self, parent)
 
         old_view = self.live_view
@@ -69,8 +73,142 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
         )
         self.live_view.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         self._build_aircraft_controls(master)
+        self._reflow_live_panels(master)
         self._apply_live_view_direction(show_error=False)
         self._on_star_layer_changed()
+
+    def _reflow_live_panels(self, master: tk.Misc) -> None:
+        """Put details/contacts below Live Sky and keep them collapsed by default."""
+        details = next(
+            (
+                item
+                for item in master.grid_slaves()
+                if isinstance(item, ttk.LabelFrame) and str(item.cget("text")).lower() == "live finder"
+            ),
+            None,
+        )
+        aircraft = next(
+            (
+                item
+                for item in master.grid_slaves()
+                if isinstance(item, ttk.LabelFrame) and str(item.cget("text")).lower() == "aircraft"
+            ),
+            None,
+        )
+        self._stage20_details_panel = details
+        self._stage20_aircraft_panel = aircraft
+
+        master.columnconfigure(0, weight=1)
+        master.columnconfigure(1, weight=0)
+        master.rowconfigure(0, weight=1)
+        master.rowconfigure(1, weight=0)
+        master.rowconfigure(2, weight=0)
+
+        self.live_view.grid_configure(
+            row=0,
+            column=0,
+            columnspan=2,
+            sticky="nsew",
+            padx=0,
+            pady=0,
+        )
+
+        if details is not None:
+            details.grid_forget()
+            details.grid_propagate(True)
+            try:
+                details.configure(width=1, padding=(10, 7))
+            except tk.TclError:
+                pass
+            children = details.winfo_children()
+            if len(children) >= 2:
+                children[0].pack_configure(side="left", anchor="nw", fill="x", expand=True, padx=(0, 12))
+                children[1].pack_configure(side="left", anchor="nw", fill="x", expand=True)
+
+        if aircraft is not None:
+            aircraft.grid_forget()
+
+        self.stage20_drawer_bar = ttk.Frame(master)
+        self.stage20_drawer_bar.grid(
+            row=1,
+            column=0,
+            columnspan=2,
+            sticky="ew",
+            pady=(6, 0),
+        )
+        self.stage20_details_button = ttk.Button(
+            self.stage20_drawer_bar,
+            text="▸  LIVE FINDER",
+            command=lambda: self._toggle_stage20_drawer(DRAWER_DETAILS),
+        )
+        self.stage20_details_button.pack(side="left")
+        self.stage20_aircraft_button = ttk.Button(
+            self.stage20_drawer_bar,
+            text="▸  AIRCRAFT CONTACTS",
+            command=lambda: self._toggle_stage20_drawer(DRAWER_AIRCRAFT),
+        )
+        self.stage20_aircraft_button.pack(side="left", padx=(6, 0))
+        ttk.Label(
+            self.stage20_drawer_bar,
+            text="Live Sky remains active while panels are open",
+            style="HudMuted.TLabel",
+        ).pack(side="right")
+
+    def _toggle_stage20_drawer(self, drawer: str) -> None:
+        self._stage20_open_drawer = DRAWER_NONE if self._stage20_open_drawer == drawer else drawer
+        self._apply_stage20_drawer_state()
+
+    def _apply_stage20_drawer_state(self) -> None:
+        details = self._stage20_details_panel
+        aircraft = self._stage20_aircraft_panel
+        if details is not None:
+            details.grid_remove()
+        if aircraft is not None:
+            aircraft.grid_remove()
+
+        self.stage20_details_button.configure(
+            text=("▾  LIVE FINDER" if self._stage20_open_drawer == DRAWER_DETAILS else "▸  LIVE FINDER")
+        )
+        self.stage20_aircraft_button.configure(
+            text=(
+                "▾  AIRCRAFT CONTACTS"
+                if self._stage20_open_drawer == DRAWER_AIRCRAFT
+                else "▸  AIRCRAFT CONTACTS"
+            )
+        )
+
+        if self._stage20_open_drawer == DRAWER_DETAILS and details is not None:
+            details.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
+        elif self._stage20_open_drawer == DRAWER_AIRCRAFT and aircraft is not None:
+            aircraft.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
+        self.after_idle(lambda: self._apply_responsive_layout(force=True))
+
+    def _apply_tracking_data(
+        self,
+        profile_name: str,
+        live_rows: list[tuple[str, ...]],
+        pass_rows: list[tuple[str, ...]],
+        sky_satellites: list[SkySatellite],
+    ) -> None:
+        """Atomically replace the scene; never blank a previously good Live Sky."""
+        if (
+            profile_name == self.selected_name
+            and should_hold_last_good_scene(
+                incoming_satellite_count=len(sky_satellites),
+                current_satellite_count=len(getattr(self, "_sky_satellites", ())),
+            )
+        ):
+            self._refresh_in_progress = False
+            self.refresh_button.config(state="normal")
+            self.status_var.set(
+                "Refresh returned no usable satellite positions — holding the last good Live Sky while retrying."
+            )
+            self._schedule_auto_refresh()
+            return
+
+        # All expensive work has completed in the background before this UI-thread
+        # handoff, so the old scene remains visible until this single replacement.
+        super()._apply_tracking_data(profile_name, live_rows, pass_rows, sky_satellites)
 
     def _layout_for_dimensions(self, width: int, height: int) -> ResponsiveLayout:
         try:
@@ -116,20 +254,21 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
         apply_stage20_theme(self, density=layout.density, compact=layout.compact)
 
         if hasattr(self, "aircraft_table"):
+            max_drawer_rows = 3 if layout.compact else 5
             self.aircraft_table.configure(
                 style="Night.Treeview",
-                height=layout.table_rows,
+                height=min(layout.table_rows, max_drawer_rows),
             )
 
-        if hasattr(self, "live_view"):
-            master = self.live_view.master
-            details_candidates = [
-                item
-                for item in master.grid_slaves(row=0, column=1)
-                if isinstance(item, ttk.LabelFrame)
-            ]
-            for details in details_candidates:
-                details.configure(width=layout.details_width)
+        if self._stage20_details_panel is not None:
+            children = self._stage20_details_panel.winfo_children()
+            wrap = max(260, int(width * 0.42))
+            for child in children:
+                if isinstance(child, ttk.Label):
+                    try:
+                        child.configure(wraplength=wrap)
+                    except tk.TclError:
+                        pass
 
         self._position_live_hud(layout)
 
@@ -261,6 +400,11 @@ class Stage20NightAzimuthApp(Stage19NightAzimuthApp):
                     pass
                 setattr(self, job_name, None)
         super().destroy()
+
+
+def should_hold_last_good_scene(*, incoming_satellite_count: int, current_satellite_count: int) -> bool:
+    """Return whether an empty refresh should preserve an already populated sky."""
+    return incoming_satellite_count <= 0 and current_satellite_count > 0
 
 
 def compose_live_hud_status(
