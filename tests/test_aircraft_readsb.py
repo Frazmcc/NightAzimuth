@@ -15,7 +15,7 @@ def test_readsb_provider_uses_configured_endpoint_and_normalises_records():
         "aircraft": [
             {
                 "hex": "4ca123",
-                "flight": "RYR42AB ",
+                "flight": "RCH123 ",
                 "lat": 55.85,
                 "lon": -4.25,
                 "alt_baro": 12000,
@@ -25,6 +25,11 @@ def test_readsb_provider_uses_configured_endpoint_and_normalises_records():
                 "geom_rate": -300,
                 "seen_pos": 1.5,
                 "seen": 0.5,
+                "r": "62-3565",
+                "t": "K35R",
+                "desc": "BOEING KC-135R STRATOTANKER",
+                "ownOp": "UNITED STATES AIR FORCE",
+                "dbFlags": 1,
             }
         ],
     }
@@ -43,9 +48,14 @@ def test_readsb_provider_uses_configured_endpoint_and_normalises_records():
     assert len(snapshot.observations) == 1
     aircraft = snapshot.observations[0]
     assert aircraft.source_kind == AircraftSourceKind.LOCAL
-    assert aircraft.callsign == "RYR42AB"
+    assert aircraft.callsign == "RCH123"
     assert aircraft.barometric_altitude_m == pytest.approx(12000 * FOOT_TO_M)
     assert aircraft.ground_speed_mps == pytest.approx(230 * KNOT_TO_MPS)
+    assert aircraft.registration == "62-3565"
+    assert aircraft.type_code == "K35R"
+    assert aircraft.type_description == "BOEING KC-135R STRATOTANKER"
+    assert aircraft.operator == "UNITED STATES AIR FORCE"
+    assert aircraft.military is True
 
 
 def test_readsb_provider_rejects_non_http_endpoint():
