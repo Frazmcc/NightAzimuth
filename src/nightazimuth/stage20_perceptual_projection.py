@@ -32,7 +32,8 @@ def project_perceptual_live_view(
 
     This keeps the centre geometrically stable, compresses the peripheral field
     in a human-like way and allows horizontal/elevation structures to curve
-    naturally at wide field of view.
+    naturally at wide field of view. It is a perceptual display projection, not
+    a claim that celestial objects have binocular depth at astronomical range.
     """
 
     fov = max(5.0, min(175.0, float(horizontal_fov_deg)))
