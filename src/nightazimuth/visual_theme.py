@@ -21,13 +21,17 @@ PALETTE = {
     "critical": "#ef4444",
 }
 
-UI_FONT = ("Segoe UI", 9)
-UI_FONT_BOLD = ("Segoe UI Semibold", 9)
-HUD_FONT = ("Consolas", 9)
-HUD_FONT_BOLD = ("Consolas", 9, "bold")
+
+def _font_size(density: float, *, base: int, minimum: int) -> int:
+    return max(minimum, round(base * min(1.18, max(0.82, density))))
 
 
-def apply_stage20_theme(root: tk.Misc) -> ttk.Style:
+def apply_stage20_theme(
+    root: tk.Misc,
+    *,
+    density: float = 1.0,
+    compact: bool = False,
+) -> ttk.Style:
     """Apply the lightweight Stage 20 dark HUD theme to existing ttk widgets."""
     style = ttk.Style(root)
     try:
@@ -35,11 +39,24 @@ def apply_stage20_theme(root: tk.Misc) -> ttk.Style:
     except tk.TclError:
         pass
 
-    root.option_add("*Font", UI_FONT)
+    ui_size = _font_size(density, base=9, minimum=8)
+    hud_size = _font_size(density, base=9, minimum=8)
+    row_height = max(21, round((24 if compact else 27) * density))
+    button_pad_x = max(6, round((7 if compact else 10) * density))
+    button_pad_y = max(3, round((3 if compact else 5) * density))
+    tab_pad_x = max(8, round((10 if compact else 14) * density))
+    tab_pad_y = max(4, round((5 if compact else 7) * density))
+
+    ui_font = ("Segoe UI", ui_size)
+    ui_font_bold = ("Segoe UI Semibold", ui_size)
+    hud_font = ("Consolas", hud_size)
+    hud_font_bold = ("Consolas", hud_size, "bold")
+
+    root.option_add("*Font", ui_font)
     root.option_add("*Background", PALETTE["window"])
     root.option_add("*Foreground", PALETTE["text"])
 
-    style.configure(".", background=PALETTE["window"], foreground=PALETTE["text"], font=UI_FONT)
+    style.configure(".", background=PALETTE["window"], foreground=PALETTE["text"], font=ui_font)
     style.configure("TFrame", background=PALETTE["window"])
     style.configure("TLabel", background=PALETTE["window"], foreground=PALETTE["text"])
     style.configure(
@@ -53,7 +70,7 @@ def apply_stage20_theme(root: tk.Misc) -> ttk.Style:
         "TLabelframe.Label",
         background=PALETTE["panel"],
         foreground=PALETTE["accent"],
-        font=UI_FONT_BOLD,
+        font=ui_font_bold,
     )
     style.configure(
         "TButton",
@@ -61,7 +78,7 @@ def apply_stage20_theme(root: tk.Misc) -> ttk.Style:
         foreground=PALETTE["text"],
         bordercolor=PALETTE["border"],
         focusthickness=0,
-        padding=(10, 5),
+        padding=(button_pad_x, button_pad_y),
     )
     style.map(
         "TButton",
@@ -75,7 +92,7 @@ def apply_stage20_theme(root: tk.Misc) -> ttk.Style:
         foreground=PALETTE["text"],
         indicatorbackground=PALETTE["panel_raised"],
         indicatorforeground=PALETTE["accent"],
-        padding=(4, 3),
+        padding=(max(3, round(4 * density)), max(2, round(3 * density))),
     )
     style.map(
         "TCheckbutton",
@@ -92,7 +109,7 @@ def apply_stage20_theme(root: tk.Misc) -> ttk.Style:
         bordercolor=PALETTE["border"],
         selectbackground=PALETTE["selected"],
         selectforeground=PALETTE["text"],
-        padding=3,
+        padding=max(2, round(3 * density)),
     )
     style.configure(
         "TEntry",
@@ -100,14 +117,14 @@ def apply_stage20_theme(root: tk.Misc) -> ttk.Style:
         foreground=PALETTE["text"],
         insertcolor=PALETTE["accent"],
         bordercolor=PALETTE["border"],
-        padding=4,
+        padding=max(3, round(4 * density)),
     )
     style.configure("TNotebook", background=PALETTE["window"], borderwidth=0)
     style.configure(
         "TNotebook.Tab",
         background=PALETTE["panel"],
         foreground=PALETTE["text_muted"],
-        padding=(14, 7),
+        padding=(tab_pad_x, tab_pad_y),
         borderwidth=0,
     )
     style.map(
@@ -121,8 +138,8 @@ def apply_stage20_theme(root: tk.Misc) -> ttk.Style:
         fieldbackground=PALETTE["panel"],
         foreground=PALETTE["text"],
         bordercolor=PALETTE["border"],
-        rowheight=27,
-        font=HUD_FONT,
+        rowheight=row_height,
+        font=hud_font,
     )
     style.map(
         "Night.Treeview",
@@ -135,8 +152,8 @@ def apply_stage20_theme(root: tk.Misc) -> ttk.Style:
         foreground=PALETTE["accent"],
         bordercolor=PALETTE["border"],
         relief="flat",
-        font=UI_FONT_BOLD,
-        padding=(6, 6),
+        font=ui_font_bold,
+        padding=(max(4, round(6 * density)), max(4, round(6 * density))),
     )
     style.map(
         "Night.Treeview.Heading",
@@ -146,20 +163,20 @@ def apply_stage20_theme(root: tk.Misc) -> ttk.Style:
         "HudBadge.TLabel",
         background=PALETTE["panel_raised"],
         foreground=PALETTE["accent"],
-        font=HUD_FONT_BOLD,
-        padding=(8, 5),
+        font=hud_font_bold,
+        padding=(max(5, round(8 * density)), max(3, round(5 * density))),
     )
     style.configure(
         "HudTelemetry.TLabel",
         background=PALETTE["panel_raised"],
         foreground=PALETTE["text"],
-        font=HUD_FONT,
-        padding=(8, 5),
+        font=hud_font,
+        padding=(max(5, round(8 * density)), max(3, round(5 * density))),
     )
     style.configure(
         "HudMuted.TLabel",
         background=PALETTE["panel"],
         foreground=PALETTE["text_muted"],
-        font=HUD_FONT,
+        font=hud_font,
     )
     return style
