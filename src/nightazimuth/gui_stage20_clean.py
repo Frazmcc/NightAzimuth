@@ -8,11 +8,12 @@ from tkinter import ttk
 from .aircraft import AircraftSnapshot
 from .aircraft_live import SkyAircraft
 from .aircraft_routes import AircraftRoute
+from .airport_landmarks import relevant_airport_landmarks
 from .gui_stage19 import aircraft_contact_row, filter_aircraft_contacts
 from .gui_stage20_satellites import Stage20SatelliteNightAzimuthApp, build_local_pass_hud
 from .sky_map import SkySatellite
 from .stage20_aircraft_detail import format_stage20_aircraft_detail
-from .stage20_human_vision_live_view import Stage20HumanVisionLiveSkyView
+from .stage20_airport_live_view import Stage20AirportLiveSkyView
 from .stage20_perceptual_projection import project_perceptual_live_view
 
 DRAWER_ISS = "iss"
@@ -32,7 +33,7 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
         old_view = self.live_view
         master = old_view.master
         old_view.destroy()
-        self.live_view = Stage20HumanVisionLiveSkyView(
+        self.live_view = Stage20AirportLiveSkyView(
             master,
             on_select=self._on_live_satellite_selected,
             on_aircraft_select=self._on_live_aircraft_selected,
@@ -45,13 +46,32 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             padx=0,
             pady=0,
         )
-        # Keep Weather Map and Forecast as dedicated tabs. Only the Live Sky
-        # weather/cloud panel and controls are removed for the lower-noise view.
         self._remove_weather_cloud_live_controls(parent)
         self._remove_aircraft_table_scrollbar()
         self._build_iss_drawer(master)
         self._apply_live_view_direction(show_error=False)
         self._on_star_layer_changed()
+        self._update_airport_landmarks()
+
+    def _on_location_changed(self, event: object | None = None) -> None:
+        super()._on_location_changed(event)
+        self._update_airport_landmarks()
+
+    def _update_airport_landmarks(self) -> None:
+        if not hasattr(self, "live_view") or not isinstance(self.live_view, Stage20AirportLiveSkyView):
+            return
+        profile = self._selected_profile()
+        if profile is None:
+            self.live_view.set_airport_landmarks(())
+            return
+        self.live_view.set_airport_landmarks(
+            relevant_airport_landmarks(
+                profile.latitude,
+                profile.longitude,
+                max_distance_km=220.0,
+                limit=4,
+            )
+        )
 
     def _remove_aircraft_table_scrollbar(self) -> None:
         panel = getattr(self, "_stage20_aircraft_panel", None)
@@ -66,19 +86,10 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
                     pass
 
     def _build_iss_drawer(self, master: tk.Misc) -> None:
-        self._stage20_iss_text_var = tk.StringVar(
-            master=self,
-            value="ISS: waiting for orbital data...",
-        )
+        self._stage20_iss_text_var = tk.StringVar(master=self, value="ISS: waiting for orbital data...")
         panel = ttk.LabelFrame(master, text="ISS & upcoming passes", padding=(10, 7))
-        ttk.Label(
-            panel,
-            textvariable=self._stage20_iss_text_var,
-            justify="left",
-            font=("Consolas", 9),
-        ).pack(anchor="w", fill="x")
+        ttk.Label(panel, textvariable=self._stage20_iss_text_var, justify="left", font=("Consolas", 9)).pack(anchor="w", fill="x")
         self._stage20_iss_panel = panel
-
         self.stage20_iss_button = ttk.Button(
             self.stage20_drawer_bar,
             text="▸  ISS / PASSES",
@@ -92,20 +103,10 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             self._stage20_iss_panel.grid_remove()
         if hasattr(self, "stage20_iss_button"):
             self.stage20_iss_button.configure(
-                text=(
-                    "▾  ISS / PASSES"
-                    if self._stage20_open_drawer == DRAWER_ISS
-                    else "▸  ISS / PASSES"
-                )
+                text="▾  ISS / PASSES" if self._stage20_open_drawer == DRAWER_ISS else "▸  ISS / PASSES"
             )
         if self._stage20_open_drawer == DRAWER_ISS and self._stage20_iss_panel is not None:
-            self._stage20_iss_panel.grid(
-                row=2,
-                column=0,
-                columnspan=2,
-                sticky="ew",
-                pady=(5, 0),
-            )
+            self._stage20_iss_panel.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
 
     def _apply_tracking_data(
         self,
@@ -117,10 +118,7 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
         super()._apply_tracking_data(profile_name, live_rows, pass_rows, sky_satellites)
         if profile_name != self.selected_name or self._stage20_iss_text_var is None:
             return
-        alerts, iss_status = build_local_pass_hud(
-            pass_rows,
-            current_satellites=getattr(self, "_sky_satellites", ()),
-        )
+        alerts, iss_status = build_local_pass_hud(pass_rows, current_satellites=getattr(self, "_sky_satellites", ()))
         lines = [iss_status]
         if alerts:
             lines.extend(("", "Passes within 60 minutes:"))
@@ -136,28 +134,20 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
         snapshot: AircraftSnapshot,
         contacts: list[SkyAircraft],
     ) -> None:
-        # Do not let a transient zero-contact ADS-B response wipe a populated sky.
         if not contacts and self._aircraft_contacts:
             self._aircraft_fetch_in_progress = False
             if generation != self._aircraft_generation:
                 self._aircraft_refresh_job = self.after(0, self._refresh_aircraft)
                 return
             profile = self._selected_profile()
-            current_key = None if profile is None else (
-                profile.name,
-                profile.latitude,
-                profile.longitude,
-                profile.altitude_m,
-            )
+            current_key = None if profile is None else (profile.name, profile.latitude, profile.longitude, profile.altitude_m)
             if current_key != profile_key:
                 self._aircraft_refresh_job = self.after(0, self._refresh_aircraft)
                 return
             self._aircraft_snapshot = snapshot
             self._refresh_aircraft_contacts_panel(force=True)
             if hasattr(self, "aircraft_status_var"):
-                self.aircraft_status_var.set(
-                    "STALE • no fresh ADS-B contacts; holding last known positions"
-                )
+                self.aircraft_status_var.set("STALE • no fresh ADS-B contacts; holding last known positions")
             self._aircraft_refresh_job = self.after(self.AIRCRAFT_RETRY_MS, self._refresh_aircraft)
             return
         super()._apply_aircraft_snapshot(profile_key, generation, snapshot, contacts)
@@ -166,20 +156,14 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
         if hasattr(self, "aircraft_table") and self.aircraft_table.exists(aircraft.icao24):
             self.aircraft_table.selection_set(aircraft.icao24)
             self.aircraft_table.focus(aircraft.icao24)
-
         self._aircraft_route_generation += 1
         generation = self._aircraft_route_generation
         base_detail = format_stage20_aircraft_detail(aircraft)
         if not aircraft.callsign:
             self.live_detail_var.set(base_detail)
             return
-
         self.live_detail_var.set(base_detail + "\n\nJourney data: looking up route...")
-        threading.Thread(
-            target=self._load_aircraft_route,
-            args=(aircraft, generation),
-            daemon=True,
-        ).start()
+        threading.Thread(target=self._load_aircraft_route, args=(aircraft, generation), daemon=True).start()
 
     def _apply_aircraft_route(
         self,
@@ -200,12 +184,10 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             visible: list[SkyAircraft] = []
         else:
             visible = self.live_view.aircraft_in_current_view()
-
         visible = prioritise_aircraft_board(visible)
         max_rows = self._stage20_aircraft_row_limit()
         shown = visible[:max_rows]
         rows = tuple(aircraft_contact_row(item) for item in shown)
-
         if force or rows != self._aircraft_table_signature:
             selected_icao = self.live_view.selected_icao24
             self.aircraft_table.delete(*self.aircraft_table.get_children())
@@ -215,7 +197,6 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
                 self.aircraft_table.selection_set(selected_icao)
                 self.aircraft_table.focus(selected_icao)
             self._aircraft_table_signature = rows
-
         filtered_total = len(filter_aircraft_contacts(self._aircraft_contacts, self.aircraft_filter_var.get()))
         hidden = max(0, len(visible) - len(shown))
         if not self.aircraft_layer_var.get():
@@ -243,18 +224,11 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             if isinstance(widget, ttk.LabelFrame) and text == "weather & cloud":
                 widget.destroy()
                 continue
-            if any(
-                phrase in text
-                for phrase in (
-                    "cloud overlay",
-                    "cloud opacity",
-                )
-            ):
+            if any(phrase in text for phrase in ("cloud overlay", "cloud opacity")):
                 widget.destroy()
 
 
 def prioritise_aircraft_board(contacts: list[SkyAircraft]) -> list[SkyAircraft]:
-    """Pin emergency/special operations first, then military, then useful normals."""
     return sorted(
         contacts,
         key=lambda aircraft: (
@@ -269,8 +243,6 @@ def prioritise_aircraft_board(contacts: list[SkyAircraft]) -> list[SkyAircraft]:
 
 
 def _install_perceptual_projection() -> None:
-    """Route all Stage 20 sky layers through one spherical projection."""
-
     from . import aircraft_hud_finder_view
     from . import gui_stage13
     from . import gui_stage14
