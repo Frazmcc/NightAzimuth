@@ -137,6 +137,25 @@ class AirportLandmarkProvider:
         return tuple(records)
 
 
+_DEFAULT_PROVIDER = AirportLandmarkProvider()
+
+
+def relevant_airport_landmarks(
+    observer_latitude_deg: float,
+    observer_longitude_deg: float,
+    *,
+    max_distance_km: float = 220.0,
+    limit: int = 4,
+) -> tuple[AirportLandmark, ...]:
+    """Resolve nearby airport references solely from the selected observer location."""
+    return _DEFAULT_PROVIDER.nearby(
+        observer_latitude_deg,
+        observer_longitude_deg,
+        max_distance_km=max_distance_km,
+        limit=limit,
+    )
+
+
 def airport_in_view(
     airport: AirportLandmark,
     facing_deg: float,
