@@ -6,6 +6,7 @@ from nightazimuth.aircraft_hud_finder_view import (
     _aircraft_colour,
     _aircraft_display_colour,
     _triangle_points,
+    centred_elevation_window,
     interpolated_aircraft_sky_position,
 )
 from nightazimuth.aircraft_live import AircraftSkyTrackPoint, SkyAircraft
@@ -71,3 +72,15 @@ def test_aircraft_sky_animation_wraps_cleanly_across_north():
     azimuth, elevation = interpolated_aircraft_sky_position(_aircraft_with_track(), 5.0)
     assert azimuth == pytest.approx(0.0)
     assert elevation == pytest.approx(25.0)
+
+
+def test_centred_elevation_window_preserves_span_and_clamps_horizon():
+    minimum, maximum = centred_elevation_window(5.0, 20.0, 70.0)
+    assert minimum == 0.0
+    assert maximum == 50.0
+
+
+def test_centred_elevation_window_clamps_at_zenith():
+    minimum, maximum = centred_elevation_window(88.0, 20.0, 70.0)
+    assert minimum == 40.0
+    assert maximum == 90.0
