@@ -71,6 +71,22 @@ def test_builds_above_horizon_view_contact():
     assert contact.position_state == AircraftPositionState.MEASURED
     assert contact.azimuth_deg > 89.0
     assert contact.elevation_deg > 0.0
+    assert contact.future_track[0].seconds_from_now == 0.0
+    assert len(contact.future_track) >= 2
+
+
+def test_projected_track_moves_east_for_eastbound_aircraft():
+    contacts = build_sky_aircraft(
+        _snapshot(_observation()),
+        AircraftObserver(0.0, 0.0, 0.0),
+        AircraftMotionHistory(prediction_limit_seconds=15.0),
+        at=BASE,
+        projection_seconds=(5.0, 10.0, 15.0),
+    )
+
+    track = contacts[0].future_track
+    assert [point.seconds_from_now for point in track] == [0.0, 5.0, 10.0, 15.0]
+    assert track[-1].azimuth_deg > 89.0
 
 
 def test_ground_contacts_are_excluded_by_default():
