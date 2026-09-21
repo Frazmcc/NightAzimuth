@@ -281,7 +281,7 @@ def format_satellite_information(satellite: SkySatellite, metadata: SatelliteMet
     if satellite.brightness_estimate is not None:
         estimate = satellite.brightness_estimate
         lines.append(
-            f"Brightness estimate: mag {estimate.brighter_bound:.1f} to {estimate.dimmer_bound:.1f}"
+            f"Brightness estimate: mag {estimate.brighter_bound:.1f} to {estimate.fainter_bound:.1f}"
         )
 
     lines.extend(("", "ORBIT / TECHNICAL"))
