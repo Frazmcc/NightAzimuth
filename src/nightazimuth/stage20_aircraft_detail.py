@@ -15,24 +15,26 @@ def format_stage20_aircraft_detail(
     *,
     route: AircraftRoute | None = None,
 ) -> str:
-    """Present selected-aircraft information in observer-first order."""
+    """Present selected-aircraft information compactly in observer-first order."""
     identity = aircraft_display_identity(aircraft)
     altitude_ft = aircraft.altitude_m / 0.3048
     speed_knots = None if aircraft.ground_speed_mps is None else aircraft.ground_speed_mps / 0.514444
     vertical_fpm = None if aircraft.vertical_rate_mps is None else aircraft.vertical_rate_mps / 0.00508
 
-    lines: list[str] = [aircraft.callsign or aircraft.registration or "Aircraft"]
-
+    headline = aircraft.callsign or aircraft.registration or aircraft.icao24.upper()
     model_line = identity.make_model
     if identity.capacity:
         model_line += f" ({identity.capacity})"
-    lines.append(model_line)
+
+    lines: list[str] = [headline, model_line]
+
+    identity_bits: list[str] = []
     if identity.role:
-        lines.append(f"Role: {identity.role}")
+        identity_bits.append(f"Role: {identity.role}")
     if aircraft.operator:
-        lines.append(f"Operator: {aircraft.operator}")
-    if aircraft.registration:
-        lines.append(f"Registration: {aircraft.registration}")
+        identity_bits.append(f"Operator: {aircraft.operator}")
+    if identity_bits:
+        lines.append(" • ".join(identity_bits))
 
     squawk = squawk_display(aircraft)
     if squawk:
@@ -41,60 +43,58 @@ def format_stage20_aircraft_detail(
     lines.extend(("", "JOURNEY"))
     lines.extend(_format_journey(aircraft, route))
 
-    lines.extend(("", "LIVE TRACKING"))
-    lines.append(f"Altitude: {altitude_ft:,.0f} ft")
+    tracking_bits = [f"{altitude_ft:,.0f} ft"]
     if speed_knots is not None:
-        lines.append(f"Ground speed: {speed_knots:.0f} kt")
+        tracking_bits.append(f"{speed_knots:.0f} kt")
     if aircraft.track_deg is not None:
-        lines.append(f"Track: {aircraft.track_deg:.0f}°")
+        tracking_bits.append(f"Track {aircraft.track_deg:.0f}°")
     if vertical_fpm is not None:
-        lines.append(f"Vertical rate: {vertical_fpm:+.0f} ft/min")
-    lines.extend(
-        (
-            f"Azimuth: {aircraft.azimuth_deg:.1f}°",
-            f"Elevation: {aircraft.elevation_deg:.1f}°",
-            f"Range: {aircraft.range_km:.1f} km",
-            f"ICAO hex: {aircraft.icao24.upper()}",
-            f"Position: {aircraft.position_state.value} · age {aircraft.position_age_seconds:.1f}s",
-            f"Source: {aircraft.source_label}",
-        )
+        tracking_bits.append(f"Vertical {vertical_fpm:+.0f} ft/min")
+    tracking_bits.append(f"Range {aircraft.range_km:.1f} km")
+
+    lines.extend(("", "LIVE TRACKING", " • ".join(tracking_bits)))
+    lines.append(
+        f"Az {aircraft.azimuth_deg:.1f}° • El {aircraft.elevation_deg:.1f}° • "
+        f"{aircraft.position_state.value} • age {aircraft.position_age_seconds:.1f}s"
     )
+
+    technical_bits = [f"ICAO {aircraft.icao24.upper()}"]
+    if aircraft.registration:
+        technical_bits.append(f"Reg {aircraft.registration}")
+    technical_bits.append(f"Source {aircraft.source_label}")
+    lines.append(" • ".join(technical_bits))
     return "\n".join(lines)
 
 
 def _format_journey(aircraft: SkyAircraft, route: AircraftRoute | None) -> list[str]:
     if route is None or route.departure is None or route.arrival is None:
         return [
-            "Departure: Unknown",
-            "Departure time: Unknown",
-            "Arrival: Unknown",
-            "ETA: Unknown",
+            "Departure: Unknown • Departure time: Unknown",
+            "Arrival: Unknown • ETA: Unknown",
         ]
 
     departure = route.departure
     arrival = route.arrival
-    lines = [
-        f"Departure: {_airport_summary(departure)}",
-        "Departure time: unavailable from route source",
-    ]
+    route_line = f"{_airport_summary(departure)}"
     if route.intermediate_airports:
         via = " → ".join(airport.display_code for airport in route.intermediate_airports)
-        lines.append(f"Via: {via}")
-    lines.append(f"Arrival: {_airport_summary(arrival)}")
+        route_line += f" → {via}"
+    route_line += f" → {_airport_summary(arrival)}"
 
+    lines = [route_line, "Departure time: unavailable from route source"]
     eta = estimate_arrival_time(aircraft, arrival)
     if eta is None:
         lines.append("ETA: Unknown")
     else:
         eta_time, minutes = eta
-        lines.append(f"ETA (estimated): {eta_time:%H:%M} UTC · ~{minutes:d} min")
+        lines.append(f"ETA: {eta_time:%H:%M} UTC (estimated, ~{minutes:d} min)")
     return lines
 
 
 def _airport_summary(airport: AirportInfo) -> str:
-    location = f", {airport.location}" if airport.location else ""
-    country = f", {airport.display_country}" if airport.display_country != "Unknown" else ""
-    return f"{airport.display_code} — {airport.name}{location}{country}"
+    code = airport.display_code
+    name = airport.name
+    return f"{code} {name}" if name and name != code else code
 
 
 def estimate_arrival_time(
@@ -126,8 +126,6 @@ def estimate_arrival_time(
     )
     speed_kmh = aircraft.ground_speed_mps * 3.6
     hours = distance_km / max(speed_kmh, 1.0)
-    # A small bounded allowance avoids displaying an over-optimistic gate-like
-    # arrival while still keeping this a lightweight estimate, not a flight model.
     hours += min(0.20, max(0.05, distance_km / 5000.0))
     moment = now or datetime.now(timezone.utc)
     if moment.tzinfo is None or moment.utcoffset() is None:
