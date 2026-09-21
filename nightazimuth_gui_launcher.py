@@ -1,5 +1,5 @@
-# Stage 20 human-vision Live Sky launcher: dynamic airports, local clock and easter egg.
-from nightazimuth.gui_stage20_clean import main
+# Stage 20 human-vision Live Sky launcher: realtime satellites, dynamic airports and local clock.
+from nightazimuth.gui_stage20_realtime import main
 
 
 if __name__ == "__main__":
