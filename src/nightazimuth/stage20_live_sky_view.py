@@ -18,12 +18,27 @@ class Stage20LiveSkyView(AircraftTwilightFinderView):
     def __init__(self, *args: object, **kwargs: object) -> None:
         self._pass_alerts: tuple[str, ...] = ()
         self._iss_status = "ISS: waiting for orbital data"
+        self._visual_candidate_ids: set[str] = set()
         super().__init__(*args, **kwargs)
 
     def set_pass_alerts(self, alerts: Iterable[str], *, iss_status: str) -> None:
         self._pass_alerts = tuple(alerts)
         self._iss_status = iss_status
         self.redraw()
+
+    def set_visual_candidate_ids(self, norad_ids: Iterable[str]) -> None:
+        self._visual_candidate_ids = {str(value).strip() for value in norad_ids if str(value).strip()}
+        self.redraw()
+
+    def _ideal_visual_candidate(self, satellite: SkySatellite) -> bool:
+        if satellite.norad_id == ISS_NORAD_ID:
+            return True
+        if satellite.potentially_visible or satellite.twilight_candidate:
+            return True
+        if satellite.norad_id in self._visual_candidate_ids:
+            return True
+        estimate = satellite.brightness_estimate
+        return estimate is not None and estimate.brighter_bound <= 6.5
 
     def _priority_satellite_ids(self) -> set[str]:
         fast = sorted(
@@ -35,21 +50,21 @@ class Stage20LiveSkyView(AircraftTwilightFinderView):
             ),
         )[: self.MAX_FAST_LABELS]
         result = {item.norad_id for item in fast}
-        result.update(item.norad_id for item in self._satellites if item.potentially_visible)
+        result.update(item.norad_id for item in self._satellites if self._ideal_visual_candidate(item))
         result.add(ISS_NORAD_ID)
         if self.selected_norad:
             result.add(self.selected_norad)
         return result
 
     def _rebuild_display_satellites(self) -> None:
-        # Stage 20 shows every real satellite currently inside the user's sky
-        # window. Visibility flags affect styling and labels, never inclusion.
+        # Every real satellite in the current field is rendered. Visibility
+        # estimates affect prominence and labels, never inclusion.
         in_view = self._satellites_in_current_view()
         self._satellites = sorted(
             in_view,
             key=lambda item: (
                 item.norad_id != ISS_NORAD_ID,
-                not item.potentially_visible,
+                not self._ideal_visual_candidate(item),
                 not item.satellite_sunlit,
                 -apparent_angular_speed_deg_s(item),
                 -item.elevation_deg,
@@ -68,13 +83,14 @@ class Stage20LiveSkyView(AircraftTwilightFinderView):
     def _draw_satellite(self, satellite: SkySatellite, x: float, y: float) -> None:
         selected = satellite.norad_id == self.selected_norad
         is_iss = satellite.norad_id == ISS_NORAD_ID
+        ideal_visual = self._ideal_visual_candidate(satellite)
         priority_ids = self._priority_satellite_ids()
 
         if is_iss:
             radius = 6.0
             fill = "#facc15"
             outline = "#ffffff"
-        elif satellite.potentially_visible:
+        elif ideal_visual:
             radius = 4.0
             fill = "#4ade80"
             outline = "#dcfce7" if selected else fill
@@ -104,8 +120,8 @@ class Stage20LiveSkyView(AircraftTwilightFinderView):
 
         if satellite.norad_id in priority_ids:
             label = "ISS" if is_iss else satellite.name
-            if satellite.potentially_visible:
-                label += "  •  BEST CONDITIONS"
+            if ideal_visual and not is_iss:
+                label += "  •  VISUAL CANDIDATE"
             speed = apparent_angular_speed_deg_s(satellite)
             if speed > 0.0 and (is_iss or selected or satellite in self._satellites[: self.MAX_FAST_LABELS]):
                 label += f"  •  {speed:.2f}°/s"
@@ -113,9 +129,9 @@ class Stage20LiveSkyView(AircraftTwilightFinderView):
                 x + 8,
                 y - 8,
                 text=label,
-                fill="#fde68a" if is_iss else ("#bbf7d0" if satellite.potentially_visible else "#bae6fd"),
+                fill="#fde68a" if is_iss else ("#bbf7d0" if ideal_visual else "#bae6fd"),
                 anchor="sw",
-                font=("Segoe UI", 8, "bold" if is_iss or selected or satellite.potentially_visible else "normal"),
+                font=("Segoe UI", 8, "bold" if is_iss or selected or ideal_visual else "normal"),
                 tags=(tag,),
             )
 
@@ -124,8 +140,7 @@ class Stage20LiveSkyView(AircraftTwilightFinderView):
         self.tag_bind(tag, "<Leave>", lambda _event: self.config(cursor=""))
 
     def _draw_track(self, satellite: SkySatellite, left: float, top: float, right: float, bottom: float) -> None:
-        priority = self._priority_satellite_ids()
-        if satellite.norad_id not in priority:
+        if satellite.norad_id not in self._priority_satellite_ids():
             return
         super()._draw_track(satellite, left, top, right, bottom)
 
@@ -134,14 +149,13 @@ class Stage20LiveSkyView(AircraftTwilightFinderView):
         self._draw_stage20_pass_hud()
 
     def _draw_stage20_pass_hud(self) -> None:
-        left, top, right, bottom = self._plot_bounds()
+        left, top, right, _bottom = self._plot_bounds()
         width = max(right - left, 1.0)
 
-        iss_text = self._iss_status
         self.create_text(
             left + 10,
             top + 38,
-            text=iss_text,
+            text=self._iss_status,
             fill="#fde68a",
             anchor="nw",
             font=("Segoe UI", 9, "bold"),
