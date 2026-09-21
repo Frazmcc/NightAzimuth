@@ -2,12 +2,20 @@ from nightazimuth.aircraft_live import SkyAircraft
 from nightazimuth.aircraft_motion import AircraftPositionState
 from nightazimuth.aircraft_routes import AircraftRoute, AirportInfo
 from nightazimuth.aircraft_squawk import classify_squawk
-from nightazimuth.gui_stage19 import format_aircraft_detail
+from nightazimuth.gui_stage19 import (
+    AIRCRAFT_FILTER_ALL,
+    AIRCRAFT_FILTER_MILITARY,
+    AIRCRAFT_FILTER_SPECIAL,
+    aircraft_contact_row,
+    aircraft_contact_status,
+    filter_aircraft_contacts,
+    format_aircraft_detail,
+)
 
 
 def _aircraft(*, squawk: str | None = None, military: bool = False) -> SkyAircraft:
     return SkyAircraft(
-        icao24="40621d",
+        icao24="40621d" if not military else "ae1234",
         callsign="BAW123" if not military else "RCH123",
         azimuth_deg=231.8,
         elevation_deg=27.6,
@@ -79,3 +87,29 @@ def test_route_detail_exposes_departure_arrival_names_locations_and_countries():
     assert "Location: New York" in text
     assert "Country: US" in text
     assert "Route source: adsb.lol standing data" in text
+
+
+def test_aircraft_quick_filters_are_non_destructive_and_specific():
+    normal = _aircraft()
+    special = _aircraft(squawk="0023")
+    military = _aircraft(military=True)
+    contacts = [special, military, normal]
+
+    assert filter_aircraft_contacts(contacts, AIRCRAFT_FILTER_ALL) == contacts
+    assert filter_aircraft_contacts(contacts, AIRCRAFT_FILTER_SPECIAL) == [special]
+    assert filter_aircraft_contacts(contacts, AIRCRAFT_FILTER_MILITARY) == [military]
+    assert contacts == [special, military, normal]
+
+
+def test_aircraft_contact_row_prioritises_special_and_military_status():
+    special = _aircraft(squawk="7700")
+    military = _aircraft(military=True)
+
+    assert aircraft_contact_status(special) == "AIRCRAFT EMERGENCY"
+    assert aircraft_contact_status(military) == "MILITARY"
+    row = aircraft_contact_row(military)
+    assert row[0] == "RCH123"
+    assert row[1] == "MILITARY"
+    assert row[3] == "BOEING KC-135R STRATOTANKER"
+    assert row[4] == "31,000 ft"
+    assert row[5] == "42.7 km"
