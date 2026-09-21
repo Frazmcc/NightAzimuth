@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 def test_rc_places_selected_aircraft_detail_inside_aircraft_contacts() -> None:
+    """Aircraft selection must surface details in Aircraft Contacts, not Live Finder."""
     source = Path("src/nightazimuth/gui_stage20_rc.py").read_text(encoding="utf-8")
 
     assert 'text="Selected aircraft"' in source
