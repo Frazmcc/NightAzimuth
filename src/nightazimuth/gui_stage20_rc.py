@@ -70,6 +70,10 @@ class Stage20ReleaseCandidateApp(Stage20RealtimeNightAzimuthApp):
         self._stage20_open_drawer = DRAWER_AIRCRAFT
         self._apply_stage20_drawer_state()
 
+        # Restore Live Finder to its generic observer summary rather than
+        # leaving a duplicate copy of the aircraft block there.
+        self._update_live_view_summary()
+
     def _apply_aircraft_route(
         self,
         aircraft: SkyAircraft,
@@ -79,6 +83,7 @@ class Stage20ReleaseCandidateApp(Stage20RealtimeNightAzimuthApp):
         super()._apply_aircraft_route(aircraft, generation, route)
         if getattr(self.live_view, "selected_icao24", None) == aircraft.icao24:
             self._copy_selected_aircraft_detail()
+            self._update_live_view_summary()
 
     def _copy_selected_aircraft_detail(self) -> None:
         if self._aircraft_detail_var is None:
