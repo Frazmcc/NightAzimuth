@@ -3,7 +3,12 @@ from types import SimpleNamespace
 from nightazimuth.stage20_clean_live_view import aircraft_icon_type
 
 
-def _aircraft(*, military: bool = False, type_code: str | None = None, description: str | None = None):
+def _aircraft(
+    *,
+    military: bool = False,
+    type_code: str | None = None,
+    description: str | None = None,
+) -> SimpleNamespace:
     return SimpleNamespace(
         military=military,
         type_code=type_code,
