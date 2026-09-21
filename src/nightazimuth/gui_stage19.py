@@ -45,7 +45,6 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
 
         old_view = self.live_view
         master = old_view.master
-        grid_info = old_view.grid_info()
         old_view.destroy()
 
         self.live_view = AircraftTwilightFinderView(
@@ -53,7 +52,7 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
             on_select=self._on_live_satellite_selected,
             on_aircraft_select=self._on_live_aircraft_selected,
         )
-        self.live_view.grid(**grid_info)
+        self.live_view.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         self._apply_live_view_direction(show_error=False)
         self._on_star_layer_changed()
 
