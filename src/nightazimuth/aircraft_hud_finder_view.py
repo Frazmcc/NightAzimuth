@@ -7,6 +7,7 @@ import tkinter as tk
 
 from .aircraft_live import SkyAircraft
 from .aircraft_motion import AircraftPositionState
+from .aircraft_squawk import SquawkPriority
 from .live_view import project_live_view, signed_angular_difference
 from .twilight_hud_finder_view import TwilightSmoothHudFinderView
 
@@ -140,6 +141,11 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
         selected = self._selected_icao24
 
         label_ids = {item.icao24 for item in contacts[: self.MAX_AUTOMATIC_LABELS]}
+        label_ids.update(
+            item.icao24
+            for item in contacts
+            if item.squawk_alert is not None and item.squawk_alert.highlighted
+        )
         if selected is not None:
             label_ids.add(selected)
 
@@ -163,10 +169,14 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
             )
             self._drawn_aircraft_positions[aircraft.icao24] = (x, y)
 
+        special_count = sum(1 for item in contacts if item.squawk_alert is not None)
+        summary = f"Aircraft in view: {len(contacts)}"
+        if special_count:
+            summary += f"  •  special: {special_count}"
         self.create_text(
             right - 6,
             top + 28,
-            text=f"Aircraft in view: {len(contacts)}",
+            text=summary,
             fill="#67e8f9",
             anchor="ne",
             font=("Segoe UI", 8, "bold"),
@@ -237,8 +247,8 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
         if len(points) >= 4:
             self.create_line(
                 *points,
-                fill="#22d3ee",
-                width=1,
+                fill=_aircraft_display_colour(aircraft),
+                width=2 if aircraft.squawk_alert is not None else 1,
                 dash=(3, 4),
                 tags=(f"live-aircraft:{aircraft.icao24}", "aircraft-track", "live-aircraft"),
             )
@@ -253,15 +263,16 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
     ) -> None:
         selected = aircraft.icao24 == self._selected_icao24
         tag = f"live-aircraft:{aircraft.icao24}"
-        fill = _aircraft_colour(aircraft.position_state)
-        radius = 7.0 if selected else 5.0
+        fill = _aircraft_display_colour(aircraft)
+        highlighted = aircraft.squawk_alert is not None and aircraft.squawk_alert.highlighted
+        radius = 8.0 if highlighted else (7.0 if selected else 5.0)
         direction = self._aircraft_screen_direction(aircraft, x, y)
         polygon = _triangle_points(x, y, radius, direction)
         self.create_polygon(
             *polygon,
             fill=fill,
-            outline="#ffffff" if selected else fill,
-            width=2 if selected else 1,
+            outline="#ffffff" if selected or highlighted else fill,
+            width=2 if selected or highlighted else 1,
             tags=(tag, "live-aircraft"),
         )
 
@@ -272,17 +283,22 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
                 state_suffix = "  est"
             elif aircraft.position_state == AircraftPositionState.INTERPOLATED:
                 state_suffix = "  interp"
+
+            prefix = ""
+            if aircraft.squawk_alert is not None:
+                prefix = f"{aircraft.squawk_alert.label} [{aircraft.squawk_alert.code}]  •  "
+
             label = (
-                f"{identity}{state_suffix}  "
+                f"{prefix}{identity}{state_suffix}  "
                 f"{aircraft.range_km:.1f} km  El {aircraft.elevation_deg:.0f}°"
             )
             self.create_text(
-                x + 8,
-                y - 8,
+                x + 9,
+                y - 9,
                 text=label,
-                fill="#a5f3fc",
+                fill=_aircraft_label_colour(aircraft),
                 anchor="sw",
-                font=("Segoe UI", 8, "bold" if selected else "normal"),
+                font=("Segoe UI", 8, "bold" if selected or highlighted else "normal"),
                 tags=(tag, "live-aircraft"),
             )
 
@@ -354,3 +370,25 @@ def _aircraft_colour(state: AircraftPositionState) -> str:
     if state == AircraftPositionState.STALE:
         return "#94a3b8"
     return "#22d3ee"
+
+
+def _aircraft_display_colour(aircraft: SkyAircraft) -> str:
+    alert = aircraft.squawk_alert
+    if alert is None:
+        return _aircraft_colour(aircraft.position_state)
+    if alert.priority >= SquawkPriority.CRITICAL:
+        return "#ef4444"
+    if alert.priority >= SquawkPriority.IMPORTANT:
+        return "#f97316"
+    return "#a855f7"
+
+
+def _aircraft_label_colour(aircraft: SkyAircraft) -> str:
+    alert = aircraft.squawk_alert
+    if alert is None:
+        return "#a5f3fc"
+    if alert.priority >= SquawkPriority.CRITICAL:
+        return "#fecaca"
+    if alert.priority >= SquawkPriority.IMPORTANT:
+        return "#fed7aa"
+    return "#e9d5ff"
