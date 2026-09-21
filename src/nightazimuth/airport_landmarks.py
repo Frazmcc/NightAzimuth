@@ -32,6 +32,7 @@ class AirportLandmark:
     distance_km: float
     bearing_deg: float
     airport_type: str = ""
+    scheduled_service: bool = False
 
 
 class AirportLandmarkProvider:
@@ -90,12 +91,13 @@ class AirportLandmarkProvider:
                         airport.longitude_deg,
                     ),
                     airport_type=airport.airport_type,
+                    scheduled_service=airport.scheduled_service,
                 )
             )
 
         # Prefer genuinely significant airports over simply taking the nearest
-        # IATA-coded strips. If a location has no large airport nearby, scheduled
-        # medium airports naturally become the next-best references.
+        # IATA-coded strips. Where no large airport is nearby, scheduled regional
+        # airports naturally become the next-best references.
         landmarks.sort(key=_landmark_priority)
         return tuple(landmarks[: max(0, int(limit))])
 
@@ -196,10 +198,14 @@ def airport_in_view(
 def _landmark_priority(airport: AirportLandmark) -> tuple[int, float, str]:
     if airport.airport_type == "large_airport":
         class_priority = 0
-    elif airport.airport_type == "medium_airport":
+    elif airport.airport_type == "medium_airport" and airport.scheduled_service:
         class_priority = 1
-    else:
+    elif airport.airport_type == "medium_airport":
         class_priority = 2
+    elif airport.scheduled_service:
+        class_priority = 3
+    else:
+        class_priority = 4
     return class_priority, airport.distance_km, airport.icao
 
 
