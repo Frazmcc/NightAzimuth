@@ -35,7 +35,9 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         self._aircraft_refresh_job: str | None = None
         self._aircraft_generation = 0
         self._aircraft_fetch_in_progress = False
+        self._aircraft_ready = False
         super().__init__()
+        self._aircraft_ready = True
         self._refresh_aircraft()
 
     def _build_live_view(self, parent: tk.Misc) -> None:
@@ -57,6 +59,8 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
 
     def _on_location_changed(self, event: object | None = None) -> None:
         super()._on_location_changed(event)
+        if not self._aircraft_ready:
+            return
         self._aircraft_generation += 1
         self._aircraft_motion.clear()
         self._aircraft_sources.clear_last_good()
@@ -66,6 +70,8 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         self._refresh_aircraft()
 
     def _refresh_aircraft(self) -> None:
+        if not self._aircraft_ready:
+            return
         if self._aircraft_refresh_job is not None:
             try:
                 self.after_cancel(self._aircraft_refresh_job)
@@ -162,38 +168,10 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
         self._aircraft_refresh_job = self.after(self.AIRCRAFT_RETRY_MS, self._refresh_aircraft)
 
     def _on_live_aircraft_selected(self, aircraft: SkyAircraft) -> None:
-        altitude_ft = aircraft.altitude_m / 0.3048
-        speed_knots = None
-        if aircraft.ground_speed_mps is not None:
-            speed_knots = aircraft.ground_speed_mps / 0.514444
-        vertical_fpm = None
-        if aircraft.vertical_rate_mps is not None:
-            vertical_fpm = aircraft.vertical_rate_mps / 0.00508
-
-        lines = [
-            aircraft.callsign or "Aircraft",
-            f"ICAO: {aircraft.icao24.upper()}",
-            f"Azimuth: {aircraft.azimuth_deg:.1f}°",
-            f"Elevation: {aircraft.elevation_deg:.1f}°",
-            f"Range: {aircraft.range_km:.1f} km",
-            f"Altitude: {altitude_ft:,.0f} ft",
-        ]
-        if speed_knots is not None:
-            lines.append(f"Ground speed: {speed_knots:.0f} kt")
-        if aircraft.track_deg is not None:
-            lines.append(f"Track: {aircraft.track_deg:.0f}°")
-        if vertical_fpm is not None:
-            lines.append(f"Vertical rate: {vertical_fpm:+.0f} ft/min")
-        lines.extend(
-            (
-                f"Position: {aircraft.position_state.value}",
-                f"Position age: {aircraft.position_age_seconds:.1f} s",
-                f"Source: {aircraft.source_label}",
-            )
-        )
-        self.live_detail_var.set("\n".join(lines))
+        self.live_detail_var.set(format_aircraft_detail(aircraft))
 
     def destroy(self) -> None:
+        self._aircraft_ready = False
         if self._aircraft_refresh_job is not None:
             try:
                 self.after_cancel(self._aircraft_refresh_job)
@@ -201,6 +179,39 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
                 pass
             self._aircraft_refresh_job = None
         super().destroy()
+
+
+def format_aircraft_detail(aircraft: SkyAircraft) -> str:
+    altitude_ft = aircraft.altitude_m / 0.3048
+    speed_knots = None
+    if aircraft.ground_speed_mps is not None:
+        speed_knots = aircraft.ground_speed_mps / 0.514444
+    vertical_fpm = None
+    if aircraft.vertical_rate_mps is not None:
+        vertical_fpm = aircraft.vertical_rate_mps / 0.00508
+
+    lines = [
+        aircraft.callsign or "Aircraft",
+        f"ICAO: {aircraft.icao24.upper()}",
+        f"Azimuth: {aircraft.azimuth_deg:.1f}°",
+        f"Elevation: {aircraft.elevation_deg:.1f}°",
+        f"Range: {aircraft.range_km:.1f} km",
+        f"Altitude: {altitude_ft:,.0f} ft",
+    ]
+    if speed_knots is not None:
+        lines.append(f"Ground speed: {speed_knots:.0f} kt")
+    if aircraft.track_deg is not None:
+        lines.append(f"Track: {aircraft.track_deg:.0f}°")
+    if vertical_fpm is not None:
+        lines.append(f"Vertical rate: {vertical_fpm:+.0f} ft/min")
+    lines.extend(
+        (
+            f"Position: {aircraft.position_state.value}",
+            f"Position age: {aircraft.position_age_seconds:.1f} s",
+            f"Source: {aircraft.source_label}",
+        )
+    )
+    return "\n".join(lines)
 
 
 def main() -> int:
