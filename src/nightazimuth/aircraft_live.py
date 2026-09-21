@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from .aircraft import AircraftObserver, AircraftSnapshot
 from .aircraft_geometry import resolved_aircraft_sky_position
 from .aircraft_motion import AircraftMotionHistory, AircraftPositionState
+from .aircraft_squawk import SquawkAlert, classify_squawk
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +27,8 @@ class SkyAircraft:
     track_deg: float | None
     ground_speed_mps: float | None
     vertical_rate_mps: float | None
+    squawk: str | None
+    squawk_alert: SquawkAlert | None
     position_state: AircraftPositionState
     position_age_seconds: float
     source_id: str
@@ -97,6 +100,8 @@ def build_sky_aircraft(
                 track_deg=resolved.track_deg,
                 ground_speed_mps=resolved.ground_speed_mps,
                 vertical_rate_mps=resolved.vertical_rate_mps,
+                squawk=observation.squawk,
+                squawk_alert=classify_squawk(observation.squawk),
                 position_state=resolved.state,
                 position_age_seconds=max(
                     0.0,
@@ -110,7 +115,12 @@ def build_sky_aircraft(
 
     return sorted(
         contacts,
-        key=lambda contact: (-contact.elevation_deg, contact.range_km, contact.icao24),
+        key=lambda contact: (
+            -(contact.squawk_alert.priority if contact.squawk_alert is not None else 0),
+            -contact.elevation_deg,
+            contact.range_km,
+            contact.icao24,
+        ),
     )
 
 
