@@ -8,7 +8,7 @@ from .aircraft import AircraftSnapshot
 from .aircraft_live import SkyAircraft
 from .gui_stage20_satellites import Stage20SatelliteNightAzimuthApp, build_local_pass_hud
 from .sky_map import SkySatellite
-from .stage20_clean_live_view import Stage20CleanLiveSkyView
+from .stage20_human_vision_live_view import Stage20HumanVisionLiveSkyView
 from .stage20_perceptual_projection import project_perceptual_live_view
 
 DRAWER_ISS = "iss"
@@ -28,7 +28,7 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
         old_view = self.live_view
         master = old_view.master
         old_view.destroy()
-        self.live_view = Stage20CleanLiveSkyView(
+        self.live_view = Stage20HumanVisionLiveSkyView(
             master,
             on_select=self._on_live_satellite_selected,
             on_aircraft_select=self._on_live_aircraft_selected,
