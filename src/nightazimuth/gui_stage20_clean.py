@@ -39,8 +39,8 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             padx=0,
             pady=0,
         )
-        # Keep weather/forecast functionality in their dedicated tabs, but
-        # remove weather/cloud controls and status from the Live Sky itself.
+        # Keep Weather Map and Forecast as dedicated tabs. Only the Live Sky
+        # weather/cloud panel and controls are removed for the lower-noise view.
         self._remove_weather_cloud_live_controls(parent)
         self._build_iss_drawer(master)
         self._apply_live_view_direction(show_error=False)
