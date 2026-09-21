@@ -20,20 +20,6 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
         self._stage20_iss_panel: ttk.LabelFrame | None = None
         self._stage20_iss_text_var: tk.StringVar | None = None
         super().__init__()
-        self.after_idle(self._remove_weather_and_cloud_tabs)
-
-    # Weather/cloud are intentionally disabled in Stage 20 to save resources.
-    def _refresh_weather(self) -> None:
-        return
-
-    def _refresh_weather_map(self) -> None:
-        return
-
-    def _schedule_cloud_refresh(self) -> None:
-        return
-
-    def _start_weather_animation(self) -> None:
-        return
 
     def _build_live_view(self, parent: tk.Misc) -> None:
         super()._build_live_view(parent)
@@ -53,6 +39,8 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             padx=0,
             pady=0,
         )
+        # Keep weather/forecast functionality in their dedicated tabs, but
+        # remove weather/cloud controls and status from the Live Sky itself.
         self._remove_weather_cloud_live_controls(parent)
         self._build_iss_drawer(master)
         self._apply_live_view_direction(show_error=False)
@@ -154,22 +142,6 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
             self._aircraft_refresh_job = self.after(self.AIRCRAFT_RETRY_MS, self._refresh_aircraft)
             return
         super()._apply_aircraft_snapshot(profile_key, generation, snapshot, contacts)
-
-    def _remove_weather_and_cloud_tabs(self) -> None:
-        notebook = self._find_notebook(self)
-        if notebook is None:
-            return
-        for tab_id in tuple(notebook.tabs()):
-            text = str(notebook.tab(tab_id, "text")).strip().lower()
-            if text not in {"weather map", "forecast"}:
-                continue
-            try:
-                widget = notebook.nametowidget(tab_id)
-            except KeyError:
-                widget = None
-            notebook.forget(tab_id)
-            if widget is not None:
-                widget.destroy()
 
     def _remove_weather_cloud_live_controls(self, parent: tk.Misc) -> None:
         for widget in list(_walk_widgets(parent)):
