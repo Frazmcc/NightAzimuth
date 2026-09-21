@@ -25,6 +25,8 @@ class SquawkCategory(StrEnum):
     MARITIME = "maritime"
     OPEN_SKIES = "open_skies"
     LOST = "lost"
+    DANGER_AREA = "danger_area"
+    DISPLAY = "display"
     OTHER = "other"
 
 
@@ -41,10 +43,9 @@ class SquawkAlert:
 
 
 # UK operational allocations are based on the NATS AIS Secondary Surveillance
-# Radar allocation dataset effective 2026-09-03. Emergency meanings are also
-# cross-checked against current CAA SERA/CAP 493 material. Routine FMC/ATC codes
-# are deliberately excluded: NightAzimuth only elevates operationally meaningful
-# codes rather than colouring every non-7000 squawk.
+# Radar allocation dataset effective 2026-09-03 and current CAA MATS material.
+# Routine FMC/ATC/conspicuity codes are deliberately excluded unless the code
+# itself identifies a notable operation that is useful to an observer.
 _EXACT: dict[str, SquawkAlert] = {
     "0003": SquawkAlert("0003", "AIR AMBULANCE — Surrey/Sussex HEMS", SquawkCategory.AIR_AMBULANCE, SquawkPriority.IMPORTANT),
     "0006": SquawkAlert("0006", "BRITISH TRANSPORT POLICE AIR SUPPORT", SquawkCategory.POLICE, SquawkPriority.IMPORTANT),
@@ -69,6 +70,12 @@ _EXACT: dict[str, SquawkAlert] = {
     "0036": SquawkAlert("0036", "PIPELINE / POWERLINE INSPECTION", SquawkCategory.TOWING_INSPECTION, SquawkPriority.IMPORTANT),
     "0037": SquawkAlert("0037", "ROYAL FLIGHT — HELICOPTER", SquawkCategory.ROYAL, SquawkPriority.IMPORTANT),
     "0040": SquawkAlert("0040", "CIVIL HELICOPTER — NORTH SEA", SquawkCategory.MARITIME, SquawkPriority.SPECIAL),
+    "7001": SquawkAlert("7001", "MILITARY LOW-LEVEL / CLIMB-OUT", SquawkCategory.MILITARY, SquawkPriority.IMPORTANT),
+    "7002": SquawkAlert("7002", "DANGER AREA OPERATION", SquawkCategory.DANGER_AREA, SquawkPriority.SPECIAL),
+    "7003": SquawkAlert("7003", "RED ARROWS DISPLAY / TRANSIT", SquawkCategory.DISPLAY, SquawkPriority.IMPORTANT),
+    "7004": SquawkAlert("7004", "AEROBATICS / DISPLAY", SquawkCategory.DISPLAY, SquawkPriority.IMPORTANT),
+    "7005": SquawkAlert("7005", "MILITARY HIGH-ENERGY MANOEUVRES", SquawkCategory.MILITARY, SquawkPriority.IMPORTANT),
+    "7006": SquawkAlert("7006", "MILITARY AUTONOMOUS TRA OPERATION", SquawkCategory.MILITARY, SquawkPriority.IMPORTANT),
     "7007": SquawkAlert("7007", "OPEN SKIES OBSERVATION FLIGHT", SquawkCategory.OPEN_SKIES, SquawkPriority.IMPORTANT),
     "7400": SquawkAlert("7400", "UAS LOST C2 LINK", SquawkCategory.EMERGENCY, SquawkPriority.CRITICAL),
     "7500": SquawkAlert("7500", "UNLAWFUL INTERFERENCE", SquawkCategory.EMERGENCY, SquawkPriority.CRITICAL),
@@ -99,7 +106,12 @@ def classify_squawk(value: str | None) -> SquawkAlert | None:
     police_start = int("0041", 8)
     police_end = int("0061", 8)
     if police_start <= numeric <= police_end:
-        return SquawkAlert(code, "POLICE AIR SUPPORT", SquawkCategory.POLICE, SquawkPriority.IMPORTANT)
+        return SquawkAlert(
+            code,
+            "POLICE AIR SUPPORT",
+            SquawkCategory.POLICE,
+            SquawkPriority.IMPORTANT,
+        )
 
     return None
 
