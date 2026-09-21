@@ -1,10 +1,11 @@
 from nightazimuth.aircraft_live import SkyAircraft
 from nightazimuth.aircraft_motion import AircraftPositionState
+from nightazimuth.aircraft_squawk import classify_squawk
 from nightazimuth.gui_stage19 import format_aircraft_detail
 
 
-def test_aircraft_detail_exposes_state_age_source_and_aviation_units():
-    aircraft = SkyAircraft(
+def _aircraft(*, squawk: str | None = None) -> SkyAircraft:
+    return SkyAircraft(
         icao24="40621d",
         callsign="BAW123",
         azimuth_deg=231.8,
@@ -14,14 +15,17 @@ def test_aircraft_detail_exposes_state_age_source_and_aviation_units():
         track_deg=326.0,
         ground_speed_mps=230.47,
         vertical_rate_mps=3.2512,
+        squawk=squawk,
+        squawk_alert=classify_squawk(squawk),
         position_state=AircraftPositionState.EXTRAPOLATED,
         position_age_seconds=4.2,
         source_id="adsb-lol",
         source_label="adsb.lol",
     )
 
-    text = format_aircraft_detail(aircraft)
 
+def test_aircraft_detail_exposes_state_age_source_and_aviation_units():
+    text = format_aircraft_detail(_aircraft())
     assert "BAW123" in text
     assert "ICAO: 40621D" in text
     assert "31,000 ft" in text
@@ -30,3 +34,8 @@ def test_aircraft_detail_exposes_state_age_source_and_aviation_units():
     assert "Position: extrapolated" in text
     assert "Position age: 4.2 s" in text
     assert "Source: adsb.lol" in text
+
+
+def test_aircraft_detail_leads_with_special_squawk_alert():
+    text = format_aircraft_detail(_aircraft(squawk="0023"))
+    assert text.startswith("⚠ SEARCH & RESCUE\nSquawk: 0023")
