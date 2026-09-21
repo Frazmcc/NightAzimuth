@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from html.parser import HTMLParser
 from threading import Lock
 from urllib.parse import quote
 
@@ -16,6 +17,7 @@ class SatelliteMetadata:
     object_type: str | None = None
     operational_status: str | None = None
     owner_code: str | None = None
+    owner_name: str | None = None
     launch_date: str | None = None
     launch_site: str | None = None
     decay_date: str | None = None
@@ -43,6 +45,7 @@ class SatelliteMetadataProvider:
     """Fail-soft public metadata enrichment for a selected satellite."""
 
     SATCAT_URL = "https://celestrak.org/satcat/records.php"
+    SATCAT_SOURCES_URL = "https://celestrak.org/satcat/sources.php"
     WIKI_SEARCH_URL = "https://en.wikipedia.org/w/rest.php/v1/search/page"
     WIKI_SUMMARY_URL = "https://en.wikipedia.org/api/rest_v1/page/summary"
 
@@ -57,6 +60,7 @@ class SatelliteMetadataProvider:
         self._timeout_seconds = timeout_seconds
         self._cache_age = timedelta(hours=max(1.0, cache_hours))
         self._cache: dict[str, _CachedMetadata] = {}
+        self._owner_descriptions: dict[str, str] | None = None
         self._lock = Lock()
 
     def lookup(self, norad_id: str, fallback_name: str) -> SatelliteMetadata:
@@ -69,6 +73,8 @@ class SatelliteMetadataProvider:
 
         satcat = self._fetch_satcat(key)
         canonical_name = _text(satcat.get("OBJECT_NAME")) or fallback_name.strip() or f"NORAD {key}"
+        owner_code = _text(satcat.get("OWNER"))
+        owner_name = self._owner_description(owner_code)
         wiki = self._fetch_wikipedia(canonical_name, key)
         metadata = SatelliteMetadata(
             norad_id=key,
@@ -76,7 +82,8 @@ class SatelliteMetadataProvider:
             international_designator=_text(satcat.get("OBJECT_ID")),
             object_type=_text(satcat.get("OBJECT_TYPE")),
             operational_status=_text(satcat.get("OPS_STATUS_CODE")),
-            owner_code=_text(satcat.get("OWNER")),
+            owner_code=owner_code,
+            owner_name=owner_name,
             launch_date=_text(satcat.get("LAUNCH_DATE")),
             launch_site=_text(satcat.get("LAUNCH_SITE")),
             decay_date=_text(satcat.get("DECAY_DATE")),
@@ -139,6 +146,36 @@ class SatelliteMetadataProvider:
                 client.close()
         return {}
 
+    def _owner_description(self, code: str | None) -> str | None:
+        if not code:
+            return None
+        with self._lock:
+            cached = self._owner_descriptions
+        if cached is None:
+            descriptions = self._fetch_owner_descriptions()
+            with self._lock:
+                if self._owner_descriptions is None:
+                    self._owner_descriptions = descriptions
+                cached = self._owner_descriptions
+        return (cached or {}).get(code.upper())
+
+    def _fetch_owner_descriptions(self) -> dict[str, str]:
+        owns_client = self._client is None
+        client = self._client or httpx.Client(
+            timeout=self._timeout_seconds,
+            headers={"User-Agent": "NightAzimuth/1.0 satellite-info"},
+            follow_redirects=True,
+        )
+        try:
+            response = client.get(self.SATCAT_SOURCES_URL)
+            response.raise_for_status()
+            return parse_satcat_sources(response.text)
+        except httpx.HTTPError:
+            return {}
+        finally:
+            if owns_client:
+                client.close()
+
     def _fetch_wikipedia(self, name: str, norad_id: str) -> dict[str, str]:
         owns_client = self._client is None
         client = self._client or httpx.Client(
@@ -195,6 +232,47 @@ class SatelliteMetadataProvider:
         finally:
             if owns_client:
                 client.close()
+
+
+def parse_satcat_sources(html_text: str) -> dict[str, str]:
+    parser = _SourceTableParser()
+    parser.feed(html_text)
+    return {
+        row[0].upper(): row[1]
+        for row in parser.rows
+        if len(row) >= 2 and row[0] and row[1] and row[0].lower() != "source code"
+    }
+
+
+class _SourceTableParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.rows: list[list[str]] = []
+        self._row: list[str] | None = None
+        self._cell_parts: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "tr":
+            self._row = []
+        elif tag.lower() in {"td", "th"} and self._row is not None:
+            self._cell_parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._cell_parts is not None:
+            text = data.strip()
+            if text:
+                self._cell_parts.append(text)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in {"td", "th"} and self._row is not None and self._cell_parts is not None:
+            self._row.append(" ".join(self._cell_parts).strip())
+            self._cell_parts = None
+        elif tag == "tr" and self._row is not None:
+            if self._row:
+                self.rows.append(self._row)
+            self._row = None
+            self._cell_parts = None
 
 
 def _best_wiki_title(pages: list[object], name: str) -> str | None:
