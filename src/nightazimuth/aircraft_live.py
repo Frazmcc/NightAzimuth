@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .aircraft import AircraftObserver, AircraftSnapshot
 from .aircraft_geometry import resolved_aircraft_sky_position
 from .aircraft_motion import AircraftMotionHistory, AircraftPositionState
+
+
+@dataclass(frozen=True, slots=True)
+class AircraftSkyTrackPoint:
+    seconds_from_now: float
+    azimuth_deg: float
+    elevation_deg: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +30,7 @@ class SkyAircraft:
     position_age_seconds: float
     source_id: str
     source_label: str
+    future_track: tuple[AircraftSkyTrackPoint, ...] = ()
 
 
 def build_sky_aircraft(
@@ -34,6 +42,7 @@ def build_sky_aircraft(
     minimum_elevation_deg: float = 0.0,
     include_ground: bool = False,
     include_stale: bool = False,
+    projection_seconds: tuple[float, ...] = (5.0, 10.0, 15.0),
 ) -> list[SkyAircraft]:
     """Convert one authoritative aircraft snapshot into Live-Finder-ready contacts."""
     moment = _utc(at)
@@ -54,6 +63,29 @@ def build_sky_aircraft(
         if sky is None or sky.elevation_deg < minimum_elevation_deg:
             continue
 
+        track_points: list[AircraftSkyTrackPoint] = [
+            AircraftSkyTrackPoint(0.0, sky.azimuth_deg, sky.elevation_deg)
+        ]
+        for seconds in projection_seconds:
+            if seconds <= 0:
+                continue
+            projected = history.resolve(
+                observation.icao24,
+                moment + timedelta(seconds=float(seconds)),
+            )
+            if projected is None or projected.state == AircraftPositionState.STALE:
+                break
+            projected_sky = resolved_aircraft_sky_position(observer, projected)
+            if projected_sky is None:
+                break
+            track_points.append(
+                AircraftSkyTrackPoint(
+                    float(seconds),
+                    projected_sky.azimuth_deg,
+                    projected_sky.elevation_deg,
+                )
+            )
+
         contacts.append(
             SkyAircraft(
                 icao24=observation.icao24,
@@ -72,6 +104,7 @@ def build_sky_aircraft(
                 ),
                 source_id=snapshot.source_id,
                 source_label=snapshot.source_label,
+                future_track=tuple(track_points),
             )
         )
 
