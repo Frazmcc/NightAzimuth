@@ -8,7 +8,7 @@ from tkinter import ttk
 from .aircraft import AircraftSnapshot
 from .aircraft_live import SkyAircraft
 from .aircraft_routes import AircraftRoute
-from .airport_landmarks import relevant_airport_landmarks
+from .airport_landmarks import AirportLandmark, relevant_airport_landmarks
 from .gui_stage19 import aircraft_contact_row, filter_aircraft_contacts
 from .gui_stage20_satellites import Stage20SatelliteNightAzimuthApp, build_local_pass_hud
 from .sky_map import SkySatellite
@@ -30,6 +30,7 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
         self._stage20_clock_job: str | None = None
         self._stage20_clock_timezone = "UTC"
         self._stage20_prank_active = False
+        self._stage20_airport_generation = 0
         _install_perceptual_projection()
         super().__init__()
         self._install_stage20_header_extras()
@@ -154,18 +155,48 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
     def _update_airport_landmarks(self) -> None:
         if not hasattr(self, "live_view") or not isinstance(self.live_view, Stage20AirportLiveSkyView):
             return
+        self._stage20_airport_generation += 1
+        generation = self._stage20_airport_generation
         profile = self._selected_profile()
         if profile is None:
             self.live_view.set_airport_landmarks(())
             return
-        self.live_view.set_airport_landmarks(
-            relevant_airport_landmarks(
-                profile.latitude,
-                profile.longitude,
-                max_distance_km=220.0,
-                limit=4,
-            )
+        profile_key = (profile.name, profile.latitude, profile.longitude)
+        threading.Thread(
+            target=self._load_airport_landmarks,
+            args=(profile_key, generation, profile.latitude, profile.longitude),
+            daemon=True,
+        ).start()
+
+    def _load_airport_landmarks(
+        self,
+        profile_key: tuple[object, ...],
+        generation: int,
+        latitude: float,
+        longitude: float,
+    ) -> None:
+        landmarks = relevant_airport_landmarks(
+            latitude,
+            longitude,
+            max_distance_km=220.0,
+            limit=4,
         )
+        self.after(0, self._apply_airport_landmarks, profile_key, generation, landmarks)
+
+    def _apply_airport_landmarks(
+        self,
+        profile_key: tuple[object, ...],
+        generation: int,
+        landmarks: tuple[AirportLandmark, ...],
+    ) -> None:
+        if generation != self._stage20_airport_generation:
+            return
+        profile = self._selected_profile()
+        current_key = None if profile is None else (profile.name, profile.latitude, profile.longitude)
+        if current_key != profile_key:
+            return
+        if isinstance(self.live_view, Stage20AirportLiveSkyView):
+            self.live_view.set_airport_landmarks(landmarks)
 
     def _remove_aircraft_table_scrollbar(self) -> None:
         panel = getattr(self, "_stage20_aircraft_panel", None)
@@ -322,6 +353,7 @@ class Stage20CleanNightAzimuthApp(Stage20SatelliteNightAzimuthApp):
                 widget.destroy()
 
     def destroy(self) -> None:
+        self._stage20_airport_generation += 1
         if self._stage20_clock_job is not None:
             try:
                 self.after_cancel(self._stage20_clock_job)
