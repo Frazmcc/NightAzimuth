@@ -1,5 +1,4 @@
-# Stage 20 RC launcher: realtime satellites, resilient global airport landmarks,
-# persistent selected-aircraft detail, satellite intelligence and local clock.
+# Stage 20 RC launcher: realtime satellites, resilient airports, local clock, and selected-aircraft intelligence inside Aircraft Contacts.
 from nightazimuth.gui_stage20_rc import main
 
 
