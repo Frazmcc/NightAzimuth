@@ -42,11 +42,9 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
 
     def _build_live_view(self, parent: tk.Misc) -> None:
         super()._build_live_view(parent)
-
         old_view = self.live_view
         master = old_view.master
         old_view.destroy()
-
         self.live_view = AircraftTwilightFinderView(
             master,
             on_select=self._on_live_satellite_selected,
@@ -77,84 +75,40 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
             except tk.TclError:
                 pass
             self._aircraft_refresh_job = None
-
         if self._aircraft_fetch_in_progress:
             self._aircraft_refresh_job = self.after(1_000, self._refresh_aircraft)
             return
-
         profile = self._selected_profile()
         if profile is None:
             if hasattr(self, "live_view") and isinstance(self.live_view, AircraftTwilightFinderView):
                 self.live_view.set_aircraft([])
             self._aircraft_refresh_job = self.after(self.AIRCRAFT_RETRY_MS, self._refresh_aircraft)
             return
-
         self._aircraft_generation += 1
         generation = self._aircraft_generation
         profile_key = (profile.name, profile.latitude, profile.longitude, profile.altitude_m)
-        observer = AircraftObserver(
-            latitude_deg=profile.latitude,
-            longitude_deg=profile.longitude,
-            altitude_m=profile.altitude_m,
-        )
+        observer = AircraftObserver(profile.latitude, profile.longitude, profile.altitude_m)
         self._aircraft_fetch_in_progress = True
-        threading.Thread(
-            target=self._load_aircraft,
-            args=(profile_key, observer, generation),
-            daemon=True,
-        ).start()
+        threading.Thread(target=self._load_aircraft, args=(profile_key, observer, generation), daemon=True).start()
 
-    def _load_aircraft(
-        self,
-        profile_key: tuple[object, ...],
-        observer: AircraftObserver,
-        generation: int,
-    ) -> None:
+    def _load_aircraft(self, profile_key: tuple[object, ...], observer: AircraftObserver, generation: int) -> None:
         try:
-            snapshot = self._aircraft_sources.fetch_snapshot(
-                observer,
-                self.AIRCRAFT_RADIUS_KM,
-            )
-            contacts = build_sky_aircraft(
-                snapshot,
-                observer,
-                self._aircraft_motion,
-                at=datetime.now(timezone.utc),
-            )
-            self.after(
-                0,
-                self._apply_aircraft_snapshot,
-                profile_key,
-                generation,
-                snapshot,
-                contacts,
-            )
+            snapshot = self._aircraft_sources.fetch_snapshot(observer, self.AIRCRAFT_RADIUS_KM)
+            contacts = build_sky_aircraft(snapshot, observer, self._aircraft_motion, at=datetime.now(timezone.utc))
+            self.after(0, self._apply_aircraft_snapshot, profile_key, generation, snapshot, contacts)
         except Exception as exc:  # noqa: BLE001
             self.after(0, self._aircraft_refresh_failed, generation, type(exc).__name__)
 
-    def _apply_aircraft_snapshot(
-        self,
-        profile_key: tuple[object, ...],
-        generation: int,
-        snapshot: AircraftSnapshot,
-        contacts: list[SkyAircraft],
-    ) -> None:
+    def _apply_aircraft_snapshot(self, profile_key: tuple[object, ...], generation: int, snapshot: AircraftSnapshot, contacts: list[SkyAircraft]) -> None:
         self._aircraft_fetch_in_progress = False
         if generation != self._aircraft_generation:
             self._aircraft_refresh_job = self.after(0, self._refresh_aircraft)
             return
-
         profile = self._selected_profile()
-        current_key = None if profile is None else (
-            profile.name,
-            profile.latitude,
-            profile.longitude,
-            profile.altitude_m,
-        )
+        current_key = None if profile is None else (profile.name, profile.latitude, profile.longitude, profile.altitude_m)
         if current_key != profile_key:
             self._aircraft_refresh_job = self.after(0, self._refresh_aircraft)
             return
-
         self._aircraft_snapshot = snapshot
         if hasattr(self, "live_view") and isinstance(self.live_view, AircraftTwilightFinderView):
             self.live_view.set_aircraft(contacts)
@@ -182,34 +136,28 @@ class Stage19NightAzimuthApp(PolishedStage16NightAzimuthApp):
 
 def format_aircraft_detail(aircraft: SkyAircraft) -> str:
     altitude_ft = aircraft.altitude_m / 0.3048
-    speed_knots = None
-    if aircraft.ground_speed_mps is not None:
-        speed_knots = aircraft.ground_speed_mps / 0.514444
-    vertical_fpm = None
-    if aircraft.vertical_rate_mps is not None:
-        vertical_fpm = aircraft.vertical_rate_mps / 0.00508
-
-    lines = [
+    speed_knots = None if aircraft.ground_speed_mps is None else aircraft.ground_speed_mps / 0.514444
+    vertical_fpm = None if aircraft.vertical_rate_mps is None else aircraft.vertical_rate_mps / 0.00508
+    lines: list[str] = []
+    if aircraft.squawk_alert is not None:
+        lines.extend((f"⚠ {aircraft.squawk_alert.label}", f"Squawk: {aircraft.squawk_alert.code}", ""))
+    lines.extend((
         aircraft.callsign or "Aircraft",
         f"ICAO: {aircraft.icao24.upper()}",
         f"Azimuth: {aircraft.azimuth_deg:.1f}°",
         f"Elevation: {aircraft.elevation_deg:.1f}°",
         f"Range: {aircraft.range_km:.1f} km",
         f"Altitude: {altitude_ft:,.0f} ft",
-    ]
+    ))
     if speed_knots is not None:
         lines.append(f"Ground speed: {speed_knots:.0f} kt")
     if aircraft.track_deg is not None:
         lines.append(f"Track: {aircraft.track_deg:.0f}°")
     if vertical_fpm is not None:
         lines.append(f"Vertical rate: {vertical_fpm:+.0f} ft/min")
-    lines.extend(
-        (
-            f"Position: {aircraft.position_state.value}",
-            f"Position age: {aircraft.position_age_seconds:.1f} s",
-            f"Source: {aircraft.source_label}",
-        )
-    )
+    if aircraft.squawk is not None and aircraft.squawk_alert is None:
+        lines.append(f"Squawk: {aircraft.squawk}")
+    lines.extend((f"Position: {aircraft.position_state.value}", f"Position age: {aircraft.position_age_seconds:.1f} s", f"Source: {aircraft.source_label}"))
     return "\n".join(lines)
 
 
