@@ -144,7 +144,8 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
         label_ids.update(
             item.icao24
             for item in contacts
-            if item.squawk_alert is not None and item.squawk_alert.highlighted
+            if item.military
+            or (item.squawk_alert is not None and item.squawk_alert.highlighted)
         )
         if selected is not None:
             label_ids.add(selected)
@@ -170,9 +171,12 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
             self._drawn_aircraft_positions[aircraft.icao24] = (x, y)
 
         special_count = sum(1 for item in contacts if item.squawk_alert is not None)
+        military_count = sum(1 for item in contacts if item.military)
         summary = f"Aircraft in view: {len(contacts)}"
         if special_count:
             summary += f"  •  special: {special_count}"
+        if military_count:
+            summary += f"  •  military: {military_count}"
         self.create_text(
             right - 6,
             top + 28,
@@ -248,7 +252,7 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
             self.create_line(
                 *points,
                 fill=_aircraft_display_colour(aircraft),
-                width=2 if aircraft.squawk_alert is not None else 1,
+                width=2 if aircraft.squawk_alert is not None or aircraft.military else 1,
                 dash=(3, 4),
                 tags=(f"live-aircraft:{aircraft.icao24}", "aircraft-track", "live-aircraft"),
             )
@@ -264,7 +268,9 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
         selected = aircraft.icao24 == self._selected_icao24
         tag = f"live-aircraft:{aircraft.icao24}"
         fill = _aircraft_display_colour(aircraft)
-        highlighted = aircraft.squawk_alert is not None and aircraft.squawk_alert.highlighted
+        highlighted = aircraft.military or (
+            aircraft.squawk_alert is not None and aircraft.squawk_alert.highlighted
+        )
         radius = 8.0 if highlighted else (7.0 if selected else 5.0)
         direction = self._aircraft_screen_direction(aircraft, x, y)
         polygon = _triangle_points(x, y, radius, direction)
@@ -284,9 +290,19 @@ class AircraftTwilightFinderView(TwilightSmoothHudFinderView):
             elif aircraft.position_state == AircraftPositionState.INTERPOLATED:
                 state_suffix = "  interp"
 
-            prefix = ""
+            prefixes: list[str] = []
             if aircraft.squawk_alert is not None:
-                prefix = f"{aircraft.squawk_alert.label} [{aircraft.squawk_alert.code}]  •  "
+                prefixes.append(f"{aircraft.squawk_alert.label} [{aircraft.squawk_alert.code}]")
+            if aircraft.military:
+                military_text = "MILITARY"
+                if aircraft.type_description:
+                    military_text += f" — {aircraft.type_description}"
+                elif aircraft.type_code:
+                    military_text += f" — {aircraft.type_code}"
+                prefixes.append(military_text)
+            prefix = "  •  ".join(prefixes)
+            if prefix:
+                prefix += "  •  "
 
             label = (
                 f"{prefix}{identity}{state_suffix}  "
@@ -374,21 +390,25 @@ def _aircraft_colour(state: AircraftPositionState) -> str:
 
 def _aircraft_display_colour(aircraft: SkyAircraft) -> str:
     alert = aircraft.squawk_alert
-    if alert is None:
-        return _aircraft_colour(aircraft.position_state)
-    if alert.priority >= SquawkPriority.CRITICAL:
-        return "#ef4444"
-    if alert.priority >= SquawkPriority.IMPORTANT:
-        return "#f97316"
-    return "#a855f7"
+    if alert is not None:
+        if alert.priority >= SquawkPriority.CRITICAL:
+            return "#ef4444"
+        if alert.priority >= SquawkPriority.IMPORTANT:
+            return "#f97316"
+        return "#a855f7"
+    if aircraft.military:
+        return "#3b82f6"
+    return _aircraft_colour(aircraft.position_state)
 
 
 def _aircraft_label_colour(aircraft: SkyAircraft) -> str:
     alert = aircraft.squawk_alert
-    if alert is None:
-        return "#a5f3fc"
-    if alert.priority >= SquawkPriority.CRITICAL:
-        return "#fecaca"
-    if alert.priority >= SquawkPriority.IMPORTANT:
-        return "#fed7aa"
-    return "#e9d5ff"
+    if alert is not None:
+        if alert.priority >= SquawkPriority.CRITICAL:
+            return "#fecaca"
+        if alert.priority >= SquawkPriority.IMPORTANT:
+            return "#fed7aa"
+        return "#e9d5ff"
+    if aircraft.military:
+        return "#bfdbfe"
+    return "#a5f3fc"
