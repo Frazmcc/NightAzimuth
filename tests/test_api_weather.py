@@ -121,4 +121,4 @@ def test_weather_filesystem_failure_returns_503(monkeypatch) -> None:
     )
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "cache unavailable"
+    assert response.json()["detail"] == "Weather data is temporarily unavailable"
