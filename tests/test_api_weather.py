@@ -104,3 +104,21 @@ def test_weather_malformed_cache_returns_503(monkeypatch) -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Invalid weather cache"
+
+
+def test_weather_filesystem_failure_returns_503(monkeypatch) -> None:
+    class FakeProvider:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def load(self, observer):
+            raise OSError("cache unavailable")
+
+    monkeypatch.setattr("nightazimuth.api_weather.MetNorwayWeatherProvider", FakeProvider)
+
+    response = TestClient(app).get(
+        "/api/v1/weather?latitude=55.86&longitude=-4.25"
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "cache unavailable"
