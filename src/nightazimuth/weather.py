@@ -177,21 +177,23 @@ class MetNorwayWeatherProvider:
     @staticmethod
     def _write_cache(path: Path, payload: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=f"{path.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            json.dump(payload, handle)
-            temp_path = Path(handle.name)
+        temp_path: Path | None = None
         try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=f"{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temp_path = Path(handle.name)
+                json.dump(payload, handle)
             temp_path.replace(path)
-        except Exception:
-            temp_path.unlink(missing_ok=True)
-            raise
+            temp_path = None
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
 
 
 def parse_met_no_locationforecast(
