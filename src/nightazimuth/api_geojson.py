@@ -14,7 +14,11 @@ from .aircraft_motion import AircraftMotionHistory
 router = APIRouter(prefix="/api/v1/geojson", tags=["geojson"])
 
 
-@router.get(\n    "/aircraft",\n    response_class=JSONResponse,\n    responses={200: {"content": {"application/geo+json": {}}}},\n)
+@router.get(
+    "/aircraft",
+    response_class=JSONResponse,
+    responses={200: {"content": {"application/geo+json": {}}}},
+)
 def aircraft_geojson(
     latitude: float = Query(ge=-90.0, le=90.0),
     longitude: float = Query(ge=-180.0, le=180.0),
@@ -30,7 +34,7 @@ def aircraft_geojson(
     observer = AircraftObserver(latitude, longitude, altitude_m)
     try:
         snapshot = AdsbLolProvider().fetch_snapshot(observer, radius_km)
-    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+    except (AttributeError, KeyError, OverflowError, TypeError, ValueError) as exc:
         raise HTTPException(
             status_code=503,
             detail="Aircraft overlay is temporarily unavailable",
