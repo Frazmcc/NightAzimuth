@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 
 from nightazimuth.aircraft import (
@@ -62,6 +63,7 @@ def test_aircraft_geojson_contract(monkeypatch) -> None:
         "/api/v1/geojson/aircraft?latitude=55.86&longitude=-4.25"
     )
     assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/geo+json")
     payload = response.json()
     assert payload["type"] == "FeatureCollection"
     assert payload["metadata"]["count"] == 1
@@ -71,10 +73,10 @@ def test_aircraft_geojson_contract(monkeypatch) -> None:
     feature = payload["features"][0]
     assert feature["type"] == "Feature"
     assert feature["id"] == "abc123"
-    assert feature["geometry"] == {
-        "type": "Point",
-        "coordinates": [-4.20, 55.90],
-    }
+    assert feature["geometry"]["type"] == "Point"
+    longitude, latitude = feature["geometry"]["coordinates"]
+    assert longitude == pytest.approx(-4.20, abs=1e-6)
+    assert latitude == pytest.approx(55.90, abs=1e-5)
     assert feature["properties"]["callsign"] == "TEST1"
 
 
@@ -106,3 +108,17 @@ def test_aircraft_geojson_malformed_provider_payload_is_generic_503(monkeypatch)
     )
     assert response.status_code == 503
     assert response.json()["detail"] == "Aircraft overlay is temporarily unavailable"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "latitude=nan&longitude=-4.25",
+        "latitude=55.86&longitude=nan",
+        "latitude=55.86&longitude=-4.25&altitude_m=nan",
+        "latitude=55.86&longitude=-4.25&radius_km=nan",
+    ],
+)
+def test_aircraft_geojson_rejects_non_finite_query_values(query: str) -> None:
+    response = TestClient(app).get(f"/api/v1/geojson/aircraft?{query}")
+    assert response.status_code == 422
