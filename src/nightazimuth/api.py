@@ -15,7 +15,7 @@ app = FastAPI(
 )
 
 
-@app.get("/api/v1/health", tags=["system"])
+@app.get(f"/api/{API_VERSION}/health", tags=["system"])
 def health() -> dict[str, str]:
     """Return process health without contacting any upstream provider."""
 
