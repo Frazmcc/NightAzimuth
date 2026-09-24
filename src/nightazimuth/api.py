@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from fastapi import FastAPI
 
 from . import __version__
+from .api_satellites import router as satellites_router
 
 API_VERSION = "v1"
 
@@ -13,6 +14,7 @@ app = FastAPI(
     version=__version__,
     description="Versioned HTTP interface for NightAzimuth.",
 )
+app.include_router(satellites_router)
 
 
 @app.get(f"/api/{API_VERSION}/health", tags=["system"])
