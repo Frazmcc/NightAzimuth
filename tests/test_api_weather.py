@@ -42,7 +42,9 @@ def test_weather_response_contract(monkeypatch) -> None:
         fetched_at_utc=point.time_utc,
         source_updated_at_utc=point.time_utc,
         points=(point,),
-        from_cache=True,\n        fallback_used=False,\n    )
+        from_cache=True,
+        fallback_used=False,
+    )
 
     class FakeProvider:
         def __init__(self, **_kwargs) -> None:
@@ -62,7 +64,9 @@ def test_weather_response_contract(monkeypatch) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["source"] == "MET Norway Locationforecast 2.0"
-    assert payload["from_cache"] is True\n    assert payload["fallback_used"] is False\n    assert payload["current"]["air_temperature_c"] == 12.5
+    assert payload["from_cache"] is True
+    assert payload["fallback_used"] is False
+    assert payload["current"]["air_temperature_c"] == 12.5
     assert len(payload["forecast"]) == 1
 
 
