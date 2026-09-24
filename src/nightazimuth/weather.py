@@ -42,6 +42,7 @@ class WeatherSnapshot:
     source_updated_at_utc: datetime | None
     points: tuple[WeatherPoint, ...]
     from_cache: bool = False
+    fallback_used: bool = False
 
     def current_or_next(self, at: datetime | None = None) -> WeatherPoint | None:
         if not self.points:
@@ -85,7 +86,7 @@ class MetNorwayWeatherProvider:
     def load(self, observer: ObserverConfig) -> WeatherSnapshot:
         cache_path = self._cache_path(observer)
         if self._cache_is_fresh(cache_path):
-            return self._read_cache(cache_path, from_cache=True)
+            return self._read_cache(cache_path, from_cache=True, fallback_used=False)
         try:
             payload = self._download(observer)
             snapshot = parse_met_no_locationforecast(payload, fetched_at_utc=datetime.now(timezone.utc))
@@ -93,7 +94,7 @@ class MetNorwayWeatherProvider:
             return snapshot
         except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
             if cache_path.exists():
-                return self._read_cache(cache_path, from_cache=True)
+                return self._read_cache(cache_path, from_cache=True, fallback_used=True)
             raise WeatherProviderError(f"Unable to load MET Norway weather data: {exc}") from exc
 
     def _download(self, observer: ObserverConfig) -> dict[str, Any]:
@@ -126,7 +127,7 @@ class MetNorwayWeatherProvider:
         age = datetime.now(timezone.utc) - modified
         return age.total_seconds() <= self.cache_max_age_minutes * 60
 
-    def _read_cache(self, path: Path, *, from_cache: bool) -> WeatherSnapshot:
+    def _read_cache(\n        self, path: Path, *, from_cache: bool, fallback_used: bool = False\n    ) -> WeatherSnapshot:
         with path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
         if not isinstance(payload, dict):
@@ -138,8 +139,7 @@ class MetNorwayWeatherProvider:
             fetched_at_utc=snapshot.fetched_at_utc,
             source_updated_at_utc=snapshot.source_updated_at_utc,
             points=snapshot.points,
-            from_cache=from_cache,
-        )
+            from_cache=from_cache,\n            fallback_used=fallback_used,\n        )
 
     @staticmethod
     def _write_cache(path: Path, payload: dict[str, Any]) -> None:
