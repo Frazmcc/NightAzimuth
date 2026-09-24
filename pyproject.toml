@@ -18,7 +18,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pyinstaller>=6,<7", "pytest", "ruff"]
+api = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+dev = ["pyinstaller>=6,<7", "pytest", "ruff", "fastapi>=0.115,<1"]
 
 [project.scripts]
 nightazimuth = "nightazimuth.cli:main"
