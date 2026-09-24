@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
@@ -10,7 +10,7 @@ from nightazimuth.weather import WeatherPoint, WeatherProviderError, WeatherSnap
 
 def _point() -> WeatherPoint:
     return WeatherPoint(
-        time_utc=datetime.now(UTC) + timedelta(hours=1),
+        time_utc=datetime(2099, 1, 1, tzinfo=UTC),
         air_temperature_c=12.5,
         relative_humidity_percent=80.0,
         cloud_total_percent=40.0,
@@ -84,3 +84,21 @@ def test_weather_unavailable_returns_503(monkeypatch) -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"] == "weather unavailable"
+
+
+def test_weather_malformed_cache_returns_503(monkeypatch) -> None:
+    class FakeProvider:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def load(self, observer):
+            raise ValueError("Invalid weather cache")
+
+    monkeypatch.setattr("nightazimuth.api_weather.MetNorwayWeatherProvider", FakeProvider)
+
+    response = TestClient(app).get(
+        "/api/v1/weather?latitude=55.86&longitude=-4.25"
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Invalid weather cache"
