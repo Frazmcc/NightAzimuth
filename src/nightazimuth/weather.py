@@ -127,7 +127,9 @@ class MetNorwayWeatherProvider:
         age = datetime.now(timezone.utc) - modified
         return age.total_seconds() <= self.cache_max_age_minutes * 60
 
-    def _read_cache(\n        self, path: Path, *, from_cache: bool, fallback_used: bool = False\n    ) -> WeatherSnapshot:
+    def _read_cache(
+        self, path: Path, *, from_cache: bool, fallback_used: bool = False
+    ) -> WeatherSnapshot:
         with path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
         if not isinstance(payload, dict):
@@ -139,7 +141,9 @@ class MetNorwayWeatherProvider:
             fetched_at_utc=snapshot.fetched_at_utc,
             source_updated_at_utc=snapshot.source_updated_at_utc,
             points=snapshot.points,
-            from_cache=from_cache,\n            fallback_used=fallback_used,\n        )
+            from_cache=from_cache,
+            fallback_used=fallback_used,
+        )
 
     @staticmethod
     def _write_cache(path: Path, payload: dict[str, Any]) -> None:
