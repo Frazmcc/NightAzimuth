@@ -25,6 +25,7 @@ def weather(
     observer = ObserverConfig(latitude, longitude, altitude_m)
     provider = MetNorwayWeatherProvider(cache_directory=_API_CACHE)
     try:
+        snapshot = provider.load(observer)
     except (WeatherProviderError, ValueError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
