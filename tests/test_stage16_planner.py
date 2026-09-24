@@ -62,3 +62,34 @@ def test_confidence_reduces_with_forecast_horizon() -> None:
     guidance = planner._guidance_for_point(point, now)
 
     assert guidance.confidence == "Lower"
+
+
+def test_astronomy_resources_are_reused_for_same_cache_directory(tmp_path, monkeypatch) -> None:
+    import nightazimuth.observing_planner as module
+
+    module._SHARED_RESOURCES.clear()
+    calls = []
+
+    class FakeEphemeris(dict):
+        pass
+
+    class FakeLoader:
+        def __init__(self, path, verbose=False):
+            calls.append(("init", path))
+
+        def timescale(self):
+            calls.append(("timescale",))
+            return object()
+
+        def __call__(self, name):
+            calls.append(("ephemeris", name))
+            return FakeEphemeris(earth=object(), sun=object())
+
+    monkeypatch.setattr(module, "Loader", FakeLoader)
+
+    first = module._astronomy_resources(tmp_path)
+    second = module._astronomy_resources(tmp_path)
+
+    assert first is second
+    assert sum(call[0] == "init" for call in calls) == 1
+    assert sum(call[0] == "ephemeris" for call in calls) == 1
