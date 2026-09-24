@@ -92,11 +92,11 @@ class MetNorwayWeatherProvider:
         try:
             payload = self._download(observer)
             snapshot = parse_met_no_locationforecast(payload, fetched_at_utc=datetime.now(timezone.utc))
-            self._write_cache(cache_path, payload)
             try:
+                self._write_cache(cache_path, payload)
                 self._prune_cache(keep=cache_path)
             except OSError:
-                # Cache maintenance must not discard an otherwise valid provider response.
+                # Cache persistence/maintenance must not discard valid provider data.
                 pass
             return snapshot
         except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
