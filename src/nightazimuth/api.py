@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from . import __version__
 from .api_aircraft import router as aircraft_router
+from .api_weather import router as weather_router
 from .api_satellites import router as satellites_router
 
 API_VERSION = "v1"
@@ -17,6 +18,7 @@ app = FastAPI(
 )
 app.include_router(satellites_router)
 app.include_router(aircraft_router)
+app.include_router(weather_router)
 
 
 @app.get(f"/api/{API_VERSION}/health", tags=["system"])

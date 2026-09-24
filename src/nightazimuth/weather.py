@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+import tempfile
+import threading
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -13,6 +15,14 @@ from .config import ObserverConfig
 
 MET_NO_LOCATIONFORECAST_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
 MET_NO_USER_AGENT = "NightAzimuth/1.0 (+https://github.com/Frazmcc/NightAzimuth)"
+_CACHE_LOCKS_GUARD = threading.Lock()
+_CACHE_LOCKS: dict[str, threading.RLock] = {}
+
+
+def _shared_cache_lock(cache_directory: Path) -> threading.RLock:
+    key = str(cache_directory.resolve())
+    with _CACHE_LOCKS_GUARD:
+        return _CACHE_LOCKS.setdefault(key, threading.RLock())
 
 
 class WeatherProviderError(RuntimeError):
@@ -41,6 +51,7 @@ class WeatherSnapshot:
     source_updated_at_utc: datetime | None
     points: tuple[WeatherPoint, ...]
     from_cache: bool = False
+    fallback_used: bool = False
 
     def current_or_next(self, at: datetime | None = None) -> WeatherPoint | None:
         if not self.points:
@@ -76,23 +87,38 @@ class MetNorwayWeatherProvider:
         cache_directory: Path,
         cache_max_age_minutes: int = 30,
         timeout_seconds: float = 30.0,
+        cache_max_files: int = 256,
     ) -> None:
         self.cache_directory = Path(cache_directory) / "weather"
         self.cache_max_age_minutes = cache_max_age_minutes
         self.timeout_seconds = timeout_seconds
+        self.cache_max_files = max(1, cache_max_files)
+        self._cache_lock = _shared_cache_lock(self.cache_directory)
 
     def load(self, observer: ObserverConfig) -> WeatherSnapshot:
         cache_path = self._cache_path(observer)
-        if self._cache_is_fresh(cache_path):
-            return self._read_cache(cache_path, from_cache=True)
+        with self._cache_lock:
+            if self._cache_is_fresh(cache_path):
+                try:
+                    return self._read_cache(cache_path, from_cache=True, fallback_used=False)
+                except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, WeatherProviderError):
+                    # Treat an unreadable/corrupt fresh cache as a miss and try the live provider.
+                    pass
         try:
             payload = self._download(observer)
             snapshot = parse_met_no_locationforecast(payload, fetched_at_utc=datetime.now(timezone.utc))
-            self._write_cache(cache_path, payload)
+            try:
+                with self._cache_lock:
+                    self._write_cache(cache_path, payload)
+                    self._prune_cache(keep=cache_path)
+            except OSError:
+                # Cache persistence/maintenance must not discard valid provider data.
+                pass
             return snapshot
         except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
-            if cache_path.exists():
-                return self._read_cache(cache_path, from_cache=True)
+            with self._cache_lock:
+                if cache_path.exists():
+                    return self._read_cache(cache_path, from_cache=True, fallback_used=True)
             raise WeatherProviderError(f"Unable to load MET Norway weather data: {exc}") from exc
 
     def _download(self, observer: ObserverConfig) -> dict[str, Any]:
@@ -125,7 +151,9 @@ class MetNorwayWeatherProvider:
         age = datetime.now(timezone.utc) - modified
         return age.total_seconds() <= self.cache_max_age_minutes * 60
 
-    def _read_cache(self, path: Path, *, from_cache: bool) -> WeatherSnapshot:
+    def _read_cache(
+        self, path: Path, *, from_cache: bool, fallback_used: bool = False
+    ) -> WeatherSnapshot:
         with path.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
         if not isinstance(payload, dict):
@@ -138,15 +166,38 @@ class MetNorwayWeatherProvider:
             source_updated_at_utc=snapshot.source_updated_at_utc,
             points=snapshot.points,
             from_cache=from_cache,
+            fallback_used=fallback_used,
         )
+
+    def _prune_cache(self, *, keep: Path) -> None:
+        files = [path for path in self.cache_directory.glob("met_no_*.json") if path != keep]
+        excess = len(files) + 1 - self.cache_max_files
+        if excess <= 0:
+            return
+        files.sort(key=lambda path: path.stat().st_mtime)
+        for path in files[:excess]:
+            path.unlink(missing_ok=True)
 
     @staticmethod
     def _write_cache(path: Path, payload: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = path.with_suffix(path.suffix + ".tmp")
-        with temp_path.open("w", encoding="utf-8") as handle:
-            json.dump(payload, handle)
-        temp_path.replace(path)
+        temp_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=path.parent,
+                prefix=f"{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temp_path = Path(handle.name)
+                json.dump(payload, handle)
+            temp_path.replace(path)
+            temp_path = None
+        finally:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
 
 
 def parse_met_no_locationforecast(
