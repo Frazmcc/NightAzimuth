@@ -15,6 +15,14 @@ from .config import ObserverConfig
 
 MET_NO_LOCATIONFORECAST_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
 MET_NO_USER_AGENT = "NightAzimuth/1.0 (+https://github.com/Frazmcc/NightAzimuth)"
+_CACHE_LOCKS_GUARD = threading.Lock()
+_CACHE_LOCKS: dict[str, threading.RLock] = {}
+
+
+def _shared_cache_lock(cache_directory: Path) -> threading.RLock:
+    key = str(cache_directory.resolve())
+    with _CACHE_LOCKS_GUARD:
+        return _CACHE_LOCKS.setdefault(key, threading.RLock())
 
 
 class WeatherProviderError(RuntimeError):
@@ -85,7 +93,7 @@ class MetNorwayWeatherProvider:
         self.cache_max_age_minutes = cache_max_age_minutes
         self.timeout_seconds = timeout_seconds
         self.cache_max_files = max(1, cache_max_files)
-        self._cache_lock = threading.RLock()
+        self._cache_lock = _shared_cache_lock(self.cache_directory)
 
     def load(self, observer: ObserverConfig) -> WeatherSnapshot:
         cache_path = self._cache_path(observer)
