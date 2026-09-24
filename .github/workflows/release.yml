@@ -81,9 +81,21 @@ jobs:
           if (-not (Test-Path $notes)) {
             throw "Release notes were not found at $notes"
           }
-          gh release create $tag `
-            --title "NightAzimuth $tag" `
-            --notes-file $notes `
-            .\release\NightAzimuth-$tag-Windows-x64.exe `
-            .\release\NightAzimuth-$tag-User-Guide.md `
-            .\release\NightAzimuth-$tag-SHA256.txt
+
+          $releaseArgs = @(
+            "release", "create", $tag,
+            "--title", "NightAzimuth $tag",
+            "--notes-file", $notes
+          )
+          if ($tag -match '-(alpha|beta|rc)[0-9.]*$') {
+            $releaseArgs += "--prerelease"
+          }
+          $releaseArgs += @(
+            ".\release\NightAzimuth-$tag-Windows-x64.exe",
+            ".\release\NightAzimuth-$tag-User-Guide.md",
+            ".\release\NightAzimuth-$tag-SHA256.txt"
+          )
+          & gh @releaseArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub release publishing failed with exit code $LASTEXITCODE"
+          }

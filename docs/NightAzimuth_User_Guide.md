@@ -1,338 +1,289 @@
 # NightAzimuth User Guide
 
-**Version 1.0.0 — Installation, Configuration and Use**  
+**Version 1.1.0-rc1 — Release Candidate**  
 **Created by Logic Lurker © 2026**
 
-This guide explains what a normal Windows user needs to configure and how to use NightAzimuth.
+NightAzimuth is a local Windows application for viewing the real sky from a user-selected observing location, tracking satellites and aircraft, and planning observing conditions.
 
-> **Privacy:** A fresh NightAzimuth installation contains no saved user location. A location is stored only after the user enters and saves it. Saved location profiles remain on the local PC.
+> **Release candidate:** `v1.1.0-rc1` is intended for real-world testing before the final `v1.1.0` release. Report unexpected behaviour before treating it as the final stable build.
 
-> **Cost:** NightAzimuth is designed to remain free to use. Current weather, map and radar integrations do not require a paid API key or billing account for the intended use.
+> **Privacy:** NightAzimuth contains no hard-coded user location. Saved observing locations remain on the local PC. Location-dependent calculations use only the location selected by the user.
 
-## 1. What NightAzimuth does
+> **Cost:** The application is designed around free/no-key data sources where practical and does not require a paid API subscription for normal use.
 
-NightAzimuth is a Windows desktop application that uses an observer location and the current time to show satellites that are above the horizon, where they are in the sky, and whether conditions are astronomically suitable for seeing them.
+## 1. Installation
 
-Current features include:
+The release contains:
 
-- all-sky radar-style Sky map
-- forward-looking Live finder with facing direction, field-of-view, mouse panning and zoom controls
-- full 0–90° elevation coverage, including directly overhead
-- broad live satellite coverage using CelesTrak VISUAL + ACTIVE catalogues
-- current satellite azimuth, elevation and range
-- fast-mover ranking to highlight satellites moving most quickly across the current view
-- sunlit twilight satellite candidates after sunset before the stricter dark-sky threshold is reached
-- three-minute projected satellite tracks sampled every second
-- smooth satellite marker movement interpolated at approximately 20 frames per second
-- location-aware sunset, civil-twilight, nautical-twilight and complete-darkness countdowns
-- current Sun altitude and sky-state display
-- Live-view background colour that reflects daylight, twilight or darkness
-- offline time-zone lookup for the active observing location
-- real Hipparcos star field, named bright stars, constellation guides, major planets and selected named galaxies
-- Vega emphasised as a visual reference
-- upcoming VISUAL-group passes for the next 24 hours
-- automatic terrain-horizon generation for the selected observing location
-- current point weather including cloud layers, fog, wind and precipitation
-- responsive 2D Weather map with observed cloud/rain-radar history that automatically loops over the previous 24 hours
-- local caching of downloaded orbital, astronomical, weather, map, radar and terrain data
+- `NightAzimuth-v1.1.0-rc1-Windows-x64.exe`
+- `NightAzimuth-v1.1.0-rc1-User-Guide.md`
+- `NightAzimuth-v1.1.0-rc1-SHA256.txt`
 
-## 2. Installation and first launch
+Run the Windows executable directly. Windows may display a reputation warning because the executable is not code-signed.
 
-For a normal Windows release:
+Existing settings, saved locations and caches under `%APPDATA%\NightAzimuth` are retained when upgrading.
 
-1. Copy the NightAzimuth Windows executable and accompanying user guide to a folder you can access.
-2. Run `NightAzimuth.exe`.
-3. On first launch, no observing location is preconfigured.
-4. Open **Settings** and add your observing location before using satellite, terrain, weather or map calculations.
+## 2. Configure a location
 
-A fresh copy of NightAzimuth should not contain a user's latitude, longitude, altitude, saved profile name, weather cache, map cache or terrain cache. Those are created only after the user supplies location information.
+Open **Settings**, create or edit an observing profile, and enter:
 
-### Internet access
+- location name
+- latitude in decimal degrees
+- longitude in decimal degrees
+- altitude in metres
 
-NightAzimuth uses internet data sources for current orbital data, point weather, map tiles, recent rain-radar tiles and, when required, missing terrain tiles. The star/planet layer can also populate local astronomical catalogue and ephemeris caches on first use. Downloaded data is cached locally so it does not need to be fetched again every time.
+Select **Use this location** to make it active.
 
-## 3. Configure your observing location
+NightAzimuth never ships with a fixed local airport list, local coordinates or a preset user location. Terrain, airports, timezone, weather and sky calculations are derived from the active location at runtime.
 
-For normal use, configure NightAzimuth through the **Settings** window. You do not need to manually edit a configuration file to add a location.
+## 3. Main application layout
 
-### Appearance
+The application starts maximised and adapts its layout to the effective Windows/Tk display size and DPI scaling.
 
-Use the **Appearance** selector in Settings:
+The **Live Sky** is the main surface. Supporting information is placed in collapsible drawers below it rather than permanently reducing sky space.
 
-- **System** follows the current Windows application theme whenever NightAzimuth starts.
-- **Light** always uses the normal light interface.
-- **Dark** uses a dark interface across the main window, Settings, tabs, controls, tables and scrolling panels.
+Available drawers include:
 
-The change is applied immediately and remembered for the next launch. It does not alter the astronomical daylight/twilight background inside the Live finder.
+- **LIVE FINDER**
+- **AIRCRAFT CONTACTS**
+- **ISS / PASSES**
+- **SATELLITE INFO**
 
-### Add a location
+Press **F11** for fullscreen and **Escape** to leave fullscreen.
 
-1. Select **Settings** in the top-right of the main window.
-2. Select **New**.
-3. Enter a **Location name**. This is only the local label shown inside NightAzimuth.
-4. Enter **Latitude** in decimal degrees.
-5. Enter **Longitude** in decimal degrees.
-6. Enter **Altitude (m)** in metres above sea level.
-7. Select **Save location**.
-8. Select **Use this location** to make it the active observer position.
+A large green digital clock in the header shows the local time for the selected observing location together with its UTC offset.
 
-| Field | What to enter | Format |
-|---|---|---|
-| Location name | Any local label you recognise | Text |
-| Latitude | Decimal degrees; north positive, south negative | `<decimal latitude>` |
-| Longitude | Decimal degrees; east positive, west negative | `<decimal longitude>` |
-| Altitude | Metres above sea level | `<metres>` |
+## 4. Live Sky
 
-Enter the coordinates for the observing position you actually want NightAzimuth to use. The release itself does not provide a preset real-world observer location.
+The Live Sky is designed to resemble the geometry and visual priorities of a person looking at the real sky rather than a flat plotting chart.
 
-### Edit or switch locations
+It uses an observer-centred spherical/stereographic projection with:
 
-- To edit a saved location, select it in Settings, change the values and save it.
-- To switch locations quickly, use the **Location** drop-down in the main window.
-- Changing the active location refreshes satellite, star, planet, galaxy, terrain, twilight, weather and map calculations for the new observer position.
-- Old celestial and terrain overlays are cleared while the replacement view is calculated.
+- curved wide-field geometry
+- a projected local terrain skyline
+- horizon airlight/haze cues
+- reduced peripheral emphasis for non-selected objects
+- daylight/twilight/night-dependent star visibility
+- atmospheric extinction toward the horizon
+- subtle stellar scintillation
+- dark-adapted celestial colour reduction
+- real Moon position from the Skyfield ephemeris
 
-## 4. Terrain horizon
+The terrain horizon is a calculated elevation skyline, not a photograph. It does not include buildings, trees, fences or temporary obstructions.
 
-After a user enters a location, NightAzimuth automatically builds a 360° terrain skyline for that observer position. The skyline is used in Live view so hills and raised terrain can mask objects that are geometrically behind them.
+### Moving the view
 
-### What happens automatically
+Use the facing/FOV controls, mouse drag and mouse wheel to move around the sky. Reset View returns to the configured viewing direction and normal zoom.
 
-1. NightAzimuth checks the local terrain cache first.
-2. If a required terrain tile is already cached, it is reused.
-3. If a required tile is missing, NightAzimuth downloads the Terrarium elevation tile needed for that area.
-4. Downloaded tiles are saved locally under the NightAzimuth application-data folder.
-5. The terrain horizon is calculated in the background.
-6. Live view shows `Terrain: generated` when the calculation completes.
+## 5. Satellites
 
-### Terrain privacy
+NightAzimuth uses CelesTrak orbital data and displays real tracked satellites in the current field of view during both day and night.
 
-The saved `locations.json` file and the local profile name are not uploaded. Terrain requests use standard map-tile identifiers derived from the user-entered location. A terrain service can therefore infer the geographic area of the requested tiles.
+Visibility estimates affect prominence, not whether an otherwise valid tracked object exists on the display.
 
-### Optional offline terrain pack
+Satellite markers use a contrasting colour family so they can be distinguished quickly from aircraft and natural celestial objects.
 
-Settings also provides **Import offline terrain pack...** for users who already have a compatible Terrarium tile folder. Imported tiles are copied into NightAzimuth's local terrain directory and can be reused by the automatic terrain calculation.
+### Realtime satellite motion
 
-### Terrain limitations
+Stage 20 uses a rolling short-horizon orbital prediction model:
 
-The calculated skyline models terrain elevation, not a photograph. It does not include houses, trees, hedges, fences or temporary obstructions. Small nearby features below the terrain model's resolution may not be represented.
+- orbital positions are sampled every second
+- marker position is interpolated at approximately 20 frames per second
+- future tracks are rebased repeatedly from the interpolated current position
+- selected satellites and the ISS are prioritised for prediction
+- many in-view satellites can receive prediction data while only a limited number of tracks are drawn automatically to avoid clutter
 
-Current Terrarium/Web Mercator handling is intended for locations roughly between 85° south and 85° north.
+The result is smooth local motion without depending on network refresh frequency for every frame.
 
-## 5. Using the main views
+### Selecting and deselecting
 
-### Sky map
+Click a satellite once to select it.
 
-The **Sky map** is an all-sky radar-style view. The outer edge represents the horizon and the centre represents the zenith. Click a satellite marker to see its current details.
+Selection:
 
-### Live finder
+- highlights the satellite
+- prioritises its realtime track
+- opens **SATELLITE INFO**
 
-The **Live** view is the main observing screen. It is designed to behave more like a sky finder than a static chart.
+Click the **same satellite again** to deselect it. This removes the selected-object priority, closes/clears the Satellite Info state and restores normal automatic priorities without changing display controls the user deliberately selected.
 
-- **Facing:** enter a bearing from 0–359° or use `N`, `NE`, `E`, `SE`, `S`, `SW`, `W` or `NW`.
-- **Field of view:** choose 30°, 45°, 60°, 90°, 120° or 180°.
-- **Move the view:** hold the left mouse button on empty sky and drag horizontally or vertically.
-- **Elevation:** the finder can move from the horizon at 0° all the way to the zenith at 90°.
-- **Zoom:** use the mouse wheel or + / − buttons.
-- **Reset view:** returns to the configured facing direction and the normal full 0–90° elevation range.
-- **Stars:** toggles the star layer.
-- **Constellations:** toggles constellation guide lines.
-- **Constellation contrast:** `Auto` adapts line colour and thickness to darkness, twilight, daylight and the cloud overlay. Use `Subtle` for a quieter reference layer or `Strong` when you need maximum visibility.
-- **All tracked:** exposes the broader potentially-visible satellite set for identification. Leave this off for the cleanest observing view.
-- **Cloud overlay:** projects the selected spatial cloud frame into the Live view as an indicative directional layer. When it is enabled, `Auto` raises constellation contrast so the guide lines remain readable.
+Clicking another satellite switches selection directly to the new object.
 
-### What is shown in Live view
+## 6. Satellite Info
 
-- **Vega** is shown as a blue-white reference with current azimuth and elevation.
-- Major planets are shown in yellow with name, azimuth and elevation.
-- Bright named stars are labelled automatically; more names appear when the field of view is narrower.
-- Fainter unnamed stars remain visually subdued so they do not overwhelm satellite tracking.
-- Named galaxy references are shown for M31, M33, M81, M82, M51, M101 and M104 when they are above the horizon and inside the current view.
-- Satellite markers are deliberately small.
-- Normal mode shows up to six potentially-visible or twilight satellite candidates in the current field of view, ranked to favour faster apparent movement.
-- Satellite labels include the object name and estimated angular speed when track data is available.
-- Thin projected paths show the next three minutes of movement.
-- Satellite orbital positions are sampled every second and the on-screen marker is smoothly interpolated between those points.
-- The terrain silhouette represents the calculated local skyline for the selected location.
+The **SATELLITE INFO** drawer loads verified information in the background for the selected object.
 
-### Sunset and darkness
+Where available it can show:
 
-The Live view shows the current Sun altitude and local-time countdowns for sunset, end of civil twilight, end of nautical twilight and complete astronomical darkness. These values recalculate for the active saved location.
+- satellite name
+- NORAD catalogue ID
+- COSPAR / international designator
+- owner/country/source description
+- object type and operational status
+- launch date and launch site
+- current azimuth, elevation and range
+- sunlight/shadow state
+- phase angle
+- supported brightness estimate
+- orbital period
+- inclination
+- apogee and perigee
+- radar cross-section
+- orbit centre/type
+- mission/purpose summary
+- public technical or notable feature information
+- a public image when a sufficiently confident source match exists
 
-### Weather & cloud panel
+CelesTrak SATCAT provides catalogue/orbital metadata. CelesTrak's current source table is used to resolve owner/source codes dynamically. Wikipedia/Wikimedia is used conservatively for descriptive mission information and public imagery.
 
-The Live view also shows point-weather information for the active observing location. When available this includes:
+If NightAzimuth cannot verify a field or image, it reports the information as unavailable rather than inventing a value or forcing a questionable match.
 
-- air temperature
-- humidity
-- total cloud percentage
-- low, medium and high cloud percentages
-- fog percentage
-- wind speed and direction
-- precipitation amount for the next hour
-- a short upcoming hourly cloud/rain summary
-- weather source, source-data age, and whether the value came from a live fetch or local cache
+## 7. ISS and upcoming passes
 
-This panel is a point forecast for the observing location. The optional Live-view cloud overlay is a separate directional estimate projected from spatial EUMETSAT imagery.
+The International Space Station (NORAD 25544) is treated as a first-class trackable object.
 
-### Weather map
+The **ISS / PASSES** drawer shows ISS status and upcoming visual passes. Passes beginning within approximately one hour are prioritised as immediate observing alerts.
 
-The **Weather map** tab centres a large 2D map on the active observing location. Forecast-planning tables are kept on the separate **Forecast** tab so the radar image remains the main feature here.
+ISS remains prioritised in the satellite prediction system when orbital data is available.
 
-- The white cross marks the selected observing location.
-- **Rain radar** toggles the RainViewer precipitation-radar overlay.
-- **Cloud imagery** toggles the EUMETSAT cloud layer.
-- The observed timeline starts automatically, moves from 24 hours ago to the latest available observation, and then loops.
-- There are no play/pause controls; selecting a future **Map time** temporarily replaces observed playback with the chosen forecast frame. Selecting **Now** restarts the observed loop.
-- **Refresh map** immediately rebuilds the currently displayed map.
-- The map scales to the available window while preserving its proportions. Resizing the window reuses the loaded image rather than downloading map tiles again.
-- The base map is provided by OpenStreetMap and the rain-radar overlay is provided by RainViewer.
-- Historical radar is shown only when a sufficiently close provider frame exists; missing historical frames are not invented.
-- Attribution is displayed directly on the map.
+## 8. Aircraft / ADS-B
 
-NightAzimuth requests only the map tiles required for the currently displayed view. It does not bulk-download map regions. Repeated OpenStreetMap tiles are cached locally for at least seven days before refresh, and radar tiles are cached by frame timestamp.
+Aircraft are shown using a separate visual family from satellites. Where type information allows, NightAzimuth uses different vector silhouettes for fixed-wing aircraft, helicopters/rotorcraft, gliders, UAVs and other supported classes.
 
-Because map/radar tile coordinates are derived from the selected observing location, those providers can infer the geographic area being viewed. The saved NightAzimuth profile name and `locations.json` file are not sent.
+ADS-B data is refreshed in the background. A transient failed or zero-contact refresh does not intentionally wipe an already populated aircraft scene; the last populated snapshot can be retained while fresh data is obtained.
+
+### Aircraft priority board
+
+The **AIRCRAFT CONTACTS** drawer is a fixed-size priority board rather than a long list that requires scrolling.
+
+Ordering is designed to surface important traffic first:
+
+1. emergency/special squawks
+2. other recognised special-operation traffic
+3. military traffic
+4. relevant normal traffic
+
+Recognised squawk codes remain visible with a short plain-English description.
+
+### Selected aircraft information
+
+Where data exists, selected-aircraft details can include:
+
+- callsign
+- squawk and description
+- operator / role
+- aircraft make/model
+- capacity hint where a defensible type-level value/range exists
+- departure airport
+- arrival airport
+- departure time when a source genuinely supplies one
+- estimated arrival time when it can be calculated from available route/position/speed information
+- altitude, speed, track, range and other live telemetry
+
+NightAzimuth does not fabricate airline schedule data. Missing departure/schedule information is shown as unavailable.
+
+Role inference supports recognised metadata signals such as Air Ambulance/HEMS, Police, Coastguard/Search and Rescue, military and related specialist operations.
+
+## 9. Airport horizon references
+
+Airport labels are a small horizon-reference layer, not a general airport map.
+
+NightAzimuth obtains a global public airport dataset and calculates relevant airport distance/bearing from the currently selected observing location. Only a limited number of meaningful airports that fit the current view/range are considered, and overlapping labels are suppressed.
+
+No local airport, city, country or coordinate list is hard-coded into the application.
+
+## 10. Stars, planets, Moon and galaxies
+
+Natural celestial objects are visually distinct from satellites and aircraft.
+
+- stars use a neutral/white visual family
+- planets use a warmer presentation
+- galaxies are subdued reference objects
+- the Moon uses its real ephemeris position and a lightweight glare treatment
+
+Star visibility responds to sky state and atmospheric extinction. A plotted celestial object is still not a guarantee that local weather, light pollution or eyesight makes it visible unaided.
+
+## 11. Weather Map and Forecast
+
+Weather/cloud controls were removed from the **Live Sky** to reduce visual noise, but the dedicated weather functionality remains available.
+
+### Weather Map
+
+The Weather Map keeps the map/radar presentation separate from Live Sky and may include supported precipitation/cloud imagery and historical provider frames.
 
 ### Forecast
 
-The **Forecast** tab keeps planning information separate from the main radar display:
+The **Forecast** tab remains available for observing planning, including next-24-hour and multi-day guidance based on supported provider data.
 
-- **Next 24 hours** shows the combined darkness, point-cloud, fog and precipitation guidance.
-- **7-day observing planner** lets you select a forecast day and review the provider's available intervals.
-- Later forecast days may use wider intervals when that is what MET Norway supplies; NightAzimuth does not invent hourly values.
+NightAzimuth does not invent missing historical or forecast frames.
 
-### Fast movers
+## 12. Refresh continuity
 
-Normal Live mode is intended to help identify satellites that are visibly moving across the sky. It ranks candidates primarily by apparent angular speed, then uses elevation and range as additional ranking factors.
+Live Sky is designed around a last-good-scene rule. Background refreshes should not intentionally clear an existing populated scene before replacement data is ready.
 
-This does not mean the top-ranked object is guaranteed to be visible. It means NightAzimuth considers it one of the more useful moving candidates in the part of the sky you are currently looking at.
+This applies particularly to satellite and ADS-B handoffs so normal network refresh behaviour does not produce a blank main display.
 
-### All tracked mode
+A deliberate observing-location change is different: location-derived data is recalculated for the newly selected observer.
 
-Enable **All tracked** only when you want to expose the wider potentially-visible candidate set. This mode uses tiny markers and suppresses most labels and tracks to avoid clutter. Select an individual satellite if you want its detailed highlight.
+## 13. Privacy and local data
 
-### Live satellites
+Typical local data is stored beneath `%APPDATA%\NightAzimuth`.
 
-The **Live satellites** table lists tracked satellites currently above the horizon. It includes satellite name, NORAD ID, azimuth, elevation, range, whether the satellite is sunlit, whether the sky is dark enough, and the `Potential` result.
+Examples include:
 
-The Live finder uses both the VISUAL and ACTIVE catalogues. This broader coverage is intended to improve identification of real moving satellites that may not be included in the smaller VISUAL group.
+- `locations.json` for saved observing profiles
+- application preferences
+- orbital/astronomical cache data
+- weather/map cache data
+- terrain tiles
 
-### Upcoming passes
+Do not share `locations.json` if it contains a private observing position.
 
-The **Upcoming passes** tab shows predicted VISUAL-group passes for the next 24 hours, including rise time, peak time, set time and maximum elevation.
+External providers may infer the geographic area represented by a location-derived request because weather, airport, map and terrain queries require geographic context. NightAzimuth does not upload the complete saved profile file or profile name as part of those requests.
 
-### Refresh
+## 14. Accuracy boundaries
 
-NightAzimuth refreshes live data automatically. Use **Refresh** when you want an immediate orbital-data update. Weather and the Weather map also have their own refresh behaviour.
+NightAzimuth separates several concepts that should not be treated as equivalent:
 
-## 6. Understanding visibility results
+- geometrically above the horizon
+- illuminated by the Sun
+- favourable observing geometry
+- expected naked-eye visibility
+- weather/cloud conditions
+- brightness estimates
 
-> **Important:** `Potential` does not mean the satellite is guaranteed to be visible to the naked eye.
+Satellite brightness can vary with attitude, geometry, flares/glints and spacecraft design. Unsupported objects remain unknown rather than receiving fabricated brightness values.
 
-In the current implementation, `Potential` means the satellite is illuminated by the Sun while the observer's sky is sufficiently dark. It is an astronomical suitability indicator rather than a guarantee.
+Aircraft route/timing data can also be incomplete or delayed. Live ETA values are estimates unless explicitly supplied by an authoritative schedule source.
 
-The Live finder may also show sunlit satellite candidates during civil twilight after sunset before the stricter `Potential` threshold is reached.
+## 15. Troubleshooting
 
-The current Potential result does not yet fully account for:
+If the Live Sky appears stale, first allow the current background refresh to finish, then use **Refresh** if required.
 
-- cloud and haze
-- satellite brightness or apparent magnitude
-- reflective orientation or flares
-- moonlight
-- camera sensitivity
-- buildings, trees and other local obstructions
+If aircraft briefly stop updating, the previous scene may intentionally remain visible while ADS-B recovers. Check the status/freshness information rather than assuming retained markers are newly received positions.
 
-Terrain is drawn in Live view as a local geometric obstruction layer, but it remains separate from the current Potential calculation.
+If a satellite track is missing, select the satellite once. Selected satellites are forced into the realtime prediction priority set when orbital data is available.
 
-Fast-mover ranking is also separate from brightness. A satellite can move quickly but still be too faint to see with the naked eye.
+If a Satellite Info image or mission description is unavailable, the catalogue/orbit information can still be valid; enrichment is deliberately fail-soft.
 
-## 7. Local files, privacy and cache data
+If terrain or airport labels do not appear immediately after changing location, allow the background location-derived calculations to complete.
 
-| Purpose | Default Windows location |
-|---|---|
-| Saved locations | `%APPDATA%\NightAzimuth\locations.json` |
-| Appearance preference | `%APPDATA%\NightAzimuth\preferences.json` |
-| Orbital / astronomical cache | `%APPDATA%\NightAzimuth\cache\` |
-| Point-weather cache | `%APPDATA%\NightAzimuth\cache\weather\` |
-| 2D map / rain-radar cache | `%APPDATA%\NightAzimuth\cache\weather_map\` |
-| Terrain tile cache | `%APPDATA%\NightAzimuth\terrain\terrarium\` |
+## 16. Release-candidate feedback
 
-- No saved location exists in a fresh release.
-- Location profiles are stored locally in `locations.json` only after the user enters them.
-- Do not share `locations.json` if it contains a private observing position.
-- No real/private test coordinates are intended to be present in source, tests, documentation, installer/build output or release assets.
-- Deleting local cache folders removes downloaded cache data; NightAzimuth can repopulate required data when it runs again.
-- Weather requests send the selected latitude, longitude and altitude because a location-specific forecast requires them.
-- Terrain, map and radar requests may reveal the requested geographic area because tile identifiers are derived from the entered location.
-- Saved NightAzimuth profile names and the complete `locations.json` file are not uploaded to these providers.
+For `v1.1.0-rc1`, concentrate testing on:
 
-## 8. Advanced configuration for source/development use
+- application launch and maximised layout
+- F11 fullscreen
+- location switching
+- Live Sky continuity during refreshes
+- aircraft/ADS-B continuity
+- aircraft priority and squawk descriptions
+- satellite selection/deselection
+- smooth satellite marker and track motion
+- Satellite Info enrichment
+- ISS/pass information
+- airport horizon references
+- Forecast and Weather Map tabs
+- resizing and Windows display scaling
 
-The normal Windows GUI uses saved location profiles and does not require a user to create a TOML configuration file. The project also contains a TOML configuration loader used by lower-level/source workflows.
-
-Illustrative structure:
-
-```toml
-[observer]
-latitude = <decimal latitude>
-longitude = <decimal longitude>
-altitude_m = <metres>
-
-[tracking]
-minimum_elevation_deg = 0
-pass_minimum_elevation_deg = 10
-pass_prediction_hours = 24
-darkness_threshold_deg = -6
-
-[data]
-celestrak_group = "VISUAL"
-cache_directory = "data/cache"
-cache_max_age_minutes = 120
-```
-
-| Setting | Default | Meaning |
-|---|---:|---|
-| `minimum_elevation_deg` | 0 | Minimum elevation used by tracking configuration. |
-| `pass_minimum_elevation_deg` | 10 | Minimum elevation used for pass predictions. |
-| `pass_prediction_hours` | 24 | How far ahead pass predictions extend. |
-| `darkness_threshold_deg` | -6 | Sun-angle threshold used for the dark-sky test. |
-| `celestrak_group` | `VISUAL` | Base CelesTrak group used by source/config-driven workflows. The GUI additionally combines ACTIVE data for live tracking. |
-| `cache_directory` | `data/cache` | Cache path for source/config-driven workflows. |
-| `cache_max_age_minutes` | 120 | Maximum age before cached orbital data is refreshed. |
-
-For ordinary Windows users, use Settings inside the app for location configuration. Do not edit source configuration files unless you are running or developing the source version.
-
-## 9. Troubleshooting
-
-| Symptom | What to do |
-|---|---|
-| No location configured | Open Settings, add a location, save it, then choose **Use this location**. |
-| `Terrain: loading required data...` | Wait for the first terrain download/calculation to complete. First use can take longer than later cached runs. |
-| `Terrain: data download unavailable` | Check the PC's internet connection and try Refresh or reselect the location. |
-| Terrain does not match nearby houses or trees | Expected: the terrain layer models elevation, not buildings, vegetation or other local objects. |
-| Weather says forecast unavailable | Check internet access. If an older weather cache exists, NightAzimuth will attempt to use it. |
-| Weather map unavailable | Check internet access and try **Refresh map**. Satellite tracking and point weather remain usable if the map source is unavailable. |
-| Rain radar is empty | The selected area may have no current radar returns or RainViewer coverage may be unavailable. Turn the radar layer off to confirm the base map still loads. |
-| No satellites in the current Live view | Drag to a different part of the sky, widen the field of view, reset the view, or check the Sky map / Live satellites table. |
-| Too few satellite candidates | Make sure **All tracked** is available for diagnostic use; normal mode intentionally limits the display to the most useful fast movers. |
-| Too many satellite markers | Turn **All tracked** off. |
-| Star or planet layer is slow on first use | Initial catalogue or ephemeris data may still be populating the local cache. |
-| A saved location is sensitive | Keep `%APPDATA%\NightAzimuth\locations.json` private and do not include it in support bundles or source-control uploads. |
-
-## 10. Quick-reference workflow
-
-1. Run NightAzimuth.
-2. Open Settings.
-3. Add the observing location and save it.
-4. Select **Use this location**.
-5. Allow NightAzimuth to refresh orbital/astronomical/weather data and generate the terrain horizon.
-6. Open **Live view**.
-7. Set **Facing** and **Field of view** to approximately match the part of the sky you are observing.
-8. Drag the view with the mouse to follow the sky area you are actually looking at.
-9. Review the Weather & cloud panel for point conditions.
-10. Open **Weather map** when you want the 2D map and recent rain-radar view.
-11. Leave **All tracked** off for a clean fast-mover view.
-12. Use Vega, named stars, planets and galaxy references for orientation.
-13. Follow named satellite markers and their smooth projected movement.
-14. Use **Upcoming passes** to plan later observations.
+If these remain stable in normal use, the release candidate can be promoted to the final `v1.1.0` release.

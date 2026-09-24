@@ -20,8 +20,17 @@ def live_view_background_for_sky_state(sky_state_code: int) -> str:
 
 
 def is_live_observing_candidate(satellite: SkySatellite) -> bool:
-    """Return whether a satellite should be offered in the observing finder."""
+    """Return whether a satellite should be offered as a strong observing candidate."""
     return satellite.potentially_visible or satellite.twilight_candidate
+
+
+def _satellite_priority(satellite: SkySatellite) -> tuple[float, float, float]:
+    """Prefer obvious motion, then elevation, then shorter range."""
+    return (
+        -apparent_angular_speed_deg_s(satellite),
+        -satellite.elevation_deg,
+        satellite.range_km,
+    )
 
 
 def select_twilight_finder_satellites(
@@ -31,18 +40,23 @@ def select_twilight_finder_satellites(
     limit: int = 6,
     show_all: bool = False,
 ) -> list[SkySatellite]:
+    """Choose observing candidates, but never leave a populated sky untracked.
+
+    Strong naked-eye/twilight candidates remain the preferred contacts. If the
+    current sky window contains real tracked satellites but none meet the
+    observing criteria, the best tracked satellite is retained as a fallback so
+    Live Sky never appears dead merely because conditions are poor or it is
+    daylight. Nothing is fabricated: the fallback must already exist in the
+    supplied tracked-satellite list.
+    """
     candidates = [satellite for satellite in satellites if is_live_observing_candidate(satellite)]
     if show_all:
-        chosen = candidates
+        chosen = list(candidates)
     else:
-        chosen = sorted(
-            candidates,
-            key=lambda satellite: (
-                -apparent_angular_speed_deg_s(satellite),
-                -satellite.elevation_deg,
-                satellite.range_km,
-            ),
-        )[: max(1, int(limit))]
+        chosen = sorted(candidates, key=_satellite_priority)[: max(1, int(limit))]
+
+    if not chosen and satellites:
+        chosen = [min(satellites, key=_satellite_priority)]
 
     if selected_norad is not None and all(satellite.norad_id != selected_norad for satellite in chosen):
         selected = next((satellite for satellite in satellites if satellite.norad_id == selected_norad), None)

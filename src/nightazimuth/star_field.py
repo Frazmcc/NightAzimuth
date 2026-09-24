@@ -19,9 +19,6 @@ MODERN_SKYCULTURE_URL = (
     "skycultures/modern_st/index.json"
 )
 
-# A compact zero-cost deep-sky reference set for the Live finder. Coordinates
-# are J2000 right ascension / declination and are transformed topocentrically
-# with Skyfield for the observer and current time.
 GALAXY_CATALOGUE: tuple[tuple[str, float, float], ...] = (
     ("Andromeda Galaxy (M31)", 0.7123056, 41.26917),
     ("Triangulum Galaxy (M33)", 1.5641389, 30.66028),
@@ -78,7 +75,6 @@ class StarFieldSnapshot:
 def parse_modern_skyculture(
     document: dict[str, Any],
 ) -> tuple[dict[int, str], tuple[tuple[str, int, int], ...]]:
-    """Return Hipparcos proper names and constellation edges from Stellarium JSON."""
     names: dict[int, str] = {}
     for key, entries in document.get("common_names", {}).items():
         if not isinstance(key, str) or not key.startswith("HIP "):
@@ -192,6 +188,7 @@ class StarFieldEngine:
             )
 
         planet_targets = (
+            ("Moon", "moon"),
             ("Mercury", "mercury"),
             ("Venus", "venus"),
             ("Mars", "mars"),

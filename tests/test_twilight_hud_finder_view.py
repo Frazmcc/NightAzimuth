@@ -12,13 +12,15 @@ def _satellite(
     potential: bool = False,
     twilight: bool = False,
     sunlit: bool = True,
+    elevation: float = 45.0,
+    range_km: float = 1000.0,
 ) -> SkySatellite:
     return SkySatellite(
         name=f"SAT-{norad_id}",
         norad_id=norad_id,
         azimuth_deg=180.0,
-        elevation_deg=45.0,
-        range_km=1000.0,
+        elevation_deg=elevation,
+        range_km=range_km,
         satellite_sunlit=sunlit,
         sky_dark=potential,
         potentially_visible=potential,
@@ -46,6 +48,22 @@ def test_finder_includes_dark_and_twilight_candidates() -> None:
     chosen = select_twilight_finder_satellites(satellites, show_all=True)
 
     assert [satellite.norad_id for satellite in chosen] == ["dark", "twilight"]
+
+
+def test_finder_keeps_real_tracked_fallback_when_no_observing_candidate_exists() -> None:
+    satellites = [
+        _satellite("low", sunlit=False, elevation=12.0, range_km=900.0),
+        _satellite("high", sunlit=False, elevation=61.0, range_km=1300.0),
+    ]
+
+    chosen = select_twilight_finder_satellites(satellites)
+
+    assert len(chosen) == 1
+    assert chosen[0].norad_id == "high"
+
+
+def test_finder_never_invents_fallback_when_no_satellites_are_tracked() -> None:
+    assert select_twilight_finder_satellites([]) == []
 
 
 def test_live_view_background_darkens_with_solar_state() -> None:
