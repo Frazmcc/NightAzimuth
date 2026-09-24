@@ -65,6 +65,9 @@ def test_aircraft_geojson_contract(monkeypatch) -> None:
     payload = response.json()
     assert payload["type"] == "FeatureCollection"
     assert payload["metadata"]["count"] == 1
+    assert payload["metadata"]["source"]["fetched_at"] == snapshot.fetched_at.isoformat()
+    assert payload["metadata"]["source"]["source_observed_at"] == snapshot.source_observed_at.isoformat()
+    assert payload["metadata"]["source"]["coverage"] == "bounded observer area"
     feature = payload["features"][0]
     assert feature["type"] == "Feature"
     assert feature["id"] == "abc123"
@@ -83,6 +86,20 @@ def test_aircraft_geojson_unavailable_is_generic_503(monkeypatch) -> None:
             return snapshot
 
     monkeypatch.setattr("nightazimuth.api_geojson.AdsbLolProvider", FakeProvider)
+
+    response = TestClient(app).get(
+        "/api/v1/geojson/aircraft?latitude=55.86&longitude=-4.25"
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Aircraft overlay is temporarily unavailable"
+
+
+def test_aircraft_geojson_malformed_provider_payload_is_generic_503(monkeypatch) -> None:
+    class BrokenProvider:
+        def fetch_snapshot(self, observer, radius_km):
+            raise AttributeError("list has no attribute get")
+
+    monkeypatch.setattr("nightazimuth.api_geojson.AdsbLolProvider", BrokenProvider)
 
     response = TestClient(app).get(
         "/api/v1/geojson/aircraft?latitude=55.86&longitude=-4.25"
