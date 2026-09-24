@@ -78,10 +78,12 @@ class MetNorwayWeatherProvider:
         cache_directory: Path,
         cache_max_age_minutes: int = 30,
         timeout_seconds: float = 30.0,
+        cache_max_files: int = 256,
     ) -> None:
         self.cache_directory = Path(cache_directory) / "weather"
         self.cache_max_age_minutes = cache_max_age_minutes
         self.timeout_seconds = timeout_seconds
+        self.cache_max_files = max(1, cache_max_files)
 
     def load(self, observer: ObserverConfig) -> WeatherSnapshot:
         cache_path = self._cache_path(observer)
@@ -91,6 +93,7 @@ class MetNorwayWeatherProvider:
             payload = self._download(observer)
             snapshot = parse_met_no_locationforecast(payload, fetched_at_utc=datetime.now(timezone.utc))
             self._write_cache(cache_path, payload)
+            self._prune_cache(keep=cache_path)
             return snapshot
         except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
             if cache_path.exists():
@@ -144,6 +147,15 @@ class MetNorwayWeatherProvider:
             from_cache=from_cache,
             fallback_used=fallback_used,
         )
+
+    def _prune_cache(self, *, keep: Path) -> None:
+        files = [path for path in self.cache_directory.glob("met_no_*.json") if path != keep]
+        excess = len(files) + 1 - self.cache_max_files
+        if excess <= 0:
+            return
+        files.sort(key=lambda path: path.stat().st_mtime)
+        for path in files[:excess]:
+            path.unlink(missing_ok=True)
 
     @staticmethod
     def _write_cache(path: Path, payload: dict[str, Any]) -> None:
