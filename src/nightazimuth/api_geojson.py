@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import isfinite
-from typing import Annotated, Any
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -14,7 +14,7 @@ from .aircraft_motion import AircraftMotionHistory
 router = APIRouter(prefix="/api/v1/geojson", tags=["geojson"])
 
 
-@router.get("/aircraft", response_class=JSONResponse, responses={200: {"content": {"application/geo+json": {}}}})
+@router.get(\n    "/aircraft",\n    response_class=JSONResponse,\n    responses={200: {"content": {"application/geo+json": {}}}},\n)
 def aircraft_geojson(
     latitude: float = Query(ge=-90.0, le=90.0),
     longitude: float = Query(ge=-180.0, le=180.0),
