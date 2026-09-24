@@ -95,3 +95,13 @@ The following are intentionally not selected in 21.1:
 - licence for public distribution/API reuse.
 
 These require evidence or an explicit project decision before implementation.
+
+## Stage 21.8 hosting assessment
+
+The current API is a stateless FastAPI/ASGI service on Python 3.11+ with outbound HTTPS provider calls and a small local cache. It does not currently require a database, worker process, WebSocket or SSE connection. The static frontend performs bounded REST snapshot requests.
+
+For the first hosted validation, Render Free is selected as the deployment target. Its free web service provides 512 MB RAM, supports Python web services, custom domains and managed TLS, and supplies 750 free instance-hours per workspace per month. The main trade-off is idle spin-down after 15 minutes, with a cold start that can take about a minute. The filesystem is ephemeral, so NightAzimuth must continue to treat its API cache as disposable.
+
+Koyeb remains a viable zero-cost fallback: its free web instance also provides 512 MB RAM and scales to zero after one hour, but the free instance is explicitly positioned for testing/hobby use. Railway's current free plan provides only $1/month of resource credit after its trial, so it is less predictable for the project's strict no-cost requirement.
+
+The repository includes a Render Blueprint in `render.yaml`. It installs the API optional dependency set, starts Uvicorn on the platform-provided port, and uses `/api/v1/health` for health checks. No DNS, CORS or production-security policy is changed in this increment; those remain gated by Stages 21.9 and 21.10.
