@@ -27,7 +27,7 @@ def weather(
     try:
         snapshot = provider.load(observer)
     except (WeatherProviderError, ValueError, OSError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail="Weather data is temporarily unavailable") from exc
 
     current = snapshot.current_or_next()
     points = snapshot.next_points(forecast_points)
