@@ -11,6 +11,7 @@ from .weather import MetNorwayWeatherProvider, WeatherProviderError
 router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
 
 _API_CACHE = Path("data/cache/api")
+_API_CACHE_MAX_FILES = 256
 
 
 @router.get("")
@@ -26,7 +27,7 @@ def weather(
     provider = MetNorwayWeatherProvider(cache_directory=_API_CACHE)
     try:
         snapshot = provider.load(observer)
-    except (WeatherProviderError, ValueError) as exc:
+    except (WeatherProviderError, ValueError, OSError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     current = snapshot.current_or_next()
