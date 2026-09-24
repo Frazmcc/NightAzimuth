@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -10,7 +10,7 @@ from nightazimuth.weather import WeatherPoint, WeatherProviderError, WeatherSnap
 
 def _point() -> WeatherPoint:
     return WeatherPoint(
-        time_utc=datetime.now(UTC).replace(microsecond=0),
+        time_utc=datetime.now(UTC) + timedelta(hours=1),
         air_temperature_c=12.5,
         relative_humidity_percent=80.0,
         cloud_total_percent=40.0,
