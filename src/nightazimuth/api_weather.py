@@ -40,6 +40,7 @@ def weather(
             else None
         ),
         "from_cache": snapshot.from_cache,
+        "fallback_used": snapshot.fallback_used,
         "observer": {
             "latitude_deg": latitude,
             "longitude_deg": longitude,
