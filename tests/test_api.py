@@ -21,7 +21,7 @@ def test_health_endpoint_contract() -> None:
     assert payload["application_version"] == __version__
 
     timestamp = datetime.fromisoformat(payload["timestamp"])
-    assert timestamp.tzinfo is not None
+    assert timestamp.utcoffset().total_seconds() == 0
 
 
 def test_health_endpoint_does_not_require_configuration() -> None:
