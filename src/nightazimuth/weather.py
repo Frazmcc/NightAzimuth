@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -84,24 +85,28 @@ class MetNorwayWeatherProvider:
         self.cache_max_age_minutes = cache_max_age_minutes
         self.timeout_seconds = timeout_seconds
         self.cache_max_files = max(1, cache_max_files)
+        self._cache_lock = threading.RLock()
 
     def load(self, observer: ObserverConfig) -> WeatherSnapshot:
         cache_path = self._cache_path(observer)
-        if self._cache_is_fresh(cache_path):
-            return self._read_cache(cache_path, from_cache=True, fallback_used=False)
+        with self._cache_lock:
+            if self._cache_is_fresh(cache_path):
+                return self._read_cache(cache_path, from_cache=True, fallback_used=False)
         try:
             payload = self._download(observer)
             snapshot = parse_met_no_locationforecast(payload, fetched_at_utc=datetime.now(timezone.utc))
             try:
-                self._write_cache(cache_path, payload)
-                self._prune_cache(keep=cache_path)
+                with self._cache_lock:
+                    self._write_cache(cache_path, payload)
+                    self._prune_cache(keep=cache_path)
             except OSError:
                 # Cache persistence/maintenance must not discard valid provider data.
                 pass
             return snapshot
         except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
-            if cache_path.exists():
-                return self._read_cache(cache_path, from_cache=True, fallback_used=True)
+            with self._cache_lock:
+                if cache_path.exists():
+                    return self._read_cache(cache_path, from_cache=True, fallback_used=True)
             raise WeatherProviderError(f"Unable to load MET Norway weather data: {exc}") from exc
 
     def _download(self, observer: ObserverConfig) -> dict[str, Any]:
