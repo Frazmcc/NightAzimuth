@@ -99,7 +99,11 @@ class MetNorwayWeatherProvider:
         cache_path = self._cache_path(observer)
         with self._cache_lock:
             if self._cache_is_fresh(cache_path):
-                return self._read_cache(cache_path, from_cache=True, fallback_used=False)
+                try:
+                    return self._read_cache(cache_path, from_cache=True, fallback_used=False)
+                except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, WeatherProviderError):
+                    # Treat an unreadable/corrupt fresh cache as a miss and try the live provider.
+                    pass
         try:
             payload = self._download(observer)
             snapshot = parse_met_no_locationforecast(payload, fetched_at_utc=datetime.now(timezone.utc))
