@@ -10,7 +10,7 @@ from nightazimuth.weather import WeatherPoint, WeatherProviderError, WeatherSnap
 
 def _point() -> WeatherPoint:
     return WeatherPoint(
-        time_utc=datetime.now(UTC),
+        time_utc=datetime.now(UTC).replace(microsecond=0),
         air_temperature_c=12.5,
         relative_humidity_percent=80.0,
         cloud_total_percent=40.0,
