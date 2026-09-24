@@ -11,7 +11,6 @@ from .weather import MetNorwayWeatherProvider, WeatherProviderError
 router = APIRouter(prefix="/api/v1/weather", tags=["weather"])
 
 _API_CACHE = Path("data/cache/api")
-_API_CACHE_MAX_FILES = 256
 
 
 @router.get("")
