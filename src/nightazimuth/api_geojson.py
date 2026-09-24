@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+from math import isfinite
+from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
 
 from .aircraft import AircraftObserver, AircraftSnapshotState
 from .aircraft_adsb_lol import AdsbLolProvider
@@ -12,7 +14,7 @@ from .aircraft_motion import AircraftMotionHistory
 router = APIRouter(prefix="/api/v1/geojson", tags=["geojson"])
 
 
-@router.get("/aircraft")
+@router.get("/aircraft", response_class=JSONResponse, responses={200: {"content": {"application/geo+json": {}}}})
 def aircraft_geojson(
     latitude: float = Query(ge=-90.0, le=90.0),
     longitude: float = Query(ge=-180.0, le=180.0),
@@ -21,6 +23,9 @@ def aircraft_geojson(
     include_ground: bool = False,
 ) -> dict[str, Any]:
     """Return live aircraft as a GeoJSON FeatureCollection for map clients."""
+
+    if not all(isfinite(value) for value in (latitude, longitude, altitude_m, radius_km)):
+        raise HTTPException(status_code=422, detail="Query parameters must be finite numbers")
 
     observer = AircraftObserver(latitude, longitude, altitude_m)
     try:
@@ -70,7 +75,7 @@ def aircraft_geojson(
             }
         )
 
-    return {
+    payload = {
         "type": "FeatureCollection",
         "features": features,
         "metadata": {
@@ -95,3 +100,4 @@ def aircraft_geojson(
             "count": len(features),
         },
     }
+    return JSONResponse(content=payload, media_type="application/geo+json")
