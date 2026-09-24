@@ -3,11 +3,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from threading import Lock
 
 from skyfield.api import Loader, wgs84
 
 from .config import ObserverConfig
 from .weather import WeatherPoint, WeatherSnapshot
+
+
+_RESOURCE_LOCK = Lock()
+_SHARED_RESOURCES: dict[str, tuple[object, object, object, object]] = {}
+
+
+def _astronomy_resources(cache_directory: Path) -> tuple[object, object, object, object]:
+    """Load immutable Skyfield resources once per cache directory and process."""
+    key = str(Path(cache_directory).resolve())
+    with _RESOURCE_LOCK:
+        resources = _SHARED_RESOURCES.get(key)
+        if resources is None:
+            loader = Loader(str(Path(cache_directory) / "skyfield"), verbose=False)
+            timescale = loader.timescale()
+            ephemeris = loader("de421.bsp")
+            resources = (timescale, ephemeris, ephemeris["earth"], ephemeris["sun"])
+            _SHARED_RESOURCES[key] = resources
+        return resources
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,11 +46,12 @@ class ObservingPlanner:
 
     def __init__(self, observer: ObserverConfig, *, cache_directory: Path) -> None:
         self.observer = observer
-        loader = Loader(str(Path(cache_directory) / "skyfield"), verbose=False)
-        self._timescale = loader.timescale()
-        self._ephemeris = loader("de421.bsp")
-        self._earth = self._ephemeris["earth"]
-        self._sun = self._ephemeris["sun"]
+        (
+            self._timescale,
+            self._ephemeris,
+            self._earth,
+            self._sun,
+        ) = _astronomy_resources(cache_directory)
         self._location = wgs84.latlon(
             observer.latitude,
             observer.longitude,
