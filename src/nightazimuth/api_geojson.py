@@ -23,7 +23,13 @@ def aircraft_geojson(
     """Return live aircraft as a GeoJSON FeatureCollection for map clients."""
 
     observer = AircraftObserver(latitude, longitude, altitude_m)
-    snapshot = AdsbLolProvider().fetch_snapshot(observer, radius_km)
+    try:
+        snapshot = AdsbLolProvider().fetch_snapshot(observer, radius_km)
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Aircraft overlay is temporarily unavailable",
+        ) from exc
     if snapshot.state == AircraftSnapshotState.UNAVAILABLE:
         raise HTTPException(status_code=503, detail="Aircraft overlay is temporarily unavailable")
 
@@ -54,8 +60,8 @@ def aircraft_geojson(
                     "callsign": contact.callsign,
                     "altitude_m": contact.altitude_m,
                     "track_deg": contact.track_deg,
-                    "ground_speed_m_s": contact.ground_speed_m_s,
-                    "vertical_rate_m_s": contact.vertical_rate_m_s,
+                    "ground_speed_mps": contact.ground_speed_mps,
+                    "vertical_rate_mps": contact.vertical_rate_mps,
                     "on_ground": contact.on_ground,
                     "position_state": contact.position_state.value,
                     "position_age_seconds": contact.position_age_seconds,
@@ -73,6 +79,13 @@ def aircraft_geojson(
                 "id": snapshot.source_id,
                 "label": snapshot.source_label,
                 "state": snapshot.state.value,
+                "fetched_at": snapshot.fetched_at.isoformat(),
+                "source_observed_at": (
+                    snapshot.source_observed_at.isoformat()
+                    if snapshot.source_observed_at is not None
+                    else None
+                ),
+                "coverage": snapshot.coverage_description,
             },
             "observer": {
                 "latitude_deg": latitude,
