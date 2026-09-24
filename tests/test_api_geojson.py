@@ -99,7 +99,7 @@ def test_aircraft_geojson_unavailable_is_generic_503(monkeypatch) -> None:
 def test_aircraft_geojson_malformed_provider_payload_is_generic_503(monkeypatch) -> None:
     class BrokenProvider:
         def fetch_snapshot(self, observer, radius_km):
-            raise AttributeError("list has no attribute get")
+            raise OverflowError("timestamp out of range")
 
     monkeypatch.setattr("nightazimuth.api_geojson.AdsbLolProvider", BrokenProvider)
 
