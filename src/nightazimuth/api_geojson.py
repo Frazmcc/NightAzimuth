@@ -62,7 +62,6 @@ def aircraft_geojson(
                     "track_deg": contact.track_deg,
                     "ground_speed_mps": contact.ground_speed_mps,
                     "vertical_rate_mps": contact.vertical_rate_mps,
-                    "on_ground": contact.on_ground,
                     "position_state": contact.position_state.value,
                     "position_age_seconds": contact.position_age_seconds,
                     "source_id": contact.source_id,
