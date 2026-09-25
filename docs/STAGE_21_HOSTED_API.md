@@ -65,9 +65,9 @@ Measure actual runtime, caching, refresh and connection requirements before sele
 
 Integrate the hosted frontend/API with the NightAzimuth domain layout only after hosting is validated.
 
-### 21.10 Security, tests and documentation
+### 21.10 Security, tests and documentation — COMPLETE
 
-Define CORS, authentication requirements, rate controls, OpenAPI documentation and deployment validation before public production use.
+CORS, authentication requirements, rate-control strategy, OpenAPI exposure, bounded public input, defensive response headers, sanitized provider failures, filesystem-path validation, sensitive CLI output handling, and regression/security validation are now defined and implemented. CI and CodeQL are required merge gates.
 
 ### 21.11 Production validation
 
@@ -113,6 +113,15 @@ The hosted API is a public, read-only snapshot service. It does not accept crede
 
 Authentication is intentionally not required for the current read-only public data contract. If a later stage adds private data, write operations, account state, or privileged provider access, authentication becomes mandatory before that capability is exposed.
 
-Application-level request quotas are deferred until production traffic can be measured. Hosting-edge controls should be preferred over process-local counters because free hosting may restart or scale the process. Provider-facing code must continue to cache and avoid automatic retry storms. OpenAPI remains available from FastAPI for the versioned `/api/v1` contract.
+Application-level request quotas are deferred until production traffic can be measured. Hosting-edge controls should be preferred over process-local counters because free hosting may restart or scale the process. Provider-facing code must continue to cache and avoid automatic retry storms. OpenAPI is exposed at `/api/openapi.json` with interactive documentation at `/api/docs` for the versioned `/api/v1` contract.
 
 Security validation requires CI and CodeQL to pass. Precise observer coordinates must not be unnecessarily written to CLI logs/output, and provider-controlled identifiers must be validated before they can influence filesystem paths.
+
+
+### Stage 21.10 completion record
+
+Stage 21.10 is complete at repository level. The public API is GET-only, browser CORS is origin-restricted, oversized query strings are rejected, defensive browser response headers are applied, provider diagnostics are not returned through the satellite failure contract, and exact observer coordinates are no longer printed by the CLI. CelesTrak group identifiers are allowlisted before they can influence cache filenames. CI and CodeQL pass on the security changes.
+
+The remaining rate-control decision is intentionally operational rather than an unfinished application feature: process-local counters are unsuitable for an ephemeral/free hosted service, so edge/platform controls will be evaluated from measured traffic during Stage 21.11 production validation.
+
+Stage 21.11 is therefore the active hosted stage. It requires deployment and real-environment validation of health, endpoint behaviour, stale/partial provider handling, browser access, DNS/HTTPS, cold-start/resource behaviour, and the no-cost operating constraint.
