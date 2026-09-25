@@ -2,3 +2,6 @@
 .layer-control{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;font:10px ui-monospace,monospace}.layer-control>span{opacity:.6}.layer-control label{display:flex;align-items:center;gap:.25rem;cursor:pointer}.layer-control input{accent-color:currentColor}#sky-canvas{touch-action:none;user-select:none}
 
 .object-inspector{position:fixed;right:1rem;top:6rem;width:min(340px,calc(100vw - 2rem));z-index:20;padding:1rem}.object-inspector[hidden]{display:none}.object-inspector button{float:right}.inspector-details{display:grid;gap:.35rem;margin-top:.75rem}.inspector-details div{display:flex;justify-content:space-between;gap:1rem;border-top:1px solid rgba(255,255,255,.08);padding-top:.35rem}.inspector-details span{opacity:.65}.view-readout small{display:block;opacity:.55;margin-top:.2rem}
+
+/* Keep Live Sky layer switches on one horizontal row on desktop. */
+.layer-control{display:flex;flex-wrap:nowrap;align-items:center;gap:.9rem;width:100%;white-space:nowrap}.layer-control label{flex:0 0 auto}.layer-control>span{flex:0 0 auto}@media(max-width:760px){.layer-control{overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:.25rem;scrollbar-width:thin}}
