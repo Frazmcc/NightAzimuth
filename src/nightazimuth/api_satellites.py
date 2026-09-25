@@ -36,7 +36,7 @@ def satellites(
     try:
         elements = client.load_group(group)
     except (CelestrakError, ValueError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail="Satellite data is temporarily unavailable") from exc
 
     tracker = SatelliteTracker(observer)
     positions = tracker.positions_above_horizon(
