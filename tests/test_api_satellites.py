@@ -79,3 +79,14 @@ def test_satellite_response_contract(monkeypatch) -> None:
             "range_km": 500.0,
         }
     ]
+
+
+def test_satellite_failure_does_not_expose_provider_detail(monkeypatch) -> None:
+    def fail_load_group(self, group):
+        raise CelestrakError("upstream secret-ish diagnostic / private cache path")
+
+    monkeypatch.setattr(CelestrakClient, "load_group", fail_load_group)
+    response = TestClient(app).get("/api/v1/satellites?latitude=55&longitude=-4")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Satellite data is temporarily unavailable"}
+    assert "private cache" not in response.text
