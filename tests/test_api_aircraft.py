@@ -120,4 +120,4 @@ def test_aircraft_unavailable_returns_503(monkeypatch) -> None:
     )
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "provider unavailable"
+    assert response.json()["detail"] == "Aircraft data is temporarily unavailable"
