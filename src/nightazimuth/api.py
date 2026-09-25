@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from .api_aircraft import router as aircraft_router
+from .api_airports import router as airports_router
 from .api_geojson import router as geojson_router
 from .api_observing import router as observing_router
 from .api_weather import router as weather_router
@@ -34,6 +35,7 @@ app.add_middleware(
 )
 app.include_router(satellites_router)
 app.include_router(aircraft_router)
+app.include_router(airports_router)
 app.include_router(geojson_router)
 app.include_router(weather_router)
 app.include_router(observing_router)
