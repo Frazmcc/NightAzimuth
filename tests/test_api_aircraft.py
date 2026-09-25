@@ -84,10 +84,16 @@ def test_aircraft_response_contract(monkeypatch) -> None:
     assert feature["id"] == "abc123"
     assert feature["geometry"]["type"] == "Point"
     assert feature["geometry"]["coordinates"] == pytest.approx([-4.20, 55.90], abs=1e-5)
+    assert feature["properties"]["icao24"] == "abc123"
+    assert feature["properties"]["callsign"] == "TEST1"
     assert feature["properties"]["track_deg"] == 180.0
     assert feature["properties"]["ground_speed_mps"] == 120.0
+    assert feature["properties"]["vertical_rate_mps"] == 0.0
+    assert feature["properties"]["position_age_seconds"] is not None
     assert feature["properties"]["source_id"] == "adsb-lol"
     assert feature["properties"]["source_label"] == "adsb.lol"
+    assert geojson["metadata"]["source"]["id"] == "adsb-lol"
+    assert geojson["metadata"]["count"] == 1
 
 
 def test_aircraft_unavailable_returns_503(monkeypatch) -> None:

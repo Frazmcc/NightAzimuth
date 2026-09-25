@@ -61,34 +61,73 @@ def aircraft(
         "minimum_elevation_deg": minimum_elevation_deg,
         "count": len(contacts),
         "aircraft": [asdict(contact) for contact in contacts],
-        "geojson": _contacts_geojson(contacts),
+        "geojson": _contacts_geojson(
+            contacts=contacts,
+            snapshot=snapshot,
+            latitude=latitude,
+            longitude=longitude,
+            altitude_m=altitude_m,
+            radius_km=radius_km,
+        ),
     }
 
 
-def _contacts_geojson(contacts: list[object]) -> dict[str, object]:
+def _contacts_geojson(
+    *,
+    contacts: list[object],
+    snapshot: object,
+    latitude: float,
+    longitude: float,
+    altitude_m: float,
+    radius_km: float,
+) -> dict[str, object]:
     """Return geographic features from the same aircraft snapshot used for sky projection."""
     features = []
     for contact in contacts:
-        latitude = getattr(contact, "latitude_deg", None)
-        longitude = getattr(contact, "longitude_deg", None)
-        if latitude is None or longitude is None:
+        contact_latitude = contact.latitude_deg
+        contact_longitude = contact.longitude_deg
+        if contact_latitude is None or contact_longitude is None:
             continue
-        position_state = getattr(contact, "position_state", None)
+        position_state = contact.position_state
         features.append({
             "type": "Feature",
-            "id": getattr(contact, "icao24"),
-            "geometry": {"type": "Point", "coordinates": [longitude, latitude]},
+            "id": contact.icao24,
+            "geometry": {"type": "Point", "coordinates": [contact_longitude, contact_latitude]},
             "properties": {
-                "icao24": getattr(contact, "icao24"),
-                "callsign": getattr(contact, "callsign"),
-                "altitude_m": getattr(contact, "altitude_m"),
-                "track_deg": getattr(contact, "track_deg"),
-                "ground_speed_mps": getattr(contact, "ground_speed_mps"),
-                "vertical_rate_mps": getattr(contact, "vertical_rate_mps"),
+                "icao24": contact.icao24,
+                "callsign": contact.callsign,
+                "altitude_m": contact.altitude_m,
+                "track_deg": contact.track_deg,
+                "ground_speed_mps": contact.ground_speed_mps,
+                "vertical_rate_mps": contact.vertical_rate_mps,
                 "position_state": position_state.value if position_state is not None else "unknown",
-                "position_age_seconds": getattr(contact, "position_age_seconds"),
-                "source_id": getattr(contact, "source_id"),
-                "source_label": getattr(contact, "source_label"),
+                "position_age_seconds": contact.position_age_seconds,
+                "source_id": contact.source_id,
+                "source_label": contact.source_label,
             },
         })
-    return {"type": "FeatureCollection", "features": features}
+    return {
+        "type": "FeatureCollection",
+        "features": features,
+        "metadata": {
+            "source": {
+                "id": snapshot.source_id,
+                "label": snapshot.source_label,
+                "state": snapshot.state.value,
+                "fetched_at": snapshot.fetched_at.isoformat(),
+                "source_observed_at": (
+                    snapshot.source_observed_at.isoformat()
+                    if snapshot.source_observed_at is not None
+                    else None
+                ),
+                "coverage": snapshot.coverage_description,
+            },
+            "observer": {
+                "latitude_deg": latitude,
+                "longitude_deg": longitude,
+                "altitude_m": altitude_m,
+            },
+            "radius_km": radius_km,
+            "count": len(features),
+        },
+    }
