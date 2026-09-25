@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -11,6 +12,7 @@ from .config import ObserverConfig
 from .tracker import SatelliteTracker
 
 router = APIRouter(prefix="/api/v1/satellites", tags=["satellites"])
+logger = logging.getLogger(__name__)
 
 _API_CACHE = Path("data/cache/api")
 
@@ -36,6 +38,7 @@ def satellites(
     try:
         elements = client.load_group(group)
     except (CelestrakError, ValueError) as exc:
+        logger.warning("Satellite provider unavailable: %s", exc)
         raise HTTPException(status_code=503, detail="Satellite data is temporarily unavailable") from exc
 
     tracker = SatelliteTracker(observer)
