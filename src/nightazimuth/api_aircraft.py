@@ -82,7 +82,13 @@ def _contacts_geojson(contacts: list[object]) -> dict[str, object]:
                 "icao24": getattr(contact, "icao24"),
                 "callsign": getattr(contact, "callsign"),
                 "altitude_m": getattr(contact, "altitude_m"),
+                "track_deg": getattr(contact, "track_deg"),
+                "ground_speed_mps": getattr(contact, "ground_speed_mps"),
+                "vertical_rate_mps": getattr(contact, "vertical_rate_mps"),
                 "position_state": position_state.value if position_state is not None else "unknown",
+                "position_age_seconds": getattr(contact, "position_age_seconds"),
+                "source_id": getattr(contact, "source_id"),
+                "source_label": getattr(contact, "source_label"),
             },
         })
     return {"type": "FeatureCollection", "features": features}
