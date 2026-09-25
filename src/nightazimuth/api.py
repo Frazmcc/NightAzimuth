@@ -19,7 +19,10 @@ MAX_QUERY_STRING_BYTES = 2048
 app = FastAPI(
     title="NightAzimuth API",
     version=__version__,
-    description="Versioned HTTP interface for NightAzimuth.",
+    description="Versioned, read-only HTTP interface for NightAzimuth.",
+    docs_url="/api/docs",
+    redoc_url=None,
+    openapi_url="/api/openapi.json",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -40,7 +43,12 @@ async def reject_oversized_query_strings(request: Request, call_next):
     """Bound unauthenticated public query input before endpoint parsing."""
     if len(request.scope.get("query_string", b"")) > MAX_QUERY_STRING_BYTES:
         return JSONResponse(status_code=414, content={"detail": "Query string too long"})
-    return await call_next(request)
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+    return response
 
 
 @app.get(f"/api/{API_VERSION}/health", tags=["system"])
