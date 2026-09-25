@@ -4,10 +4,10 @@ from fastapi.testclient import TestClient
 
 from nightazimuth.api import app
 from nightazimuth.api_satellites import satellites
+from nightazimuth.celestrak import CelestrakClient, CelestrakError
 from nightazimuth.tracker import SatellitePosition
 
 
-from nightazimuth.celestrak import CelestrakClient, CelestrakError
 def test_satellite_endpoint_requires_observer_coordinates() -> None:
     client = TestClient(app)
 
