@@ -7,6 +7,7 @@ from nightazimuth.api_satellites import satellites
 from nightazimuth.tracker import SatellitePosition
 
 
+from nightazimuth.celestrak import CelestrakClient, CelestrakError
 def test_satellite_endpoint_requires_observer_coordinates() -> None:
     client = TestClient(app)
 
