@@ -39,7 +39,11 @@
     </aside>
 
     <section class="command-dock glass" aria-label="Live sky controls">
-      <div class="bearing"><span>W</span><b>AZ <span id="facing-value">000</span>°</b><span>E</span></div>
+      <form id="bearing-form" class="bearing-control">
+        <label for="bearing-input">FACING / AZIMUTH</label>
+        <div><input id="bearing-input" type="number" min="0" max="359" step="1" value="0" inputmode="decimal" aria-describedby="bearing-help"><span>°</span><button type="submit">Apply</button></div>
+        <small id="bearing-help">0°–359° · 0° is north</small>
+      </form>
       <form id="fov-form" class="fov-control">
         <label for="fov-input">FIELD OF VIEW</label>
         <div><input id="fov-input" type="number" min="5" max="180" step="1" value="120" inputmode="decimal" aria-describedby="fov-help"><span>°</span><button type="submit">Apply</button></div>
