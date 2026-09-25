@@ -59,3 +59,10 @@ def test_cors_does_not_allow_unlisted_origin() -> None:
     )
 
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_api_rejects_oversized_query_string() -> None:
+    client = TestClient(app)
+    response = client.get("/api/v1/health?" + ("x=" + "a" * 2050))
+    assert response.status_code == 414
+    assert response.json() == {"detail": "Query string too long"}
