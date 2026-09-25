@@ -76,6 +76,17 @@ def test_aircraft_response_contract(monkeypatch) -> None:
     assert payload["aircraft"][0]["icao24"] == "abc123"
     assert payload["aircraft"][0]["callsign"] == "TEST1"
     assert payload["aircraft"][0]["source_label"] == "adsb.lol"
+    geojson = payload["geojson"]
+    assert geojson["type"] == "FeatureCollection"
+    assert len(geojson["features"]) == 1
+    feature = geojson["features"][0]
+    assert feature["id"] == "abc123"
+    assert feature["geometry"]["type"] == "Point"
+    assert feature["geometry"]["coordinates"] == [-4.20, 55.90]
+    assert feature["properties"]["track_deg"] == 180.0
+    assert feature["properties"]["ground_speed_mps"] == 120.0
+    assert feature["properties"]["source_id"] == "adsb-lol"
+    assert feature["properties"]["source_label"] == "adsb.lol"
 
 
 def test_aircraft_unavailable_returns_503(monkeypatch) -> None:
