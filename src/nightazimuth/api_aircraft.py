@@ -61,4 +61,28 @@ def aircraft(
         "minimum_elevation_deg": minimum_elevation_deg,
         "count": len(contacts),
         "aircraft": [asdict(contact) for contact in contacts],
+        "geojson": _contacts_geojson(contacts),
     }
+
+
+def _contacts_geojson(contacts: list[object]) -> dict[str, object]:
+    """Return geographic features from the same aircraft snapshot used for sky projection."""
+    features = []
+    for contact in contacts:
+        latitude = getattr(contact, "latitude_deg", None)
+        longitude = getattr(contact, "longitude_deg", None)
+        if latitude is None or longitude is None:
+            continue
+        position_state = getattr(contact, "position_state", None)
+        features.append({
+            "type": "Feature",
+            "id": getattr(contact, "icao24"),
+            "geometry": {"type": "Point", "coordinates": [longitude, latitude]},
+            "properties": {
+                "icao24": getattr(contact, "icao24"),
+                "callsign": getattr(contact, "callsign"),
+                "altitude_m": getattr(contact, "altitude_m"),
+                "position_state": position_state.value if position_state is not None else "unknown",
+            },
+        })
+    return {"type": "FeatureCollection", "features": features}
