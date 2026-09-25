@@ -1,1 +1,57 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#07111f"><title>NightAzimuth — Live Sky</title><link rel="stylesheet" href="./styles.css"></head><body><header><div><p class="eyebrow">NIGHTAZIMUTH</p><h1>Live sky intelligence</h1><p>Aircraft, weather and observing conditions from the NightAzimuth API.</p></div><div id="api-status" class="status" role="status" aria-live="polite">API not configured</div></header><main><section class="panel hero"><div><h2>Observer</h2><p>Choose a position to load live data. Your location stays in this browser and is sent only to the configured NightAzimuth API.</p></div><form id="observer-form"><label>Latitude<input id="latitude" type="number" step="any" min="-90" max="90" required></label><label>Longitude<input id="longitude" type="number" step="any" min="-180" max="180" required></label><button>Refresh sky</button></form></section><section class="grid" aria-live="polite" aria-atomic="false"><article class="panel"><h2>Aircraft</h2><strong id="aircraft-count">—</strong><p id="aircraft-detail">Waiting for API configuration.</p></article><article class="panel"><h2>Weather</h2><strong id="weather-value">—</strong><p id="weather-detail">Waiting for API configuration.</p></article><article class="panel"><h2>Observing</h2><strong id="observing-value">—</strong><p id="observing-detail">Waiting for API configuration.</p></article></section><section class="panel"><div class="section-head"><div><p class="eyebrow">GEOJSON</p><h2>Aircraft contacts</h2></div><span id="updated">Not loaded</span></div><div id="contacts" class="contacts" aria-live="polite" aria-atomic="false"><p>No contacts loaded.</p></div></section></main><footer>NightAzimuth Stage 21.7 · Static frontend · No provider credentials in the browser</footer><script src="./config.js"></script><script src="./app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#03070d">
+  <title>NightAzimuth — Live Sky</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="sky-shell">
+    <canvas id="sky-canvas" aria-label="NightAzimuth live sky view"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+    <header class="topbar glass">
+      <div><p class="eyebrow">NIGHTAZIMUTH // LIVE SKY</p><h1>Observer console</h1></div>
+      <div id="api-status" class="status" role="status" aria-live="polite">API not configured</div>
+    </header>
+
+    <aside class="observer-panel glass">
+      <p class="eyebrow">OBSERVER</p>
+      <form id="observer-form">
+        <label>Latitude<input id="latitude" type="number" step="any" min="-90" max="90" required></label>
+        <label>Longitude<input id="longitude" type="number" step="any" min="-180" max="180" required></label>
+        <button>Refresh sky</button>
+      </form>
+      <div class="telemetry">
+        <div><span>Aircraft</span><strong id="aircraft-count">—</strong></div>
+        <div><span>Weather</span><strong id="weather-value">—</strong></div>
+        <div><span>Observing</span><strong id="observing-value">—</strong></div>
+      </div>
+      <p id="weather-detail" class="muted">Waiting for API configuration.</p>
+      <p id="observing-detail" class="muted">Waiting for API configuration.</p>
+    </aside>
+
+    <aside class="contacts-panel glass">
+      <div class="section-head"><div><p class="eyebrow">LIVE CONTACTS</p><h2>Aircraft</h2></div><span id="updated">Not loaded</span></div>
+      <p id="aircraft-detail" class="muted">Waiting for API configuration.</p>
+      <div id="contacts" class="contacts" aria-live="polite"><p>No contacts loaded.</p></div>
+    </aside>
+
+    <section class="command-dock glass" aria-label="Live sky controls">
+      <form id="bearing-form" class="bearing-control">
+        <label for="bearing-input">FACING / AZIMUTH</label>
+        <div><input id="bearing-input" type="number" min="0" max="359" step="1" value="0" inputmode="decimal" aria-describedby="bearing-help"><span>°</span><button type="submit">Apply</button></div>
+        <small id="bearing-help">0°–359° · 0° is north</small>
+      </form>
+      <form id="fov-form" class="fov-control">
+        <label for="fov-input">FIELD OF VIEW</label>
+        <div><input id="fov-input" type="number" min="5" max="180" step="1" value="120" inputmode="decimal" aria-describedby="fov-help"><span>°</span><button type="submit">Apply</button></div>
+        <small id="fov-help">5°–180° · default 120°</small>
+      </form>
+      <div class="view-readout"><span>HORIZONTAL FOV</span><strong id="fov-readout">120°</strong></div>
+    </section>
+  </main>
+  <script src="./config.js"></script><script src="./app.js"></script>
+</body>
+</html>

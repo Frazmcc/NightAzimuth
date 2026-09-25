@@ -30,3 +30,32 @@ def test_health_endpoint_does_not_require_configuration() -> None:
     response = client.get("/api/v1/health")
 
     assert response.status_code == 200
+
+
+def test_cors_allows_hosted_frontend() -> None:
+    client = TestClient(app)
+
+    response = client.options(
+        "/api/v1/health",
+        headers={
+            "Origin": "https://nightazimuth.bismo.me",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://nightazimuth.bismo.me"
+
+
+def test_cors_does_not_allow_unlisted_origin() -> None:
+    client = TestClient(app)
+
+    response = client.options(
+        "/api/v1/health",
+        headers={
+            "Origin": "https://example.invalid",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert "access-control-allow-origin" not in response.headers

@@ -1,4 +1,4 @@
 window.NIGHTAZIMUTH_CONFIG = {
-  // Set at deployment time, e.g. "https://api.example.com". Never put secrets here.
-  apiBaseUrl: ""
+  // Public API origin for the hosted site. This file is public: never add secrets.
+  apiBaseUrl: "https://api.nightazimuth.bismo.me"
 };
