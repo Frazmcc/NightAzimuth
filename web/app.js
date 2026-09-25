@@ -16,7 +16,7 @@ function renderContacts(data){aircraftFeatures=data.features||[];drawSky();const
 
 function pointerPosition(event){return{x:event.clientX,y:event.clientY}}
 canvas.addEventListener("pointerdown",event=>{dragMoved=false;drag={...pointerPosition(event),facing,elevationCentre};canvas.setPointerCapture(event.pointerId);canvas.style.cursor="grabbing"});
-canvas.addEventListener("pointermove",event=>{if(!drag)return;const p=pointerPosition(event);if(Math.hypot(p.x-drag.x,p.y-drag.y)>4)dragMoved=true;facing=(drag.facing-(p.x-drag.x)/Math.max(canvas.clientWidth,1)*fov+360)%360;const verticalFov=Math.min(90,fov*canvas.clientHeight/Math.max(canvas.clientWidth,1));elevationCentre=Math.max(verticalFov/2,Math.min(90-verticalFov/2,drag.elevationCentre+(p.y-drag.y)/Math.max(canvas.clientHeight,1)*verticalFov));bearingInput.value=String(Math.round(facing)%360);drawSky()});
+canvas.addEventListener("pointermove",event=>{if(!drag)return;const p=pointerPosition(event);if(Math.hypot(p.x-drag.x,p.y-drag.y)>4)dragMoved=true;facing=(drag.facing-(p.x-drag.x)/Math.max(canvas.clientWidth,1)*fov+360)%360;const verticalFov=Math.min(90,fov*canvas.clientHeight/Math.max(canvas.clientWidth,1));elevationCentre=Math.max(0,Math.min(90,drag.elevationCentre+(p.y-drag.y)/Math.max(canvas.clientHeight,1)*verticalFov));bearingInput.value=String(Math.round(facing)%360);drawSky()});
 function endDrag(event){if(!drag)return;drag=null;canvas.style.cursor="grab";try{canvas.releasePointerCapture(event.pointerId)}catch{}}
 canvas.addEventListener("pointerup",endDrag);canvas.addEventListener("pointercancel",endDrag);canvas.style.cursor="grab";
 document.querySelectorAll("[data-layer]").forEach(input=>input.addEventListener("change",()=>{layers[input.dataset.layer]=input.checked;drawSky()}));
