@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import __version__
 from .api_aircraft import router as aircraft_router
@@ -17,6 +18,13 @@ app = FastAPI(
     title="NightAzimuth API",
     version=__version__,
     description="Versioned HTTP interface for NightAzimuth.",
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://nightazimuth.bismo.me"],
+    allow_credentials=False,
+    allow_methods=["GET"],
+    allow_headers=["Accept"],
 )
 app.include_router(satellites_router)
 app.include_router(aircraft_router)
