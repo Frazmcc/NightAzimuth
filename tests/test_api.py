@@ -66,3 +66,15 @@ def test_api_rejects_oversized_query_string() -> None:
     response = client.get("/api/v1/health?" + ("x=" + "a" * 2050))
     assert response.status_code == 414
     assert response.json() == {"detail": "Query string too long"}
+
+
+def test_api_security_headers_and_openapi_location() -> None:
+    client = TestClient(app)
+    response = client.get("/api/v1/health")
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["permissions-policy"] == "geolocation=(), camera=(), microphone=()"
+    assert client.get("/api/openapi.json").status_code == 200
+    assert client.get("/api/docs").status_code == 200
+    assert client.get("/openapi.json").status_code == 404
