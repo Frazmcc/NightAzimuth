@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query
@@ -11,6 +12,7 @@ from .aircraft_live import build_sky_aircraft
 from .aircraft_motion import AircraftMotionHistory
 
 router = APIRouter(prefix="/api/v1/aircraft", tags=["aircraft"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("")
@@ -29,7 +31,8 @@ def aircraft(
     snapshot = AdsbLolProvider().fetch_snapshot(observer, radius_km)
 
     if snapshot.state == AircraftSnapshotState.UNAVAILABLE:
-        raise HTTPException(status_code=503, detail=snapshot.error or "aircraft data unavailable")
+        logger.warning("Aircraft provider unavailable: %s", snapshot.error or "unknown provider error")
+        raise HTTPException(status_code=503, detail="Aircraft data is temporarily unavailable")
 
     contacts = build_sky_aircraft(
         snapshot,
