@@ -12,6 +12,7 @@ from .api_geojson import router as geojson_router
 from .api_observing import router as observing_router
 from .api_weather import router as weather_router
 from .api_satellites import router as satellites_router
+from .api_sky import router as sky_router
 
 API_VERSION = "v1"
 MAX_QUERY_STRING_BYTES = 2048
@@ -36,6 +37,7 @@ app.include_router(aircraft_router)
 app.include_router(geojson_router)
 app.include_router(weather_router)
 app.include_router(observing_router)
+app.include_router(sky_router)
 
 
 @app.middleware("http")
