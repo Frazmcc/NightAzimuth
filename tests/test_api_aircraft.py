@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
+import pytest
 
 from nightazimuth.aircraft import (
     AircraftObservation,
@@ -82,7 +83,7 @@ def test_aircraft_response_contract(monkeypatch) -> None:
     feature = geojson["features"][0]
     assert feature["id"] == "abc123"
     assert feature["geometry"]["type"] == "Point"
-    assert feature["geometry"]["coordinates"] == [-4.20, 55.90]
+    assert feature["geometry"]["coordinates"] == pytest.approx([-4.20, 55.90], abs=1e-5)
     assert feature["properties"]["track_deg"] == 180.0
     assert feature["properties"]["ground_speed_mps"] == 120.0
     assert feature["properties"]["source_id"] == "adsb-lol"
