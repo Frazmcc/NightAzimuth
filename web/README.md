@@ -4,7 +4,7 @@ Stage 21.7 is a static, provider-independent browser client for the NightAzimuth
 
 Set `apiBaseUrl` in `config.js` to the deployed API origin. Do not put provider credentials or secrets in this file: static-site contents are public.
 
-It consumes `/api/v1/aircraft` for both observer-relative sky contacts and the embedded GeoJSON contact collection from the same provider snapshot, plus `/api/v1/weather` and `/api/v1/observing`. It contains no upstream-provider logic. A static host such as GitHub Pages can serve this directory after the API host and CORS policy are selected in later Stage 21 increments.
+It consumes `/api/v1/aircraft` for both observer-relative sky contacts and the embedded GeoJSON contact collection from the same provider snapshot, plus `/api/v1/satellites`, `/api/v1/weather`, and `/api/v1/observing`. Satellite positions remain observer-relative azimuth/elevation data and are rendered only in Live Sky; no geographic satellite coordinates are fabricated. It contains no upstream-provider logic. A static host such as GitHub Pages can serve this directory after the API host and CORS policy are selected in later Stage 21 increments.
 
 ## Stage 21.9 domain layout
 
