@@ -105,3 +105,14 @@ For the first hosted validation, Render Free is selected as the deployment targe
 Koyeb remains a viable zero-cost fallback: its free web instance also provides 512 MB RAM and scales to zero after one hour, but the free instance is explicitly positioned for testing/hobby use. Railway's current free plan provides only $1/month of resource credit after its trial, so it is less predictable for the project's strict no-cost requirement.
 
 The repository includes a Render Blueprint in `render.yaml`. It installs the API optional dependency set, starts Uvicorn on the platform-provided port, and uses `/api/v1/health` for health checks. No DNS, CORS or production-security policy is changed in this increment; those remain gated by Stages 21.9 and 21.10.
+
+
+## Stage 21.10 security and public API policy
+
+The hosted API is a public, read-only snapshot service. It does not accept credentials, write operations, uploads, or user content. Browser CORS is restricted to `https://nightazimuth.bismo.me`; CORS is not treated as authentication. Endpoint parameters remain bounded by FastAPI validation and the application rejects query strings larger than 2048 bytes before endpoint parsing.
+
+Authentication is intentionally not required for the current read-only public data contract. If a later stage adds private data, write operations, account state, or privileged provider access, authentication becomes mandatory before that capability is exposed.
+
+Application-level request quotas are deferred until production traffic can be measured. Hosting-edge controls should be preferred over process-local counters because free hosting may restart or scale the process. Provider-facing code must continue to cache and avoid automatic retry storms. OpenAPI remains available from FastAPI for the versioned `/api/v1` contract.
+
+Security validation requires CI and CodeQL to pass. Precise observer coordinates must not be unnecessarily written to CLI logs/output, and provider-controlled identifiers must be validated before they can influence filesystem paths.
