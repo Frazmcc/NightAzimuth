@@ -74,10 +74,9 @@ def main() -> int:
         darkness_threshold_deg=config.tracking.darkness_threshold_deg,
     )
 
-    print(
-        f"Observer: {config.observer.latitude:.5f}, {config.observer.longitude:.5f} "
-        f"({config.observer.altitude_m:.0f} m)"
-    )
+    # Exact observer coordinates are intentionally not written to stdout. They may
+    # identify a private/home observing location and are not required for CLI results.
+    print(f"Observer altitude: {config.observer.altitude_m:.0f} m")
     print(
         f"CelesTrak group: {config.data.celestrak_group} | "
         f"Above horizon: {len(positions)}"
