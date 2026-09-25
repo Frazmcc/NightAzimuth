@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 import httpx
 
 
 CELESTRAK_GP_URL = "https://celestrak.org/NORAD/elements/gp.php"
+_SAFE_GROUP_RE = re.compile(r"^[A-Z0-9_-]{1,64}$")
 
 
 class CelestrakError(RuntimeError):
@@ -30,6 +32,8 @@ class CelestrakClient:
         normalized_group = group.strip().upper()
         if not normalized_group:
             raise ValueError("CelesTrak group must not be empty")
+        if not _SAFE_GROUP_RE.fullmatch(normalized_group):
+            raise ValueError("CelesTrak group may contain only letters, numbers, hyphens, and underscores")
 
         cache_path = self._cache_path(normalized_group)
         if self._cache_is_fresh(cache_path):
@@ -79,8 +83,8 @@ class CelestrakClient:
         return payload
 
     def _cache_path(self, group: str) -> Path:
-        safe_group = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in group)
-        return self.cache_directory / f"celestrak_{safe_group.lower()}.json"
+        filename = f"celestrak_{group.lower()}.json"
+        return self.cache_directory.joinpath(filename)
 
     def _cache_is_fresh(self, path: Path) -> bool:
         if not path.exists():

@@ -48,7 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
-    config = load_config(args.config)
+    config_path = args.config.resolve(strict=True)
+    config = load_config(config_path)
 
     client = CelestrakClient(
         cache_directory=config.data.cache_directory,
