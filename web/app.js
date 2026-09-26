@@ -25,7 +25,8 @@ function endDrag(event){if(!drag)return;drag=null;canvas.style.cursor="grab";try
 canvas.addEventListener("pointerup",endDrag);canvas.addEventListener("pointercancel",endDrag);canvas.style.cursor="grab";
 document.querySelectorAll("[data-layer]").forEach(input=>input.addEventListener("change",()=>{layers[input.dataset.layer]=input.checked;drawSky()}));
 
-function focusAircraft(aircraft){trackedObject={kind:"aircraft",key:trackingKey("aircraft",aircraft)};facing=Number(aircraft.azimuth_deg);elevationCentre=Math.max(0,Math.min(90,Number(aircraft.elevation_deg)));bearingInput.value=String(Math.round(facing)%360);showObject({kind:"aircraft",item:aircraft});drawSky()}\nfunction zoomBy(delta){fov=Math.max(5,Math.min(180,fov*delta));fovInput.value=String(Math.round(fov));setText("#fov-readout",`${Math.round(fov)}°`);drawSky()}
+function focusAircraft(aircraft){trackedObject={kind:"aircraft",key:trackingKey("aircraft",aircraft)};facing=Number(aircraft.azimuth_deg);elevationCentre=Math.max(0,Math.min(90,Number(aircraft.elevation_deg)));bearingInput.value=String(Math.round(facing)%360);showObject({kind:"aircraft",item:aircraft});drawSky()}
+function zoomBy(delta){fov=Math.max(5,Math.min(180,fov*delta));fovInput.value=String(Math.round(fov));setText("#fov-readout",`${Math.round(fov)}°`);drawSky()}
 canvas.addEventListener("wheel",event=>{event.preventDefault();zoomBy(event.deltaY<0?.85:1.18)},{passive:false});
 let pinchDistance=null;canvas.addEventListener("touchmove",event=>{if(event.touches.length!==2)return;const [a,b]=event.touches;const distance=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);if(pinchDistance)zoomBy(pinchDistance/distance);pinchDistance=distance},{passive:false});canvas.addEventListener("touchend",()=>{pinchDistance=null});
 const inspector=document.querySelector("#object-inspector");document.querySelector("#inspector-close").addEventListener("click",()=>inspector.hidden=true);
