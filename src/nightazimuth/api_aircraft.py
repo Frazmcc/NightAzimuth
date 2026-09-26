@@ -11,7 +11,6 @@ from .aircraft_adsb_lol import AdsbLolProvider
 from .aircraft_live import build_sky_aircraft
 from .aircraft_display import aircraft_display_identity, squawk_display
 from .aircraft_motion import AircraftMotionHistory
-from .aircraft_routes import AdsbLolRouteProvider
 
 router = APIRouter(prefix="/api/v1/aircraft", tags=["aircraft"])
 logger = logging.getLogger(__name__)
@@ -36,7 +35,6 @@ def aircraft(
         logger.warning("Aircraft provider unavailable: %s", snapshot.error or "unknown provider error")
         raise HTTPException(status_code=503, detail="Aircraft data is temporarily unavailable")
 
-    route_provider = AdsbLolRouteProvider()
     contacts = build_sky_aircraft(
         snapshot,
         observer,
@@ -66,7 +64,7 @@ def aircraft(
         "radius_km": radius_km,
         "minimum_elevation_deg": minimum_elevation_deg,
         "count": len(contacts),
-        "aircraft": [_contact_payload(contact, route_provider=route_provider) for contact in contacts],
+        "aircraft": [_contact_payload(contact) for contact in contacts],
         "geojson": _contacts_geojson(
             contacts=contacts,
             snapshot=snapshot,
@@ -139,17 +137,9 @@ def _contacts_geojson(
     }
 
 
-def _contact_payload(contact: object, *, route_provider: AdsbLolRouteProvider) -> dict[str, object]:
+def _contact_payload(contact: object) -> dict[str, object]:
     payload = asdict(contact)
     identity = aircraft_display_identity(contact)
-    route = route_provider.lookup(contact.callsign)
-    payload["route"] = None if route is None else {
-        "departure": _airport_payload(route.departure) if route.departure is not None else None,
-        "arrival": _airport_payload(route.arrival) if route.arrival is not None else None,
-        "intermediate_airports": [_airport_payload(airport) for airport in route.intermediate_airports],
-        "airline_code": route.airline_code,
-        "source": route.source_label,
-    }
     payload["display"] = {
         "make_model": identity.make_model,
         "capacity": identity.capacity,
@@ -157,11 +147,4 @@ def _contact_payload(contact: object, *, route_provider: AdsbLolRouteProvider) -
         "squawk": squawk_display(contact),
         "special": bool(identity.role or contact.squawk_alert is not None or contact.military),
     }
-    return payload
-
-
-def _airport_payload(airport: object) -> dict[str, object]:
-    payload = asdict(airport)
-    payload["display_code"] = airport.display_code
-    payload["display_country"] = airport.display_country
     return payload
