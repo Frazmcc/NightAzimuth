@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#03070d">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src https://api.nightazimuth.bismo.me; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'">
   <title>NightAzimuth — Live Sky</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -36,6 +37,6 @@
       <div class="view-readout"><span>HORIZONTAL FOV</span><strong id="fov-readout">120°</strong><small>Wheel / pinch to zoom</small></div><div class="layer-control" role="group" aria-label="Sky layers"><span>LAYERS</span><label><input type="checkbox" data-layer="stars" checked> Stars</label><label><input type="checkbox" data-layer="constellations" checked> Constellations</label><label><input type="checkbox" data-layer="galaxies" checked> Galaxies</label><label><input type="checkbox" data-layer="planets" checked> Planets</label><label><input type="checkbox" data-layer="airports" checked> Airports</label><label><input type="checkbox" data-layer="aircraft" checked> Aircraft</label><label><input type="checkbox" data-layer="satellites" checked> Satellites</label></div>
     </section><aside id="object-inspector" class="object-inspector glass" hidden><button id="inspector-close" type="button" aria-label="Close object details">×</button><p class="eyebrow" id="inspector-type">OBJECT</p><h2 id="inspector-name">—</h2><div id="inspector-details" class="inspector-details"></div></aside>
   <aside id="settings-panel" class="settings-panel glass" hidden><div class="settings-head"><div><p class="eyebrow">SETTINGS</p><h2>Observer location</h2></div><button id="settings-close" class="settings-close" type="button" aria-label="Close settings">Close</button></div><p class="muted">Set the latitude and longitude used for Live Sky.</p><form id="settings-location-form"><label>Latitude<input id="settings-latitude" type="number" step="any" min="-90" max="90" required></label><label>Longitude<input id="settings-longitude" type="number" step="any" min="-180" max="180" required></label><div class="settings-actions"><button type="submit">Save location</button><button id="settings-cancel" type="button">Close</button></div></form></aside></main>
-  <script>window.NIGHTAZIMUTH_CONFIG=window.NIGHTAZIMUTH_CONFIG||{apiBaseUrl:"https://api.nightazimuth.bismo.me"};</script><script src="./config.js?v=21.11.1"></script><script src="./app.js?v=21.11.1"></script>
+  <script src="./config.js?v=21.11.1"></script><script src="./app.js?v=21.11.1"></script>
 </body>
 </html>
