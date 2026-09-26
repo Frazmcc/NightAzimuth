@@ -45,3 +45,9 @@ def test_cache_path_is_resolved_beneath_cache_root(tmp_path: Path) -> None:
     assert path.suffix == ".json"
     assert "visual" not in path.name
     assert path.is_relative_to(client.cache_directory)
+
+
+def test_provider_timeout_defaults_to_ten_seconds(tmp_path: Path) -> None:
+    client = CelestrakClient(cache_directory=tmp_path)
+
+    assert client.timeout_seconds == 10.0
