@@ -10,13 +10,13 @@ It consumes `/api/v1/aircraft` for both observer-relative sky contacts and the e
 
 The intended public domain layout is:
 
-- `nightazimuth.bismo.me` — static browser frontend, served with HTTPS.
-- `api.nightazimuth.bismo.me` — Render-hosted FastAPI service, served with HTTPS.
+- `nightazimuth.co.uk` — static browser frontend, served with HTTPS.
+- `api.nightazimuth.co.uk` — Render-hosted FastAPI service, served with HTTPS.
 
 The browser configuration points only to the public API hostname. DNS must not be changed until the corresponding hosted service has been created and its platform hostname is known.
 
-For the API, add `api.nightazimuth.bismo.me` as a custom domain on the Render web service first, then create the DNS record Render requests and verify it in Render. Render automatically provisions and renews TLS and redirects HTTP to HTTPS.
+For the API, add `api.nightazimuth.co.uk` as a custom domain on the Render web service first, then create the DNS record Render requests and verify it in Render. Render automatically provisions and renews TLS and redirects HTTP to HTTPS.
 
-For a GitHub Pages frontend, configure `nightazimuth.bismo.me` as the repository Pages custom domain before creating its DNS CNAME. The CNAME should point directly to the account's GitHub Pages hostname, not to a repository path. Enforce HTTPS after GitHub confirms the certificate is available.
+For a GitHub Pages frontend, configure `nightazimuth.co.uk` as the repository Pages custom domain before creating its DNS CNAME. The CNAME should point directly to the account's GitHub Pages hostname, not to a repository path. Enforce HTTPS after GitHub confirms the certificate is available.
 
 Do not use wildcard DNS records. Keep the frontend and API records explicit so ownership and routing remain unambiguous.

@@ -109,7 +109,7 @@ The repository includes a Render Blueprint in `render.yaml`. It installs the API
 
 ## Stage 21.10 security and public API policy
 
-The hosted API is a public, read-only snapshot service. It does not accept credentials, write operations, uploads, or user content. Browser CORS is restricted to `https://nightazimuth.bismo.me`; CORS is not treated as authentication. Endpoint parameters remain bounded by FastAPI validation and the application rejects query strings larger than 2048 bytes before endpoint parsing.
+The hosted API is a public, read-only snapshot service. It does not accept credentials, write operations, uploads, or user content. Browser CORS is restricted to `https://nightazimuth.co.uk`; CORS is not treated as authentication. Endpoint parameters remain bounded by FastAPI validation and the application rejects query strings larger than 2048 bytes before endpoint parsing.
 
 Authentication is intentionally not required for the current read-only public data contract. If a later stage adds private data, write operations, account state, or privileged provider access, authentication becomes mandatory before that capability is exposed.
 

@@ -38,13 +38,13 @@ def test_cors_allows_hosted_frontend() -> None:
     response = client.options(
         "/api/v1/health",
         headers={
-            "Origin": "https://nightazimuth.bismo.me",
+            "Origin": "https://nightazimuth.co.uk",
             "Access-Control-Request-Method": "GET",
         },
     )
 
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "https://nightazimuth.bismo.me"
+    assert response.headers["access-control-allow-origin"] == "https://nightazimuth.co.uk"
 
 
 def test_cors_does_not_allow_unlisted_origin() -> None:
