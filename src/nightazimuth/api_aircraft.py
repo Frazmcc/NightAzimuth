@@ -10,10 +10,12 @@ from .aircraft import AircraftObserver, AircraftSnapshotState
 from .aircraft_adsb_lol import AdsbLolProvider
 from .aircraft_live import build_sky_aircraft
 from .aircraft_display import aircraft_display_identity, squawk_display
-from .aircraft_motion import AircraftMotionHistory
+from .aircraft_motion import AircraftMotionHistory, AircraftPositionState
 
 router = APIRouter(prefix="/api/v1/aircraft", tags=["aircraft"])
 logger = logging.getLogger(__name__)
+
+_MAX_RECENT_POSITION_AGE_SECONDS = 45.0
 
 
 @router.get("")
@@ -25,7 +27,13 @@ def aircraft(
     minimum_elevation_deg: float = Query(default=0.0, ge=-90.0, le=90.0),
     include_ground: bool = Query(default=False),
 ) -> dict[str, object]:
-    """Return live aircraft projected into the observer's sky."""
+    """Return recent aircraft projected into the observer's sky.
+
+    ADS-B providers commonly return individual position fixes a few tens of seconds old.
+    A fix older than the 15-second motion-prediction window is retained for identification
+    for up to 45 seconds, but remains explicitly marked as stale instead of being silently
+    dropped or over-extrapolated.
+    """
 
     observed_at = datetime.now(UTC)
     observer = AircraftObserver(latitude, longitude, altitude_m)
@@ -42,6 +50,11 @@ def aircraft(
         at=observed_at,
         minimum_elevation_deg=minimum_elevation_deg,
         include_ground=include_ground,
+        include_stale=True,
+        maximum_position_age_seconds=_MAX_RECENT_POSITION_AGE_SECONDS,
+    )
+    fresh_contact_count = sum(
+        contact.position_state != AircraftPositionState.STALE for contact in contacts
     )
     return {
         "observed_at": observed_at.isoformat(),
@@ -63,6 +76,9 @@ def aircraft(
         },
         "radius_km": radius_km,
         "minimum_elevation_deg": minimum_elevation_deg,
+        "source_observation_count": len(snapshot.observations),
+        "fresh_contact_count": fresh_contact_count,
+        "maximum_position_age_seconds": _MAX_RECENT_POSITION_AGE_SECONDS,
         "count": len(contacts),
         "aircraft": [_contact_payload(contact) for contact in contacts],
         "geojson": _contacts_geojson(
