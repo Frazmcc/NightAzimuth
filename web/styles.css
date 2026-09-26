@@ -18,3 +18,36 @@
 
 /* Seven-day forecast: days are columns, hourly intervals are rows. */
 .forecast-hours{display:block;overflow-x:auto;margin-top:18px;border:1px solid rgba(111,224,255,.16);border-radius:12px;background:rgba(5,15,25,.72)}.forecast-table{width:100%;min-width:820px;border-collapse:separate;border-spacing:0;font:11px ui-monospace,monospace}.forecast-table th,.forecast-table td{padding:10px 12px;text-align:center;border-right:1px solid rgba(111,224,255,.10);border-bottom:1px solid rgba(111,224,255,.10)}.forecast-table thead th{position:sticky;top:0;z-index:1;background:#07131d;color:#d9f7ff;font-weight:700}.forecast-table thead th:first-child{left:0;z-index:3}.forecast-table tbody th{position:sticky;left:0;z-index:2;background:#07131d;color:#7896a5;text-align:left;font-weight:600}.forecast-table td strong{color:var(--cyan);font-size:15px}.forecast-table tr:last-child>*{border-bottom:0}.forecast-table tr>*:last-child{border-right:0}@media(max-width:560px){.forecast-table{min-width:760px}.forecast-table th,.forecast-table td{padding:9px 10px}}
+
+
+/* Mobile browser / installed-web-app ergonomics (iOS + Android). */
+html,body,.sky-shell{height:100dvh;min-height:-webkit-fill-available}
+body{-webkit-text-size-adjust:100%;overscroll-behavior:none}
+button,input{min-height:44px}
+button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+input{font-size:16px}
+@supports(padding:max(0px)){
+  .topbar{top:max(18px,env(safe-area-inset-top));left:max(18px,env(safe-area-inset-left));right:max(18px,env(safe-area-inset-right))}
+  .layer-dock{bottom:max(18px,env(safe-area-inset-bottom))}
+  .forecast-screen{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+}
+@media(max-width:760px){
+  .topbar{align-items:flex-start;gap:.5rem}
+  .top-actions{flex-wrap:wrap;justify-content:flex-end}
+  .contacts-panel{top:84px;right:8px;width:min(310px,calc(100vw - 16px));max-height:24dvh}
+  .settings-panel{top:max(64px,calc(env(safe-area-inset-top) + 52px));left:8px;right:8px;width:auto;max-height:calc(100dvh - 80px - env(safe-area-inset-bottom));padding-bottom:max(1rem,env(safe-area-inset-bottom))}
+  .object-inspector{top:max(72px,calc(env(safe-area-inset-top) + 58px));left:8px;right:8px;width:auto;max-height:55dvh;overflow:auto}
+  .layer-dock{left:8px;right:8px;transform:none;width:auto;bottom:max(8px,env(safe-area-inset-bottom))}
+  .layer-control{scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+  .layer-control label{min-height:36px;scroll-snap-align:start}
+  .forecast-topbar{margin-top:max(8px,env(safe-area-inset-top))}
+  .forecast-content{padding-bottom:max(48px,env(safe-area-inset-bottom))}
+}
+@media(max-width:420px){
+  .topbar{padding:9px 10px}
+  .eyebrow{font-size:9px}
+  .status{padding:7px 8px}
+  .top-actions{gap:.3rem}
+  .top-actions .settings-button{padding:.4rem .55rem;font-size:9px}
+  .contacts-panel{top:76px}
+}
