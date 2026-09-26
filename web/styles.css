@@ -8,4 +8,6 @@
 
 .contact-button{width:100%;text-align:left;background:transparent;border:0;color:inherit;cursor:pointer;font:inherit}.contact-button:hover,.contact-button:focus-visible{background:rgba(66,217,255,.10);outline:1px solid rgba(66,217,255,.35)}
 
-.settings-button{background:transparent;border:1px solid rgba(111,211,238,.35);color:inherit;padding:.45rem .75rem;cursor:pointer}.settings-panel{position:fixed;z-index:20;top:5.5rem;right:1.5rem;width:min(360px,calc(100vw - 3rem));padding:1rem}.settings-panel form{display:grid;gap:.75rem}.settings-panel label{display:grid;gap:.3rem}.settings-panel input{width:100%}.settings-panel>button{float:right;background:transparent;border:0;color:inherit;font-size:1.4rem;cursor:pointer}\n
+.settings-button{background:transparent;border:1px solid rgba(111,211,238,.35);color:inherit;padding:.45rem .75rem;cursor:pointer}.settings-panel{position:fixed;z-index:20;top:5.5rem;right:1.5rem;width:min(360px,calc(100vw - 3rem));padding:1rem}.settings-panel form{display:grid;gap:.75rem}.settings-panel label{display:grid;gap:.3rem}.settings-panel input{width:100%}.settings-panel>button{float:right;background:transparent;border:0;color:inherit;font-size:1.4rem;cursor:pointer}
+
+.settings-panel[hidden]{display:none!important}.settings-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}.settings-head h2{margin:.25rem 0 0}.settings-close{width:auto;margin:0}.settings-actions{display:flex;gap:.5rem}.settings-actions button{flex:1}.topbar{z-index:10}
