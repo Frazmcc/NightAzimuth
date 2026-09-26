@@ -30,6 +30,20 @@ jobs:
       - name: Ruff correctness checks
         run: python -m ruff check --select E4,E7,E9,F src tests nightazimuth_launcher.py nightazimuth_gui_launcher.py
 
+      - name: Validate hosted JavaScript syntax
+        run: node --check web/app.js
+
+      - name: Hosted DOM contract smoke test
+        shell: pwsh
+        run: |
+          $html = Get-Content web/index.html -Raw
+          $js = Get-Content web/app.js -Raw
+          $ids = [regex]::Matches($js, 'querySelector\("#([^"]+)"\)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+          foreach ($id in $ids) {
+            if ($html -notmatch ('id="' + [regex]::Escape($id) + '"')) { throw "web/app.js references missing DOM id: $id" }
+          }
+          if ($js.Contains('\nfunction')) { throw "web/app.js contains a literal escaped newline before function" }
+
       - name: Pytest
         run: python -m pytest -q
 
