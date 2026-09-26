@@ -57,3 +57,17 @@ def test_default_cache_window_exceeds_provider_update_interval(tmp_path: Path) -
     client = CelestrakClient(cache_directory=tmp_path)
 
     assert client.cache_max_age_minutes == 125
+
+
+def test_cold_start_uses_mirror_when_provider_fails(tmp_path: Path, monkeypatch) -> None:
+    payload = [{"OBJECT_NAME": "MIRROR SAT", "NORAD_CAT_ID": 54321}]
+    client = CelestrakClient(cache_directory=tmp_path)
+
+    def fail_provider(group: str):
+        raise __import__("httpx").ConnectError("provider unavailable")
+
+    monkeypatch.setattr(client, "_download_group", fail_provider)
+    monkeypatch.setattr(client, "_download_mirror", lambda group: payload)
+
+    assert client.load_group("VISUAL") == payload
+    assert client._read_cache(client._cache_path("VISUAL")) == payload

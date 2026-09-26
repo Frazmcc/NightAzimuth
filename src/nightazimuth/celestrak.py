@@ -10,6 +10,7 @@ import httpx
 
 
 CELESTRAK_GP_URL = "https://celestrak.org/NORAD/elements/gp.php"
+SATVISOR_MIRROR_URL = "https://raw.githubusercontent.com/satvisorcom/satvisor-data/master/celestrak/json/{group}.json"
 _SAFE_GROUP_RE = re.compile(r"^[A-Z0-9_-]{1,64}$")
 
 
@@ -47,6 +48,10 @@ class CelestrakClient:
             # successful cache, use it; otherwise stop and surface the server message.
             if cache_path.exists():
                 return self._read_cache(cache_path)
+            mirror_data = self._download_mirror(normalized_group)
+            if mirror_data is not None:
+                self._write_cache(cache_path, mirror_data)
+                return mirror_data
 
             response_text = exc.response.text.strip()
             detail = response_text[:500] if response_text else str(exc)
@@ -58,12 +63,30 @@ class CelestrakClient:
         except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
             if cache_path.exists():
                 return self._read_cache(cache_path)
+            mirror_data = self._download_mirror(normalized_group)
+            if mirror_data is not None:
+                self._write_cache(cache_path, mirror_data)
+                return mirror_data
             raise CelestrakError(
                 f"Unable to load CelesTrak group {normalized_group}: {exc}"
             ) from exc
 
         self._write_cache(cache_path, data)
         return data
+
+    def _download_mirror(self, group: str) -> list[dict[str, Any]] | None:
+        try:
+            response = httpx.get(
+                SATVISOR_MIRROR_URL.format(group=group.lower()),
+                timeout=self.timeout_seconds,
+                follow_redirects=True,
+                headers={"User-Agent": "NightAzimuth/0.1 (+https://github.com/Frazmcc/NightAzimuth)", "Accept": "application/json"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+            return payload if isinstance(payload, list) else None
+        except (httpx.HTTPError, ValueError, json.JSONDecodeError):
+            return None
 
     def _download_group(self, group: str) -> list[dict[str, Any]]:
         response = httpx.get(
