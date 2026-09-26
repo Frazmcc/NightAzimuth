@@ -21,7 +21,9 @@ def sky(
     """Return the real celestial sky above an observer."""
     observer = ObserverConfig(latitude=latitude, longitude=longitude, altitude_m=altitude_m)
     try:
-        snapshot = StarFieldEngine(observer, _API_CACHE / "sky").snapshot()
+        # Share the Skyfield cache with observing guidance so de421.bsp is not
+        # downloaded/loaded independently by two hosted API paths.
+        snapshot = StarFieldEngine(observer, _API_CACHE / "skyfield").snapshot()
     except (OSError, ValueError, KeyError) as exc:
         raise HTTPException(status_code=503, detail="Celestial sky is temporarily unavailable") from exc
     return {
