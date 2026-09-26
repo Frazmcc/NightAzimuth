@@ -19,6 +19,9 @@ MODERN_SKYCULTURE_URL = (
     "skycultures/modern_st/index.json"
 )
 
+FORCED_STAR_NAMES: dict[int, str] = {91262: "Vega"}
+
+
 GALAXY_CATALOGUE: tuple[tuple[str, float, float], ...] = (
     ("Andromeda Galaxy (M31)", 0.7123056, 41.26917),
     ("Triangulum Galaxy (M33)", 1.5641389, 30.66028),
@@ -183,7 +186,7 @@ class StarFieldEngine:
                     azimuth_deg=position[0],
                     elevation_deg=position[1],
                     magnitude=magnitude,
-                    name=proper_names.get(hip_id),
+                    name=proper_names.get(hip_id) or FORCED_STAR_NAMES.get(hip_id),
                 )
             )
 
