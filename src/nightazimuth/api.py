@@ -28,7 +28,7 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://nightazimuth.bismo.me"],
+    allow_origins=["https://nightazimuth.co.uk"],
     allow_credentials=False,
     allow_methods=["GET"],
     allow_headers=["Accept"],
