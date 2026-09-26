@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from skyfield.api import EarthSatellite, load, wgs84
-from skyfield.positionlib import build_position
 
 from .config import ObserverConfig
 
@@ -42,37 +41,28 @@ class SatelliteTracker:
 
         utc_moment = moment.astimezone(timezone.utc)
         t = self._timescale.from_datetime(utc_moment)
-        fields_list = list(elements)
-        if not fields_list:
-            return []
-
-        # Skyfield can propagate an array of satellites in one SGP4 operation.  This
-        # is substantially faster than building a topocentric position separately
-        # for every object in CelesTrak ACTIVE on each web request.
-        satellites = [EarthSatellite.from_omm(self._timescale, fields) for fields in fields_list]
-        geocentric = satellites[0].at(t) if len(satellites) == 1 else None
-        if geocentric is None:
-            import numpy as np
-
-            positions = [satellite.at(t) for satellite in satellites]
-            geocentric = build_position(
-                np.column_stack([position.position.au for position in positions]),
-                np.column_stack([position.velocity.au_per_d for position in positions]),
-                t=t,
-                center=399,
-            )
-
-        observer_at = self._observer_position.at(t)
-        topocentric = geocentric - observer_at
-        altitudes, azimuths, distances = topocentric.altaz()
-        altitude_values = np.atleast_1d(altitudes.degrees) if len(satellites) > 1 else [float(altitudes.degrees)]
-        azimuth_values = np.atleast_1d(azimuths.degrees) if len(satellites) > 1 else [float(azimuths.degrees)]
-        distance_values = np.atleast_1d(distances.km) if len(satellites) > 1 else [float(distances.km)]
         results: list[SatellitePosition] = []
-        for fields, satellite, elevation_deg, azimuth_deg, range_km in zip(fields_list, satellites, altitude_values, azimuth_values, distance_values, strict=True):
-            elevation_deg = float(elevation_deg)
+
+        for fields in elements:
+            satellite = EarthSatellite.from_omm(self._timescale, fields)
+            difference = satellite - self._observer_position
+            topocentric = difference.at(t)
+            altitude, azimuth, distance = topocentric.altaz()
+
+            elevation_deg = float(altitude.degrees)
             if elevation_deg < minimum_elevation_deg:
                 continue
-            results.append(SatellitePosition(name=str(fields.get("OBJECT_NAME") or satellite.name or "UNKNOWN"),norad_id=str(fields.get("NORAD_CAT_ID") or ""),azimuth_deg=float(azimuth_deg) % 360.0,elevation_deg=elevation_deg,range_km=float(range_km)))
+
+            name = str(fields.get("OBJECT_NAME") or satellite.name or "UNKNOWN")
+            norad_id = str(fields.get("NORAD_CAT_ID") or "")
+            results.append(
+                SatellitePosition(
+                    name=name,
+                    norad_id=norad_id,
+                    azimuth_deg=float(azimuth.degrees) % 360.0,
+                    elevation_deg=elevation_deg,
+                    range_km=float(distance.km),
+                )
+            )
 
         return sorted(results, key=lambda item: item.elevation_deg, reverse=True)
