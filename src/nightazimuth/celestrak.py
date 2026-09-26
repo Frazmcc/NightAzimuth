@@ -24,7 +24,7 @@ class CelestrakClient:
         cache_max_age_minutes: int = 120,
         timeout_seconds: float = 30.0,
     ) -> None:
-        self.cache_directory = cache_directory
+        self.cache_directory = cache_directory.resolve()
         self.cache_max_age_minutes = cache_max_age_minutes
         self.timeout_seconds = timeout_seconds
 
@@ -83,8 +83,18 @@ class CelestrakClient:
         return payload
 
     def _cache_path(self, group: str) -> Path:
+        # Keep every cache file beneath the configured cache root even if this
+        # helper is called directly. load_group() also validates provider group
+        # names, but the path boundary is enforced here at the filesystem sink.
+        if not _SAFE_GROUP_RE.fullmatch(group):
+            raise ValueError(
+                "CelesTrak group may contain only letters, numbers, hyphens, and underscores"
+            )
         filename = f"celestrak_{group.lower()}.json"
-        return self.cache_directory.joinpath(filename)
+        candidate = (self.cache_directory / filename).resolve()
+        if not candidate.is_relative_to(self.cache_directory):
+            raise ValueError("CelesTrak cache path escapes the configured cache directory")
+        return candidate
 
     def _cache_is_fresh(self, path: Path) -> bool:
         if not path.exists():
