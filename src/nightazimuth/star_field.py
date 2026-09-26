@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 from itertools import pairwise
 from pathlib import Path
 from typing import Any
@@ -113,6 +114,39 @@ def parse_modern_skyculture(
     return names, tuple(edges)
 
 
+@lru_cache(maxsize=4)
+def _load_static_resources(cache_directory: str) -> tuple[Any, dict[int, str], tuple[tuple[str, int, int], ...], Any, Any]:
+    """Load immutable sky data once per process instead of on every API refresh."""
+
+    loader = Loader(cache_directory, verbose=False, expire=False)
+    with loader.open(hipparcos.URL) as handle:
+        catalogue = hipparcos.load_dataframe(handle)
+    catalogue = catalogue[catalogue["ra_degrees"].notnull()]
+
+    with loader.open(
+        MODERN_SKYCULTURE_URL,
+        filename="stellarium-modern-st-index.json",
+    ) as handle:
+        skyculture = json.load(handle)
+    proper_names, edges = parse_modern_skyculture(skyculture)
+
+    ephemeris = loader("de421.bsp")
+    timescale = loader.timescale()
+    return catalogue, proper_names, edges, ephemeris, timescale
+
+
+@lru_cache(maxsize=16)
+def _prepared_catalogue(cache_directory: str, limiting_magnitude: float) -> tuple[Any, frozenset[int]]:
+    """Cache the filtered Hipparcos rows used by a given magnitude profile."""
+
+    catalogue, _proper_names, edges, _ephemeris, _timescale = _load_static_resources(cache_directory)
+    bright = catalogue[catalogue["magnitude"] <= limiting_magnitude]
+    edge_ids = {hip_id for _abbr, start, end in edges for hip_id in (start, end)}
+    wanted_ids = {int(value) for value in bright.index} | edge_ids
+    selected_ids = catalogue.index.intersection(sorted(wanted_ids))
+    return catalogue.loc[selected_ids], frozenset(int(value) for value in bright.index)
+
+
 class StarFieldEngine:
     """Calculate real topocentric stars, planets and galaxy references for an observer."""
 
@@ -126,7 +160,18 @@ class StarFieldEngine:
         self.observer = observer
         self.cache_directory = Path(cache_directory)
         self.limiting_magnitude = limiting_magnitude
-        self._loader = Loader(str(self.cache_directory), verbose=False, expire=False)
+        self._cache_key = str(self.cache_directory.resolve())
+        (
+            self._catalogue,
+            self._proper_names,
+            self._edges,
+            self._ephemeris,
+            self._timescale,
+        ) = _load_static_resources(self._cache_key)
+        self._selected, self._bright_ids = _prepared_catalogue(
+            self._cache_key,
+            self.limiting_magnitude,
+        )
 
     def snapshot(self, *, at: datetime | None = None) -> StarFieldSnapshot:
         moment = at or datetime.now(UTC)
@@ -134,59 +179,39 @@ class StarFieldEngine:
             raise ValueError("Star-field time must be timezone-aware")
         moment = moment.astimezone(UTC)
 
-        with self._loader.open(hipparcos.URL) as handle:
-            catalogue = hipparcos.load_dataframe(handle)
-        catalogue = catalogue[catalogue["ra_degrees"].notnull()]
-
-        with self._loader.open(
-            MODERN_SKYCULTURE_URL,
-            filename="stellarium-modern-st-index.json",
-        ) as handle:
-            skyculture = json.load(handle)
-        proper_names, edges = parse_modern_skyculture(skyculture)
-
-        bright = catalogue[catalogue["magnitude"] <= self.limiting_magnitude]
-        edge_ids = {hip_id for _abbr, start, end in edges for hip_id in (start, end)}
-        wanted_ids = {int(value) for value in bright.index} | edge_ids
-        selected_ids = catalogue.index.intersection(sorted(wanted_ids))
-        selected = catalogue.loc[selected_ids]
-
-        ephemeris = self._loader("de421.bsp")
-        earth = ephemeris["earth"]
+        earth = self._ephemeris["earth"]
         topocentric_observer = earth + wgs84.latlon(
             self.observer.latitude,
             self.observer.longitude,
             elevation_m=self.observer.altitude_m,
         )
-        timescale = self._loader.timescale()
-        t = timescale.from_datetime(moment)
+        t = self._timescale.from_datetime(moment)
 
-        apparent = topocentric_observer.at(t).observe(Star.from_dataframe(selected)).apparent()
+        apparent = topocentric_observer.at(t).observe(Star.from_dataframe(self._selected)).apparent()
         altitude, azimuth, _distance = apparent.altaz()
 
         position_map: dict[int, tuple[float, float]] = {}
         for hip_id, az_deg, alt_deg in zip(
-            selected.index,
+            self._selected.index,
             azimuth.degrees,
             altitude.degrees,
             strict=True,
         ):
             position_map[int(hip_id)] = (float(az_deg) % 360.0, float(alt_deg))
 
-        bright_ids = {int(value) for value in bright.index}
         stars: list[StarPoint] = []
-        for hip_id in bright_ids:
+        for hip_id in self._bright_ids:
             position = position_map.get(hip_id)
             if position is None or position[1] < 0.0:
                 continue
-            magnitude = float(catalogue.at[hip_id, "magnitude"])
+            magnitude = float(self._catalogue.at[hip_id, "magnitude"])
             stars.append(
                 StarPoint(
                     hip_id=hip_id,
                     azimuth_deg=position[0],
                     elevation_deg=position[1],
                     magnitude=magnitude,
-                    name=proper_names.get(hip_id) or FORCED_STAR_NAMES.get(hip_id),
+                    name=self._proper_names.get(hip_id) or FORCED_STAR_NAMES.get(hip_id),
                 )
             )
 
@@ -202,7 +227,7 @@ class StarFieldEngine:
         )
         planet_points: list[PlanetPoint] = []
         for display_name, target_name in planet_targets:
-            apparent_planet = topocentric_observer.at(t).observe(ephemeris[target_name]).apparent()
+            apparent_planet = topocentric_observer.at(t).observe(self._ephemeris[target_name]).apparent()
             planet_altitude, planet_azimuth, _planet_distance = apparent_planet.altaz()
             elevation = float(planet_altitude.degrees)
             if elevation < 0.0:
@@ -233,7 +258,7 @@ class StarFieldEngine:
             )
 
         lines: list[ConstellationLine] = []
-        for abbreviation, start_id, end_id in edges:
+        for abbreviation, start_id, end_id in self._edges:
             start = position_map.get(start_id)
             end = position_map.get(end_id)
             if start is None or end is None:

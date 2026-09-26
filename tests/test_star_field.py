@@ -1,3 +1,9 @@
+from io import StringIO
+import json
+
+import pandas as pd
+
+import nightazimuth.star_field as star_field
 from nightazimuth.star_field import GALAXY_CATALOGUE, parse_modern_skyculture
 from nightazimuth.star_live_view import automatic_star_label_limit, star_marker_radius
 
@@ -25,6 +31,45 @@ def test_parse_modern_skyculture_extracts_names_and_polyline_edges() -> None:
         ("Tst", 2, 3),
         ("Tst", 4, 5),
     )
+
+
+def test_static_sky_resources_are_loaded_once_per_process_cache(tmp_path, monkeypatch) -> None:
+    loader_creations = 0
+
+    class FakeLoader:
+        def __init__(self, cache_directory, *, verbose, expire):
+            nonlocal loader_creations
+            loader_creations += 1
+
+        def open(self, url, filename=None):
+            if url == star_field.MODERN_SKYCULTURE_URL:
+                return StringIO(json.dumps({"common_names": {}, "constellations": []}))
+            return StringIO("unused")
+
+        def __call__(self, filename):
+            return object()
+
+        def timescale(self):
+            return object()
+
+    monkeypatch.setattr(star_field, "Loader", FakeLoader)
+    monkeypatch.setattr(
+        star_field.hipparcos,
+        "load_dataframe",
+        lambda _handle: pd.DataFrame(
+            {"ra_degrees": [10.0, None], "magnitude": [1.0, 2.0]},
+            index=[1, 2],
+        ),
+    )
+    star_field._load_static_resources.cache_clear()
+
+    cache_key = str(tmp_path.resolve())
+    first = star_field._load_static_resources(cache_key)
+    second = star_field._load_static_resources(cache_key)
+
+    assert first is second
+    assert loader_creations == 1
+    star_field._load_static_resources.cache_clear()
 
 
 def test_brighter_stars_receive_larger_markers() -> None:
