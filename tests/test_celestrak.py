@@ -51,3 +51,9 @@ def test_provider_timeout_defaults_to_ten_seconds(tmp_path: Path) -> None:
     client = CelestrakClient(cache_directory=tmp_path)
 
     assert client.timeout_seconds == 10.0
+
+
+def test_default_cache_window_exceeds_provider_update_interval(tmp_path: Path) -> None:
+    client = CelestrakClient(cache_directory=tmp_path)
+
+    assert client.cache_max_age_minutes == 125

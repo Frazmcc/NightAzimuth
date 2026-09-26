@@ -21,7 +21,7 @@ class CelestrakClient:
     def __init__(
         self,
         cache_directory: Path,
-        cache_max_age_minutes: int = 120,
+        cache_max_age_minutes: int = 125,
         timeout_seconds: float = 10.0,
     ) -> None:
         self.cache_directory = cache_directory.resolve()
