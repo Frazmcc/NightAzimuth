@@ -18,7 +18,7 @@ def weather(
     latitude: float = Query(ge=-90.0, le=90.0),
     longitude: float = Query(ge=-180.0, le=180.0),
     altitude_m: float = Query(default=0.0),
-    forecast_points: int = Query(default=4, ge=1, le=24),
+    forecast_points: int = Query(default=4, ge=1, le=168),
 ) -> dict[str, object]:
     """Return the current/next weather point and a bounded point forecast."""
 
