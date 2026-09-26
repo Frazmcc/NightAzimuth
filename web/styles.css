@@ -5,3 +5,5 @@
 
 /* Keep Live Sky layer switches on one horizontal row on desktop. */
 .layer-control{display:flex;flex-wrap:nowrap;align-items:center;gap:.9rem;width:100%;white-space:nowrap}.layer-control label{flex:0 0 auto}.layer-control>span{flex:0 0 auto}@media(max-width:760px){.layer-control{overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:.25rem;scrollbar-width:thin}}
+
+.contact-button{width:100%;text-align:left;background:transparent;border:0;color:inherit;cursor:pointer;font:inherit}.contact-button:hover,.contact-button:focus-visible{background:rgba(66,217,255,.10);outline:1px solid rgba(66,217,255,.35)}
