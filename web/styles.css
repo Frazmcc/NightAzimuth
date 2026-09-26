@@ -7,3 +7,5 @@
 .layer-control{display:flex;flex-wrap:nowrap;align-items:center;gap:.9rem;width:100%;white-space:nowrap}.layer-control label{flex:0 0 auto}.layer-control>span{flex:0 0 auto}@media(max-width:760px){.layer-control{overflow-x:auto;overscroll-behavior-x:contain;padding-bottom:.25rem;scrollbar-width:thin}}
 
 .contact-button{width:100%;text-align:left;background:transparent;border:0;color:inherit;cursor:pointer;font:inherit}.contact-button:hover,.contact-button:focus-visible{background:rgba(66,217,255,.10);outline:1px solid rgba(66,217,255,.35)}
+
+.settings-button{background:transparent;border:1px solid rgba(111,211,238,.35);color:inherit;padding:.45rem .75rem;cursor:pointer}.settings-panel{position:fixed;z-index:20;top:5.5rem;right:1.5rem;width:min(360px,calc(100vw - 3rem));padding:1rem}.settings-panel form{display:grid;gap:.75rem}.settings-panel label{display:grid;gap:.3rem}.settings-panel input{width:100%}.settings-panel>button{float:right;background:transparent;border:0;color:inherit;font-size:1.4rem;cursor:pointer}\n

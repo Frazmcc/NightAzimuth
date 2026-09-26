@@ -47,6 +47,8 @@ form.addEventListener("submit",event=>{event.preventDefault();refresh().catch(()
 
 // Load a useful default sky immediately; users can replace these coordinates at any time.
 const latInput=document.querySelector("#latitude");const lonInput=document.querySelector("#longitude");
-if(!latInput.value)latInput.value="55.764";if(!lonInput.value)lonInput.value="-4.177";
+const settingsPanel=document.querySelector("#settings-panel");const settingsLat=document.querySelector("#settings-latitude");const settingsLon=document.querySelector("#settings-longitude");document.querySelector("#settings-open").addEventListener("click",()=>{settingsLat.value=latInput.value;settingsLon.value=lonInput.value;settingsPanel.hidden=false});document.querySelector("#settings-close").addEventListener("click",()=>settingsPanel.hidden=true);document.querySelector("#settings-location-form").addEventListener("submit",event=>{event.preventDefault();latInput.value=settingsLat.value;lonInput.value=settingsLon.value;localStorage.setItem("nightazimuth.latitude",settingsLat.value);localStorage.setItem("nightazimuth.longitude",settingsLon.value);settingsPanel.hidden=true;refresh().catch(()=>{refreshInFlight=false;statusEl.textContent="API UNAVAILABLE"})});
+
+if(!latInput.value)latInput.value=localStorage.getItem("nightazimuth.latitude")||"55.764";if(!lonInput.value)lonInput.value=localStorage.getItem("nightazimuth.longitude")||"-4.177";
 refresh().catch(()=>{refreshInFlight=false;statusEl.textContent="API UNAVAILABLE"});
 setInterval(()=>refresh().catch(()=>{refreshInFlight=false;statusEl.textContent="API UNAVAILABLE"}),60000);
