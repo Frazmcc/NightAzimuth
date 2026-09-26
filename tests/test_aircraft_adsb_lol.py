@@ -36,7 +36,7 @@ def test_adsb_lol_normalises_units_ages_and_identity_metadata():
     }
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert "/dist/54" in str(request.url)
+        assert request.url.path == "/v2/point/51.500000/-0.100000/54"
         return httpx.Response(200, json=payload)
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
