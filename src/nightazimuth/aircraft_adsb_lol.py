@@ -41,9 +41,12 @@ class AdsbLolProvider:
             raise ValueError("radius_km must be a positive finite number")
 
         radius_nm = max(1, min(250, round(radius_km / 1.852)))
+        # /v2/point is the provider's documented point-radius endpoint.  The older
+        # /v2/lat/.../lon/.../dist/... alias is still documented, but using the
+        # canonical endpoint keeps NightAzimuth aligned with the current schema.
         url = (
-            "https://api.adsb.lol/v2/lat/"
-            f"{observer.latitude_deg:.6f}/lon/{observer.longitude_deg:.6f}/dist/{radius_nm}"
+            "https://api.adsb.lol/v2/point/"
+            f"{observer.latitude_deg:.6f}/{observer.longitude_deg:.6f}/{radius_nm}"
         )
         fetched_at = datetime.now(timezone.utc)
         owns_client = self._client is None
@@ -93,14 +96,32 @@ class AdsbLolProvider:
 
 def _normalise_record(record: dict[str, Any], snapshot_time: datetime) -> AircraftObservation | None:
     icao24 = str(record.get("hex") or "").strip().lower()
+    if not icao24:
+        return None
+
     lat = _finite(record.get("lat"))
     lon = _finite(record.get("lon"))
-    if not icao24 or lat is None or lon is None:
+    seen_pos = _nonnegative(record.get("seen_pos"))
+
+    # The current adsb.lol V2 schema can supply a recent `lastPosition` object
+    # when the aircraft record has no top-level lat/lon.  Those contacts are
+    # useful for identification and were previously discarded completely.
+    last_position = record.get("lastPosition")
+    if (lat is None or lon is None) and isinstance(last_position, dict):
+        fallback_lat = _finite(last_position.get("lat"))
+        fallback_lon = _finite(last_position.get("lon"))
+        if fallback_lat is not None and fallback_lon is not None:
+            lat = fallback_lat
+            lon = fallback_lon
+            fallback_seen_pos = _nonnegative(last_position.get("seen_pos"))
+            if fallback_seen_pos is not None:
+                seen_pos = fallback_seen_pos
+
+    if lat is None or lon is None:
         return None
     if not -90.0 <= lat <= 90.0 or not -180.0 <= lon <= 180.0:
         return None
 
-    seen_pos = _nonnegative(record.get("seen_pos"))
     if seen_pos is None:
         seen_pos = _nonnegative(record.get("seen")) or 0.0
     seen = _nonnegative(record.get("seen"))
