@@ -25,12 +25,14 @@ def test_satellite_endpoint_validates_coordinates() -> None:
 
 
 def test_satellite_response_contract(monkeypatch) -> None:
+    requested_groups: list[str] = []
+
     class FakeClient:
         def __init__(self, *_args, **_kwargs) -> None:
             pass
 
         def load_group(self, group: str):
-            assert group == "VISUAL"
+            requested_groups.append(group)
             return [{"OBJECT_NAME": "TEST SAT", "NORAD_CAT_ID": "12345"}]
 
     class FakeTracker:
@@ -39,7 +41,14 @@ def test_satellite_response_contract(monkeypatch) -> None:
             assert observer.longitude == -4.25
 
         def positions_above_horizon(self, elements, *, minimum_elevation_deg, at):
+            elements = list(elements)
+            assert len(elements) == 1
             assert elements[0]["OBJECT_NAME"] == "TEST SAT"
+            assert set(elements[0]["_nightazimuth_groups"]) == {
+                "VISUAL",
+                "LAST-30-DAYS",
+                "STATIONS",
+            }
             assert minimum_elevation_deg == 10.0
             assert at.tzinfo is not None
             return [
@@ -61,10 +70,14 @@ def test_satellite_response_contract(monkeypatch) -> None:
         altitude_m=50.0,
         minimum_elevation_deg=10.0,
         group="VISUAL",
+        identification_detail=True,
     )
 
-    assert payload["source"] == "CelesTrak"
+    assert set(requested_groups) == {"VISUAL", "LAST-30-DAYS", "STATIONS"}
+    assert payload["source"] == "CelesTrak orbital data"
     assert payload["group"] == "VISUAL"
+    assert payload["groups"] == ["VISUAL", "LAST-30-DAYS", "STATIONS"]
+    assert payload["catalog_count"] == 1
     assert payload["count"] == 1
     assert payload["observer"] == {
         "latitude_deg": 55.86,
@@ -78,8 +91,52 @@ def test_satellite_response_contract(monkeypatch) -> None:
             "azimuth_deg": 180.0,
             "elevation_deg": 45.0,
             "range_km": 500.0,
+            "object_id": None,
+            "launch_id": None,
+            "category": "Satellite",
+            "source_groups": (),
+            "epoch_utc": None,
+            "inclination_deg": None,
+            "period_minutes": None,
+            "eccentricity": None,
+            "track": (),
         }
     ]
+
+
+def test_satellite_detail_can_be_disabled(monkeypatch) -> None:
+    requested_groups: list[str] = []
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def load_group(self, group: str):
+            requested_groups.append(group)
+            return []
+
+    class FakeTracker:
+        def __init__(self, _observer) -> None:
+            pass
+
+        def positions_above_horizon(self, elements, *, minimum_elevation_deg, at):
+            assert list(elements) == []
+            return []
+
+    monkeypatch.setattr("nightazimuth.api_satellites.CelestrakClient", FakeClient)
+    monkeypatch.setattr("nightazimuth.api_satellites.SatelliteTracker", FakeTracker)
+
+    payload = satellites(
+        latitude=55.86,
+        longitude=-4.25,
+        altitude_m=0.0,
+        minimum_elevation_deg=0.0,
+        group="VISUAL",
+        identification_detail=False,
+    )
+
+    assert requested_groups == ["VISUAL"]
+    assert payload["groups"] == ["VISUAL"]
 
 
 def test_satellite_failure_does_not_expose_provider_detail(monkeypatch) -> None:
