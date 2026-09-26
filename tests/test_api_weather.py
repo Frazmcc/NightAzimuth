@@ -35,6 +35,22 @@ def test_weather_endpoint_validates_forecast_count() -> None:
     assert response.status_code == 422
 
 
+def test_weather_endpoint_accepts_seven_day_hourly_count(monkeypatch) -> None:
+    point = _point()
+    snapshot = WeatherSnapshot(source_name="test", fetched_at_utc=point.time_utc, source_updated_at_utc=point.time_utc, points=(point,))
+
+    class FakeProvider:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def load(self, observer):
+            return snapshot
+
+    monkeypatch.setattr("nightazimuth.api_weather.MetNorwayWeatherProvider", FakeProvider)
+    response = TestClient(app).get("/api/v1/weather?latitude=55.86&longitude=-4.25&forecast_points=168")
+    assert response.status_code == 200
+
+
 def test_weather_response_contract(monkeypatch) -> None:
     point = _point()
     snapshot = WeatherSnapshot(
