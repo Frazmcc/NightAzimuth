@@ -30,7 +30,7 @@ def test_satellite_response_contract(monkeypatch) -> None:
             pass
 
         def load_group(self, group: str):
-            assert group == "VISUAL"
+            assert group == "ACTIVE"
             return [{"OBJECT_NAME": "TEST SAT", "NORAD_CAT_ID": "12345"}]
 
     class FakeTracker:
@@ -60,11 +60,11 @@ def test_satellite_response_contract(monkeypatch) -> None:
         longitude=-4.25,
         altitude_m=50.0,
         minimum_elevation_deg=10.0,
-        group="VISUAL",
+        group="ACTIVE",
     )
 
     assert payload["source"] == "CelesTrak"
-    assert payload["group"] == "VISUAL"
+    assert payload["group"] == "ACTIVE"
     assert payload["count"] == 1
     assert payload["observer"] == {
         "latitude_deg": 55.86,
