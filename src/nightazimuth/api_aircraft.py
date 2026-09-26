@@ -144,9 +144,9 @@ def _contact_payload(contact: object, *, route_provider: AdsbLolRouteProvider) -
     identity = aircraft_display_identity(contact)
     route = route_provider.lookup(contact.callsign)
     payload["route"] = None if route is None else {
-        "departure": asdict(route.departure) if route.departure is not None else None,
-        "arrival": asdict(route.arrival) if route.arrival is not None else None,
-        "intermediate_airports": [asdict(airport) for airport in route.intermediate_airports],
+        "departure": _airport_payload(route.departure) if route.departure is not None else None,
+        "arrival": _airport_payload(route.arrival) if route.arrival is not None else None,
+        "intermediate_airports": [_airport_payload(airport) for airport in route.intermediate_airports],
         "airline_code": route.airline_code,
         "source": route.source_label,
     }
@@ -157,4 +157,11 @@ def _contact_payload(contact: object, *, route_provider: AdsbLolRouteProvider) -
         "squawk": squawk_display(contact),
         "special": bool(identity.role or contact.squawk_alert is not None or contact.military),
     }
+    return payload
+
+
+def _airport_payload(airport: object) -> dict[str, object]:
+    payload = asdict(airport)
+    payload["display_code"] = airport.display_code
+    payload["display_country"] = airport.display_country
     return payload
