@@ -23,7 +23,7 @@ def satellites(
     longitude: float = Query(ge=-180.0, le=180.0),
     altitude_m: float = Query(default=0.0),
     minimum_elevation_deg: float = Query(default=0.0, ge=0.0, le=90.0),
-    group: str = Query(default="ACTIVE", min_length=1, max_length=64),
+    group: str = Query(default="VISUAL", min_length=1, max_length=64),
 ) -> dict[str, object]:
     """Return current satellites above the observer's requested horizon."""
 
