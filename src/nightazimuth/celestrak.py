@@ -90,7 +90,11 @@ class CelestrakClient:
             raise ValueError(
                 "CelesTrak group may contain only letters, numbers, hyphens, and underscores"
             )
-        filename = f"celestrak_{group.lower()}.json"
+        # Convert the validated provider identifier to a fixed digest before it
+        # reaches pathlib. No caller-controlled characters are used in the path.
+        import hashlib
+        cache_key = hashlib.sha256(group.encode("ascii")).hexdigest()
+        filename = f"celestrak_{cache_key}.json"
         candidate = (self.cache_directory / filename).resolve()
         if not candidate.is_relative_to(self.cache_directory):
             raise ValueError("CelesTrak cache path escapes the configured cache directory")
