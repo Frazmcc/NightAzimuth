@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from .aircraft import AircraftObserver, AircraftSnapshotState
 from .aircraft_adsb_lol import AdsbLolProvider
 from .aircraft_live import build_sky_aircraft
+from .aircraft_display import aircraft_display_identity, squawk_display
 from .aircraft_motion import AircraftMotionHistory
 
 router = APIRouter(prefix="/api/v1/aircraft", tags=["aircraft"])
@@ -63,7 +64,7 @@ def aircraft(
         "radius_km": radius_km,
         "minimum_elevation_deg": minimum_elevation_deg,
         "count": len(contacts),
-        "aircraft": [asdict(contact) for contact in contacts],
+        "aircraft": [_contact_payload(contact) for contact in contacts],
         "geojson": _contacts_geojson(
             contacts=contacts,
             snapshot=snapshot,
@@ -134,3 +135,16 @@ def _contacts_geojson(
             "count": len(features),
         },
     }
+
+
+def _contact_payload(contact: object) -> dict[str, object]:
+    payload = asdict(contact)
+    identity = aircraft_display_identity(contact)
+    payload["display"] = {
+        "make_model": identity.make_model,
+        "capacity": identity.capacity,
+        "role": identity.role,
+        "squawk": squawk_display(contact),
+        "special": bool(identity.role or contact.squawk_alert is not None or contact.military),
+    }
+    return payload
