@@ -16,23 +16,6 @@
       <div><button id="settings-open" class="settings-button" type="button">Settings</button><div id="api-status" class="status" role="status" aria-live="polite">STARTING</div></div>
     </header>
 
-    <aside class="observer-panel glass">
-      <p class="eyebrow">OBSERVER</p>
-      <form id="observer-form">
-        <label>Latitude<input id="latitude" type="number" step="any" min="-90" max="90" required></label>
-        <label>Longitude<input id="longitude" type="number" step="any" min="-180" max="180" required></label>
-        <button>Refresh sky</button>
-      </form>
-      <div class="telemetry">
-        <div><span>Aircraft</span><strong id="aircraft-count">—</strong></div>
-        <div><span>Satellites</span><strong id="satellite-count">—</strong></div>
-        <div><span>Weather</span><strong id="weather-value">—</strong></div>
-        <div><span>Observing</span><strong id="observing-value">—</strong></div>
-      </div>
-      <p id="weather-detail" class="muted">Waiting for API configuration.</p>
-      <p id="observing-detail" class="muted">Waiting for API configuration.</p>
-    </aside>
-
     <aside class="contacts-panel glass">
       <div class="section-head"><div><p class="eyebrow">LIVE CONTACTS</p><h2>Aircraft</h2></div><span id="updated">Not loaded</span></div>
       <p id="aircraft-detail" class="muted">Waiting for API configuration.</p>
