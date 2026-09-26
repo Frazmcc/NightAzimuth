@@ -23,20 +23,13 @@
       <div id="contacts" class="contacts" aria-live="polite"><p>No contacts loaded.</p></div>
     </aside>
 
-    <section class="command-dock glass" aria-label="Live sky controls">
-      <form id="bearing-form" class="bearing-control">
-        <label for="bearing-input">FACING / AZIMUTH</label>
-        <div><input id="bearing-input" type="number" min="0" max="359" step="1" value="0" inputmode="decimal" aria-describedby="bearing-help"><span>°</span><button type="submit">Apply</button></div>
-        <small id="bearing-help">0°–359° · 0° is north</small>
-      </form>
-      <form id="fov-form" class="fov-control">
-        <label for="fov-input">FIELD OF VIEW</label>
-        <div><input id="fov-input" type="number" min="5" max="180" step="1" value="120" inputmode="decimal" aria-describedby="fov-help"><span>°</span><button type="submit">Apply</button></div>
-        <small id="fov-help">5°–180° · default 120°</small>
-      </form>
-      <div class="view-readout"><span>HORIZONTAL FOV</span><strong id="fov-readout">120°</strong><small>Wheel / pinch to zoom</small></div><div class="layer-control" role="group" aria-label="Sky layers"><span>LAYERS</span><label><input type="checkbox" data-layer="stars" checked> Stars</label><label><input type="checkbox" data-layer="constellations" checked> Constellations</label><label><input type="checkbox" data-layer="galaxies" checked> Galaxies</label><label><input type="checkbox" data-layer="planets" checked> Planets</label><label><input type="checkbox" data-layer="airports" checked> Airports</label><label><input type="checkbox" data-layer="aircraft" checked> Aircraft</label><label><input type="checkbox" data-layer="satellites" checked> Satellites</label></div>
-    </section><aside id="object-inspector" class="object-inspector glass" hidden><button id="inspector-close" type="button" aria-label="Close object details">×</button><p class="eyebrow" id="inspector-type">OBJECT</p><h2 id="inspector-name">—</h2><div id="inspector-details" class="inspector-details"></div></aside>
-  <aside id="settings-panel" class="settings-panel glass" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden><div class="settings-head"><div><p class="eyebrow">SETTINGS</p><h2 id="settings-title">Observer location</h2></div><button id="settings-close" class="settings-close" type="button" aria-label="Close settings">Close</button></div><p class="muted">Set the latitude and longitude used for Live Sky.</p><form id="settings-location-form"><label>Latitude<input id="settings-latitude" type="number" step="any" min="-90" max="90" required></label><label>Longitude<input id="settings-longitude" type="number" step="any" min="-180" max="180" required></label><div class="settings-actions"><button type="submit">Save location</button><button id="settings-cancel" type="button">Close</button></div></form></aside></main>
-  <script src="./config.js?v=21.11.1"></script><script src="./app.js?v=21.11.1"></script>
+    <section class="layer-dock glass" aria-label="Sky layers"><div class="layer-control" role="group" aria-label="Sky layers"><span>LAYERS</span><label><input type="checkbox" data-layer="stars" checked> Stars</label><label><input type="checkbox" data-layer="constellations" checked> Constellations</label><label><input type="checkbox" data-layer="galaxies" checked> Galaxies</label><label><input type="checkbox" data-layer="planets" checked> Planets</label><label><input type="checkbox" data-layer="airports" checked> Airports</label><label><input type="checkbox" data-layer="aircraft" checked> Aircraft</label><label><input type="checkbox" data-layer="satellites" checked> Satellites</label></div></section><aside id="object-inspector" class="object-inspector glass" hidden><button id="inspector-close" type="button" aria-label="Close object details">×</button><p class="eyebrow" id="inspector-type">OBJECT</p><h2 id="inspector-name">—</h2><div id="inspector-details" class="inspector-details"></div></aside>
+  <aside id="settings-panel" class="settings-panel glass" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden><div class="settings-head"><div><p class="eyebrow">SETTINGS</p><h2 id="settings-title">Observer location</h2></div><button id="settings-close" class="settings-close" type="button" aria-label="Close settings">Close</button></div><p class="muted">Set observer location and Live Sky view controls.</p><form id="settings-location-form"><label>Latitude<input id="settings-latitude" type="number" step="any" min="-90" max="90" required></label><label>Longitude<input id="settings-longitude" type="number" step="any" min="-180" max="180" required></label><div class="settings-view-controls">
+<label for="bearing-input">Facing / azimuth<input id="bearing-input" type="number" min="0" max="359" step="1" value="0"></label>
+<label for="fov-input">Field of view<input id="fov-input" type="number" min="5" max="180" step="1" value="120"></label>
+<div class="settings-actions"><button id="bearing-apply" type="button">Apply facing</button><button id="fov-apply" type="button">Apply FOV</button></div>
+<p class="muted">Facing: 0° is north. FOV: 5°–180°, default 120°. Wheel / pinch still zooms.</p>
+</div><div class="settings-actions"><button type="submit">Save location</button><button id="settings-cancel" type="button">Close</button></div></form></aside></main>
+  <script src="./config.js?v=21.11.2"></script><script src="./app.js?v=21.11.2"></script>
 </body>
 </html>
