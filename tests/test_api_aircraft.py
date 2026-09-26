@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -73,6 +73,9 @@ def test_aircraft_response_contract(monkeypatch) -> None:
     payload = response.json()
     assert payload["source"]["id"] == "adsb-lol"
     assert payload["source"]["state"] == "live"
+    assert payload["source_observation_count"] == 1
+    assert payload["fresh_contact_count"] == 1
+    assert payload["maximum_position_age_seconds"] == 45.0
     assert payload["count"] == 1
     assert payload["aircraft"][0]["icao24"] == "abc123"
     assert payload["aircraft"][0]["callsign"] == "TEST1"
@@ -94,6 +97,56 @@ def test_aircraft_response_contract(monkeypatch) -> None:
     assert feature["properties"]["source_label"] == "adsb.lol"
     assert geojson["metadata"]["source"]["id"] == "adsb-lol"
     assert geojson["metadata"]["count"] == 1
+
+
+def test_recent_adsb_fix_is_not_dropped_after_prediction_window(monkeypatch) -> None:
+    now = datetime.now(UTC)
+    observation = AircraftObservation(
+        icao24="abc124",
+        callsign="RECENT1",
+        latitude_deg=55.90,
+        longitude_deg=-4.20,
+        barometric_altitude_m=3000.0,
+        geometric_altitude_m=3100.0,
+        ground_speed_mps=120.0,
+        track_deg=180.0,
+        vertical_rate_mps=0.0,
+        squawk="7000",
+        on_ground=False,
+        position_observed_at=now - timedelta(seconds=30),
+        contact_observed_at=now - timedelta(seconds=2),
+        source_id="adsb-lol",
+        source_label="adsb.lol",
+        source_kind=AircraftSourceKind.INTERNET,
+    )
+    snapshot = AircraftSnapshot(
+        observations=(observation,),
+        source_id="adsb-lol",
+        source_label="adsb.lol",
+        fetched_at=now,
+        source_observed_at=now,
+        coverage_description="bounded observer area",
+        state=AircraftSnapshotState.LIVE,
+    )
+
+    class FakeProvider:
+        def fetch_snapshot(self, observer, radius_km):
+            return snapshot
+
+    monkeypatch.setattr("nightazimuth.api_aircraft.AdsbLolProvider", FakeProvider)
+
+    response = TestClient(app).get(
+        "/api/v1/aircraft?latitude=55.86&longitude=-4.25"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["source_observation_count"] == 1
+    assert payload["count"] == 1
+    assert payload["fresh_contact_count"] == 0
+    assert payload["aircraft"][0]["icao24"] == "abc124"
+    assert payload["aircraft"][0]["position_state"] == "stale"
+    assert 29.0 <= payload["aircraft"][0]["position_age_seconds"] <= 31.0
 
 
 def test_aircraft_unavailable_returns_503(monkeypatch) -> None:

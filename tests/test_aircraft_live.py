@@ -138,3 +138,31 @@ def test_stale_prediction_can_be_exposed_for_diagnostics():
     assert len(contacts) == 1
     assert contacts[0].position_state == AircraftPositionState.STALE
     assert contacts[0].position_age_seconds == 10.0
+
+
+def test_recent_fix_survives_motion_prediction_cutoff_when_allowed():
+    contacts = build_sky_aircraft(
+        _snapshot(_observation(seconds_old=30.0)),
+        AircraftObserver(0.0, 0.0, 0.0),
+        AircraftMotionHistory(prediction_limit_seconds=15.0),
+        at=BASE,
+        include_stale=True,
+        maximum_position_age_seconds=45.0,
+    )
+
+    assert len(contacts) == 1
+    assert contacts[0].position_state == AircraftPositionState.STALE
+    assert contacts[0].position_age_seconds == 30.0
+
+
+def test_fix_older_than_display_window_is_hidden():
+    contacts = build_sky_aircraft(
+        _snapshot(_observation(seconds_old=60.0)),
+        AircraftObserver(0.0, 0.0, 0.0),
+        AircraftMotionHistory(prediction_limit_seconds=15.0),
+        at=BASE,
+        include_stale=True,
+        maximum_position_age_seconds=45.0,
+    )
+
+    assert contacts == []
