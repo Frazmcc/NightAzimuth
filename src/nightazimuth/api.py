@@ -3,17 +3,18 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.gzip import GZipMiddleware
 
 from . import __version__
 from .api_aircraft import router as aircraft_router
 from .api_airports import router as airports_router
 from .api_geojson import router as geojson_router
 from .api_observing import router as observing_router
-from .api_weather import router as weather_router
 from .api_satellites import router as satellites_router
 from .api_sky import router as sky_router
+from .api_weather import router as weather_router
 
 API_VERSION = "v1"
 MAX_QUERY_STRING_BYTES = 2048
@@ -33,6 +34,10 @@ app.add_middleware(
     allow_methods=["GET"],
     allow_headers=["Accept"],
 )
+# ACTIVE satellite responses can contain thousands of objects plus predicted
+# tracks. Compress JSON at the API boundary rather than sending the full payload
+# over the network uncompressed. Small responses such as /health are untouched.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 app.include_router(satellites_router)
 app.include_router(aircraft_router)
 app.include_router(airports_router)
