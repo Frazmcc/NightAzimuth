@@ -10,24 +10,56 @@ def test_camera_configuration_lives_inside_settings_panel() -> None:
     settings_end = HTML.index('id="forecast-screen"')
     settings_html = HTML[settings_start:settings_end]
 
-    assert 'id="camera-settings-details"' in settings_html
-    assert 'id="camera-device"' in settings_html
-    assert 'id="camera-detect"' in settings_html
-    assert 'id="camera-profile"' in settings_html
-    assert 'id="camera-focal-length"' in settings_html
+    for control_id in (
+        "camera-settings-details",
+        "camera-device",
+        "camera-detect",
+        "camera-profile",
+        "camera-focal-length",
+        "camera-sensor-width",
+        "camera-start",
+        "camera-stop",
+        "camera-capture-frame",
+        "camera-preview",
+        "camera-frame",
+    ):
+        assert f'id="{control_id}"' in settings_html
 
     live_sky_html = HTML[:settings_start]
-    assert 'id="camera-device"' not in live_sky_html
-    assert 'id="camera-detect"' not in live_sky_html
-    assert 'id="camera-profile"' not in live_sky_html
+    for control_id in (
+        "camera-device",
+        "camera-detect",
+        "camera-profile",
+        "camera-start",
+        "camera-preview",
+        "camera-frame",
+    ):
+        assert f'id="{control_id}"' not in live_sky_html
 
 
 def test_camera_permission_is_not_requested_on_page_load() -> None:
     assert 'detectButton.addEventListener("click",populateDevices)' in JS
+    assert 'startButton.addEventListener("click",startCamera)' in JS
     assert "populateDevices();" not in JS
+    assert "startCamera();" not in JS
     assert "getUserMedia({video:true,audio:false})" in JS
+    assert "activeStream=await navigator.mediaDevices.getUserMedia" in JS
 
 
 def test_a7s_profile_is_the_default_camera_profile() -> None:
     assert 'value="Sony A7S Gen 1"' in HTML
     assert '||"Sony A7S Gen 1"' in JS
+    assert 'id="camera-sensor-width"' in HTML
+    assert 'value="35.8"' in HTML
+
+
+def test_camera_stream_is_stopped_when_settings_close() -> None:
+    assert "if(settingsPanel.hidden&&activeStream)stopCamera()" in JS
+    assert 'window.addEventListener("beforeunload",stopCamera)' in JS
+
+
+def test_capture_frame_detects_bright_point_candidates_before_plate_matching() -> None:
+    assert "function detectBrightPoints" in JS
+    assert "context.getImageData" in JS
+    assert "bright point candidate" in JS
+    assert "Plate matching is the next stage." in JS
