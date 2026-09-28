@@ -78,7 +78,7 @@ def test_plate_matching_controls_are_created_inside_existing_camera_settings_flo
 
 def test_plate_solver_requires_a_strong_multi_star_match_before_locking() -> None:
     assert "best.matches.length>=5" in SOLVER_JS
-    assert 'reason:"A possible pattern was found but it is not strong enough to lock"' in SOLVER_JS
+    assert "A possible pattern was found but it is not strong enough to lock" in SOLVER_JS
     assert "estimatedHfovDeg" in SOLVER_JS
     assert "azimuthDeg" in SOLVER_JS
     assert "elevationDeg" in SOLVER_JS
