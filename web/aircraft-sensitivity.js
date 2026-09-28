@@ -52,7 +52,7 @@ getJson=async function(path,params={},options={}){
 };
 
 async function refreshAircraftFast(){
-  if(aircraftRefreshInFlight||!apiBase||!latInput.value||!lonInput.value)return;
+  if(document.hidden||aircraftRefreshInFlight||!apiBase||!latInput.value||!lonInput.value)return;
   const latitude=latInput.value,longitude=lonInput.value;
   aircraftRefreshInFlight=true;
   try{
@@ -78,6 +78,9 @@ async function refreshAircraftFast(){
   }finally{aircraftRefreshInFlight=false}
 }
 
-refreshAircraftFast();
+// app.js already performs the initial aircraft load. Starting the independent
+// 15-second cadence immediately used to duplicate that first network request.
+// Wait for the first cadence tick, and refresh promptly when a hidden tab returns.
 setInterval(refreshAircraftFast,AIRCRAFT_REFRESH_MS);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshAircraftFast()});
 })();
