@@ -76,6 +76,7 @@
     const baseGetJson=getJson;
     const responseCache=new Map();
     const inFlight=new Map();
+    const MAX_RESPONSE_CACHE=48;
     const ttlForPath=path=>path==="/api/v1/airports"?60*60*1000:
       path==="/api/v1/weather"||path==="/api/v1/observing"?5*60*1000:
       path==="/api/v1/sky"?30*1000:
@@ -90,6 +91,15 @@
       const entries=Object.entries(params||{}).sort(([a],[b])=>a.localeCompare(b));
       return `${path}?${entries.map(([key,value])=>`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&")}`;
     };
+    const storeResponse=(key,data)=>{
+      responseCache.delete(key);
+      responseCache.set(key,{storedAt:Date.now(),data});
+      while(responseCache.size>MAX_RESPONSE_CACHE){
+        const oldest=responseCache.keys().next().value;
+        if(oldest===undefined)break;
+        responseCache.delete(oldest);
+      }
+    };
 
     getJson=async function(path,params={},options={}){
       // aircraft-sensitivity.js normalises every aircraft request to the wider
@@ -103,7 +113,7 @@
       if(ttl>0&&cached&&now-cached.storedAt<ttl)return cached.data;
       if(inFlight.has(key))return inFlight.get(key);
       const request=Promise.resolve(baseGetJson(path,params,options)).then(data=>{
-        if(ttl>0)responseCache.set(key,{storedAt:Date.now(),data});
+        if(ttl>0)storeResponse(key,data);
         return data;
       }).finally(()=>inFlight.delete(key));
       inFlight.set(key,request);
