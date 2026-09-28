@@ -1,9 +1,12 @@
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
+import threading
+import time
 
 import pytest
 
-from nightazimuth.celestrak import CelestrakClient
+from nightazimuth.celestrak import CelestrakClient, _read_cached_json
 
 
 def test_fresh_cache_is_loaded_without_network(tmp_path: Path) -> None:
@@ -71,3 +74,42 @@ def test_cold_start_uses_mirror_when_provider_fails(tmp_path: Path, monkeypatch)
 
     assert client.load_group("VISUAL") == payload
     assert client._read_cache(client._cache_path("VISUAL")) == payload
+
+
+def test_parsed_cache_is_reused_while_file_is_unchanged(tmp_path: Path) -> None:
+    payload = [{"OBJECT_NAME": "ACTIVE SAT", "NORAD_CAT_ID": 10001}]
+    client = CelestrakClient(cache_directory=tmp_path)
+    cache_path = client._cache_path("ACTIVE")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(payload), encoding="utf-8")
+    _read_cached_json.cache_clear()
+
+    assert client._read_cache(cache_path) == payload
+    assert client._read_cache(cache_path) == payload
+
+    info = _read_cached_json.cache_info()
+    assert info.misses == 1
+    assert info.hits == 1
+
+
+def test_concurrent_refresh_downloads_a_group_only_once(tmp_path: Path, monkeypatch) -> None:
+    payload = [{"OBJECT_NAME": "ACTIVE SAT", "NORAD_CAT_ID": 10001}]
+    client = CelestrakClient(cache_directory=tmp_path)
+    calls = 0
+    guard = threading.Lock()
+
+    def download_once(group: str):
+        nonlocal calls
+        assert group == "ACTIVE"
+        with guard:
+            calls += 1
+        time.sleep(0.05)
+        return payload
+
+    monkeypatch.setattr(client, "_download_group", download_once)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: client.load_group("ACTIVE"), range(2)))
+
+    assert results == [payload, payload]
+    assert calls == 1
