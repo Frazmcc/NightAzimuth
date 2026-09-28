@@ -10,7 +10,8 @@ import numpy as np
 from sgp4 import omm
 from sgp4.api import Satrec, SatrecArray, jday
 from skyfield.api import load
-from skyfield.sgp4lib import TEME_to_ITRF
+from skyfield.functions import mxv, rot_z
+from skyfield.sgp4lib import theta_GMST1982
 
 from .config import ObserverConfig
 
@@ -112,7 +113,7 @@ class SatelliteTracker:
             julian_days.append(float(jd))
             julian_fractions.append(float(fraction))
 
-        errors, teme_positions, teme_velocities = SatrecArray(satrecs).sgp4(
+        errors, teme_positions, _teme_velocities = SatrecArray(satrecs).sgp4(
             np.asarray(julian_days, dtype=float),
             np.asarray(julian_fractions, dtype=float),
         )
@@ -121,16 +122,16 @@ class SatelliteTracker:
         elevation_series: list[np.ndarray] = []
         range_series: list[np.ndarray] = []
         for index, skyfield_time in enumerate(skyfield_times):
+            # Skyfield's TEME_to_ITRF() helper also computes velocity and its
+            # scalar angular-velocity cross-product does not broadcast over a
+            # satellite matrix.  For position we need only the identical PEF/
+            # ITRF z-rotation (xp=yp=0), which mxv handles natively in batch.
             r_teme = np.asarray(teme_positions[:, index, :], dtype=float).T
-            v_teme = np.asarray(teme_velocities[:, index, :], dtype=float).T
-            r_itrf, _v_itrf = TEME_to_ITRF(
+            theta, _theta_dot = theta_GMST1982(
                 skyfield_time.whole,
-                r_teme,
-                v_teme,
-                0.0,
-                0.0,
                 skyfield_time.ut1_fraction,
             )
+            r_itrf = mxv(rot_z(-theta), r_teme)
             azimuth, elevation, distance = self._topocentric_angles(np.asarray(r_itrf).T)
             azimuth_series.append(azimuth)
             elevation_series.append(elevation)
