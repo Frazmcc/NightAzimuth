@@ -20,6 +20,15 @@
     return Math.min(90,fov*usableHeight/Math.max(w,1));
   };
 
+  // Keep the rectangular projection wholly inside the physical 0°–90° sky.
+  // This prevents blank bands both below the horizon and above the zenith.
+  clampElevationCentre=function(value,w=canvas.clientWidth||innerWidth,h=canvas.clientHeight||innerHeight){
+    const halfVertical=verticalFovFor(w,h)/2;
+    const numeric=Number(value);
+    const requested=Number.isFinite(numeric)?numeric:halfVertical;
+    return Math.max(halfVertical,Math.min(90-halfVertical,requested));
+  };
+
   skyXY=function(az,el,w,h){
     const usableHeight=Math.max(160,h-cachedBottomReserve);
     const off=angularDifference(az,facing);
@@ -31,6 +40,8 @@
       usableHeight*.5-(elOff/verticalFov)*usableHeight*.9
     ];
   };
+
+  elevationCentre=clampElevationCentre(elevationCentre);
 
   // drawSky is called by pointer movement, several API completions, satellite
   // animation and resize handlers. Render at most once per animation frame so a
@@ -45,9 +56,17 @@
   };
 
   if(dock&&typeof ResizeObserver!=="undefined"){
-    new ResizeObserver(()=>{if(updateBottomReserve())drawSky()}).observe(dock);
+    new ResizeObserver(()=>{
+      if(!updateBottomReserve())return;
+      elevationCentre=clampElevationCentre(elevationCentre);
+      drawSky();
+    }).observe(dock);
   }else{
-    window.addEventListener("resize",()=>{if(updateBottomReserve())drawSky()});
+    window.addEventListener("resize",()=>{
+      if(!updateBottomReserve())return;
+      elevationCentre=clampElevationCentre(elevationCentre);
+      drawSky();
+    });
   }
 
   // De-duplicate identical API work and keep slow-changing data warm in the
@@ -90,6 +109,23 @@
       inFlight.set(key,request);
       return request;
     };
+  }
+
+  // Do not spend bandwidth/CPU refreshing the sky while the page is hidden.
+  // Browsers already throttle background animation; this also prevents the
+  // minute satellite/API refresh from doing avoidable work in a background tab.
+  if(typeof refresh==="function"){
+    const baseRefresh=refresh;
+    refresh=async function(){
+      if(document.hidden)return;
+      return baseRefresh();
+    };
+    document.addEventListener("visibilitychange",()=>{
+      if(document.hidden)return;
+      refresh().catch(()=>{
+        try{refreshInFlight=false;statusEl.textContent="API UNAVAILABLE"}catch{}
+      });
+    });
   }
 
   // Saving a new observer while a refresh is already running used to allow old
