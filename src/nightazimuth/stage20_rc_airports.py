@@ -79,15 +79,16 @@ class ResilientAirportLandmarkProvider:
         return tuple(item for item, _scheduled in landmarks[: max(0, int(limit))])
 
     def _load_records(self) -> tuple[_Airport, ...]:
+        # The provider is process-wide in the API. Keep the first cold load under
+        # the lock so simultaneous initial requests do not download and parse the
+        # same global airport CSV several times. Later reads return immediately.
         with self._lock:
             if self._records:
                 return self._records
 
-        records = self._fetch_ourairports()
-        if not records:
-            records = self._fetch_adsb_lol()
-
-        with self._lock:
+            records = self._fetch_ourairports()
+            if not records:
+                records = self._fetch_adsb_lol()
             if records:
                 self._records = records
             return self._records
