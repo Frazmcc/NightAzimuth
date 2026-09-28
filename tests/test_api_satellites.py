@@ -24,6 +24,42 @@ def test_satellite_endpoint_validates_coordinates() -> None:
     assert response.status_code == 422
 
 
+def test_satellite_endpoint_defaults_to_active_catalogue(monkeypatch) -> None:
+    requested_groups: list[str] = []
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def load_group(self, group: str):
+            requested_groups.append(group)
+            return []
+
+    class FakeTracker:
+        def __init__(self, _observer) -> None:
+            pass
+
+        def positions_above_horizon(self, elements, *, minimum_elevation_deg, at):
+            assert list(elements) == []
+            assert minimum_elevation_deg == 0.0
+            assert at.tzinfo is not None
+            return []
+
+    monkeypatch.setattr("nightazimuth.api_satellites.CelestrakClient", FakeClient)
+    monkeypatch.setattr("nightazimuth.api_satellites.SatelliteTracker", FakeTracker)
+
+    response = TestClient(app).get(
+        "/api/v1/satellites?latitude=55.86&longitude=-4.25&identification_detail=false"
+    )
+
+    assert response.status_code == 200
+    assert requested_groups == ["ACTIVE"]
+    payload = response.json()
+    assert payload["group"] == "ACTIVE"
+    assert payload["catalog_scope"] == "all active satellites"
+    assert payload["brightness_filtered"] is False
+
+
 def test_satellite_response_contract(monkeypatch) -> None:
     requested_groups: list[str] = []
 
@@ -45,6 +81,7 @@ def test_satellite_response_contract(monkeypatch) -> None:
             assert len(elements) == 1
             assert elements[0]["OBJECT_NAME"] == "TEST SAT"
             assert set(elements[0]["_nightazimuth_groups"]) == {
+                "ACTIVE",
                 "VISUAL",
                 "LAST-30-DAYS",
                 "STATIONS",
@@ -69,14 +106,16 @@ def test_satellite_response_contract(monkeypatch) -> None:
         longitude=-4.25,
         altitude_m=50.0,
         minimum_elevation_deg=10.0,
-        group="VISUAL",
+        group="ACTIVE",
         identification_detail=True,
     )
 
-    assert set(requested_groups) == {"VISUAL", "LAST-30-DAYS", "STATIONS"}
+    assert set(requested_groups) == {"ACTIVE", "VISUAL", "LAST-30-DAYS", "STATIONS"}
     assert payload["source"] == "CelesTrak orbital data"
-    assert payload["group"] == "VISUAL"
-    assert payload["groups"] == ["VISUAL", "LAST-30-DAYS", "STATIONS"]
+    assert payload["group"] == "ACTIVE"
+    assert payload["catalog_scope"] == "all active satellites"
+    assert payload["brightness_filtered"] is False
+    assert payload["groups"] == ["ACTIVE", "LAST-30-DAYS", "STATIONS", "VISUAL"]
     assert payload["catalog_count"] == 1
     assert payload["count"] == 1
     assert payload["observer"] == {
@@ -131,12 +170,32 @@ def test_satellite_detail_can_be_disabled(monkeypatch) -> None:
         longitude=-4.25,
         altitude_m=0.0,
         minimum_elevation_deg=0.0,
-        group="VISUAL",
+        group="ACTIVE",
         identification_detail=False,
     )
 
-    assert requested_groups == ["VISUAL"]
-    assert payload["groups"] == ["VISUAL"]
+    assert requested_groups == ["ACTIVE"]
+    assert payload["groups"] == ["ACTIVE"]
+
+
+def test_primary_satellite_catalogue_failure_does_not_degrade_to_small_subset(
+    monkeypatch,
+) -> None:
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        def load_group(self, group: str):
+            if group == "ACTIVE":
+                raise CelestrakError("active unavailable")
+            return [{"OBJECT_NAME": f"{group} SAT", "NORAD_CAT_ID": group}]
+
+    monkeypatch.setattr("nightazimuth.api_satellites.CelestrakClient", FakeClient)
+
+    response = TestClient(app).get("/api/v1/satellites?latitude=55&longitude=-4")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Primary satellite catalogue is temporarily unavailable"}
 
 
 def test_satellite_failure_does_not_expose_provider_detail(monkeypatch) -> None:
@@ -146,5 +205,5 @@ def test_satellite_failure_does_not_expose_provider_detail(monkeypatch) -> None:
     monkeypatch.setattr(CelestrakClient, "load_group", fail_load_group)
     response = TestClient(app).get("/api/v1/satellites?latitude=55&longitude=-4")
     assert response.status_code == 503
-    assert response.json() == {"detail": "Satellite data is temporarily unavailable"}
+    assert response.json() == {"detail": "Primary satellite catalogue is temporarily unavailable"}
     assert "private cache" not in response.text

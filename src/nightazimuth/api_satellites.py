@@ -16,7 +16,8 @@ router = APIRouter(prefix="/api/v1/satellites", tags=["satellites"])
 logger = logging.getLogger(__name__)
 
 _API_CACHE = Path("data/cache/api")
-_IDENTIFICATION_GROUPS = ("LAST-30-DAYS", "STATIONS")
+_DEFAULT_GROUP = "ACTIVE"
+_IDENTIFICATION_GROUPS = ("LAST-30-DAYS", "STATIONS", "VISUAL")
 
 
 @router.get("")
@@ -25,15 +26,21 @@ def satellites(
     longitude: float = Query(ge=-180.0, le=180.0),
     altitude_m: float = Query(default=0.0),
     minimum_elevation_deg: float = Query(default=0.0, ge=0.0, le=90.0),
-    group: str = Query(default="VISUAL", min_length=1, max_length=64),
+    group: str = Query(default=_DEFAULT_GROUP, min_length=1, max_length=64),
     identification_detail: bool = Query(default=True),
 ) -> dict[str, object]:
-    """Return known satellites above the observer's requested horizon.
+    """Return every known catalogue satellite above the requested horizon.
 
-    The default identification profile combines the bright-object catalogue with
-    recent launches and space stations.  Recent launches are important for
-    identifying newly deployed Starlink trains without paying the cost of
-    propagating the entire ACTIVE catalogue on every request.
+    The hosted Live Sky defaults to CelesTrak's ACTIVE catalogue instead of the
+    much smaller VISUAL catalogue.  No brightness or likely-visibility filter is
+    applied: if an active catalogue object is geometrically above the requested
+    horizon it is eligible to be returned and the browser decides whether it is
+    inside the user's current field of view.
+
+    Small supplementary groups are still loaded for identification metadata
+    (recent launch, station, and bright-object membership) and deduplicated by
+    catalogue identity.  Batch SGP4 propagation in SatelliteTracker keeps the
+    larger catalogue practical without reverting to per-object propagation.
     """
 
     observed_at = datetime.now(UTC)
@@ -66,8 +73,11 @@ def satellites(
                 failures.append((requested_group, exc))
                 logger.warning("Satellite group %s unavailable: %s", requested_group, exc)
 
-    if not group_payloads:
-        raise HTTPException(status_code=503, detail="Satellite data is temporarily unavailable")
+    if primary_group not in group_payloads:
+        raise HTTPException(
+            status_code=503,
+            detail="Primary satellite catalogue is temporarily unavailable",
+        )
 
     merged: dict[str, dict[str, object]] = {}
     for requested_group in requested_groups:
@@ -99,7 +109,13 @@ def satellites(
         "observed_at": observed_at.isoformat(),
         "source": "CelesTrak orbital data",
         "group": primary_group,
-        "groups": [requested_group for requested_group in requested_groups if requested_group in group_payloads],
+        "catalog_scope": "all active satellites" if primary_group == "ACTIVE" else primary_group,
+        "brightness_filtered": False,
+        "groups": [
+            requested_group
+            for requested_group in requested_groups
+            if requested_group in group_payloads
+        ],
         "unavailable_groups": [requested_group for requested_group, _exc in failures],
         "catalog_count": len(merged),
         "observer": {
