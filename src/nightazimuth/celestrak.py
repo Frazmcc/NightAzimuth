@@ -182,7 +182,9 @@ class CelestrakClient:
                 json.dump(data, handle, separators=(",", ":"))
             temp_path.replace(path)
             temp_path = None
-            _read_cached_json.cache_clear()
+            # Do not clear the whole parsed LRU here. The cache key already
+            # includes mtime and size, so this file is invalidated automatically
+            # while parsed data for the other catalogue groups stays warm.
         finally:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
