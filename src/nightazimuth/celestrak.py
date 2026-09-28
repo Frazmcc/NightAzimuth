@@ -16,14 +16,13 @@ import httpx
 CELESTRAK_GP_URL = "https://celestrak.org/NORAD/elements/gp.php"
 SATVISOR_MIRROR_URL = "https://raw.githubusercontent.com/satvisorcom/satvisor-data/master/celestrak/json/{group}.json"
 _SAFE_GROUP_RE = re.compile(r"^[A-Z0-9_-]{1,64}$")
-_CACHE_LOCKS_GUARD = threading.Lock()
-_CACHE_LOCKS: dict[str, threading.RLock] = {}
+# Public callers can choose a valid group string, so use a bounded set of lock
+# stripes instead of an ever-growing lock dictionary keyed by request input.
+_CACHE_LOCKS = tuple(threading.RLock() for _ in range(16))
 
 
 def _cache_lock(path: Path) -> threading.RLock:
-    key = str(path.resolve())
-    with _CACHE_LOCKS_GUARD:
-        return _CACHE_LOCKS.setdefault(key, threading.RLock())
+    return _CACHE_LOCKS[hash(path.resolve()) % len(_CACHE_LOCKS)]
 
 
 @lru_cache(maxsize=32)
@@ -63,8 +62,8 @@ class CelestrakClient:
 
         cache_path = self._cache_path(normalized_group)
         # A stale/missing group can be requested by several public API calls at
-        # once. Serialize work per group so only one request downloads/writes it;
-        # different groups can still load concurrently in api_satellites.
+        # once. Serialize work for a cache stripe so duplicate downloads/writes
+        # cannot race; the fixed stripes keep lock memory bounded.
         with _cache_lock(cache_path):
             if self._cache_is_fresh(cache_path):
                 return self._read_cache(cache_path)
