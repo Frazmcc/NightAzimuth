@@ -1,4 +1,7 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import threading
+import time
 
 import pytest
 
@@ -85,6 +88,38 @@ def test_weather_cache_key_is_hashed(tmp_path) -> None:
     assert path.name.startswith("met_no_")
     assert "10.0" not in path.name
     assert "20.0" not in path.name
+
+
+def test_concurrent_same_observer_weather_load_is_single_flight(tmp_path, monkeypatch) -> None:
+    observer = ObserverConfig(latitude=55.86, longitude=-4.25, altitude_m=50.0)
+    providers = [
+        MetNorwayWeatherProvider(cache_directory=tmp_path),
+        MetNorwayWeatherProvider(cache_directory=tmp_path),
+    ]
+    calls = 0
+    guard = threading.Lock()
+
+    def download(_observer):
+        nonlocal calls
+        with guard:
+            calls += 1
+        time.sleep(0.05)
+        return _payload()
+
+    for provider in providers:
+        monkeypatch.setattr(provider, "_download", download)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        snapshots = list(
+            executor.map(
+                lambda provider: provider.load(observer),
+                providers,
+            )
+        )
+
+    assert len(snapshots) == 2
+    assert calls == 1
+    assert snapshots[0].points == snapshots[1].points
 
 
 def test_web_mercator_tile_conversion_uses_synthetic_coordinates() -> None:
