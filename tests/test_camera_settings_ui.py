@@ -55,9 +55,19 @@ def test_a7s_profile_is_the_default_camera_profile() -> None:
     assert 'value="35.8"' in HTML
 
 
+def test_saved_camera_device_is_restored_without_requesting_permission() -> None:
+    assert 'const savedDeviceId=localStorage.getItem(DEVICE_KEY)||""' in JS
+    assert 'savedOption.textContent="Saved camera / capture device"' in JS
+    assert "savedOption.selected=true" in JS
+
+
 def test_camera_stream_is_stopped_when_settings_close_without_losing_solution() -> None:
     assert "if(settingsPanel.hidden&&activeStream)stopCamera({preserveSolution:true})" in JS
     assert 'window.addEventListener("beforeunload",()=>stopCamera({preserveSolution:true}))' in JS
+
+
+def test_restarting_camera_invalidates_old_alignment() -> None:
+    assert 'invalidateSolution("Camera started or restarted. Capture and solve a new frame before using alignment.")' in JS
 
 
 def test_capture_frame_reads_pixels_once_before_plate_matching() -> None:
@@ -71,15 +81,23 @@ def test_plate_matching_controls_are_created_inside_existing_camera_settings_flo
     assert 'solveButton.id="camera-solve-frame"' in JS
     assert 'solveActions.insertAdjacentElement("afterend",solutionStatus)' in JS
     assert 'solveButton.addEventListener("click",solveCapturedFrame)' in JS
-    assert 'script.src="./camera-plate-solver.js?v=21.11.17"' in JS
+    assert 'script.src="./camera-plate-solver.js?v=21.11.18"' in JS
     assert '/api/v1/sky' in JS
     assert 'window.NIGHTAZIMUTH_CAMERA_SOLUTION' in JS
     assert 'nightazimuth:camera-solved' in JS
 
 
+def test_plate_solver_uses_saved_observer_not_unsaved_settings_inputs() -> None:
+    assert 'const LATITUDE_KEY="nightazimuth.latitude"' in JS
+    assert 'const LONGITUDE_KEY="nightazimuth.longitude"' in JS
+    assert "const saved=savedObserver()" in JS
+    assert "latitudeInput" not in JS
+    assert "longitudeInput" not in JS
+
+
 def test_plate_solver_runs_in_worker_when_available() -> None:
-    assert 'new Worker("./camera-plate-worker.js?v=21.11.17")' in JS
-    assert 'importScripts("./camera-plate-solver.js?v=21.11.17")' in WORKER_JS
+    assert 'new Worker("./camera-plate-worker.js?v=21.11.18")' in JS
+    assert 'importScripts("./camera-plate-solver.js?v=21.11.18")' in WORKER_JS
     assert "self.NightAzimuthPlateSolver" in WORKER_JS
     assert "worker.postMessage(payload)" in JS
 
