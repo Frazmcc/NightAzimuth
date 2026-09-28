@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 _API_CACHE = Path("data/cache/api")
 _DEFAULT_GROUP = "ACTIVE"
 _IDENTIFICATION_GROUPS = ("LAST-30-DAYS", "STATIONS", "VISUAL")
+# Reuse a small worker pool across requests. Creating four fresh threads for
+# every satellite poll adds avoidable overhead and scales poorly with users.
+_GROUP_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="satellite-catalogue")
 
 
 @router.get("")
@@ -60,18 +63,17 @@ def satellites(
 
     group_payloads: dict[str, list[dict[str, object]]] = {}
     failures: list[tuple[str, Exception]] = []
-    with ThreadPoolExecutor(max_workers=len(requested_groups)) as executor:
-        future_groups = {
-            executor.submit(client.load_group, requested_group): requested_group
-            for requested_group in requested_groups
-        }
-        for future in as_completed(future_groups):
-            requested_group = future_groups[future]
-            try:
-                group_payloads[requested_group] = future.result()
-            except (CelestrakError, ValueError) as exc:
-                failures.append((requested_group, exc))
-                logger.warning("Satellite group %s unavailable: %s", requested_group, exc)
+    future_groups = {
+        _GROUP_EXECUTOR.submit(client.load_group, requested_group): requested_group
+        for requested_group in requested_groups
+    }
+    for future in as_completed(future_groups):
+        requested_group = future_groups[future]
+        try:
+            group_payloads[requested_group] = future.result()
+        except (CelestrakError, ValueError) as exc:
+            failures.append((requested_group, exc))
+            logger.warning("Satellite group %s unavailable: %s", requested_group, exc)
 
     if primary_group not in group_payloads:
         raise HTTPException(
