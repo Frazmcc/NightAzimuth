@@ -3,29 +3,45 @@
 // browser can animate known satellites smoothly without polling the server every second.
 (function(){
   const UPDATE_MS=250;
+  const TRAIN_COUNT_UPDATE_MS=5000;
+  const preparedTracks=new WeakMap();
   let lastDraw=0;
+  let lastTrainCountUpdate=0;
+  let lastCatalogue=null;
 
   function shortestAzimuthDelta(from,to){return((to-from+540)%360)-180}
 
+  function preparedTrack(satellite){
+    const source=Array.isArray(satellite.track)?satellite.track:[];
+    const cached=preparedTracks.get(satellite);
+    if(cached&&cached.source===source)return cached.points;
+    const points=source.map(point=>({
+      time:Number.isFinite(point._nightazimuth_time)?point._nightazimuth_time:Date.parse(point.time_utc),
+      azimuth:Number(point.azimuth_deg),
+      elevation:Number(point.elevation_deg),
+      range:Number(point.range_km)
+    })).filter(point=>Number.isFinite(point.time)&&Number.isFinite(point.azimuth)&&Number.isFinite(point.elevation)&&Number.isFinite(point.range));
+    preparedTracks.set(satellite,{source,points});
+    return points;
+  }
+
   function interpolateTrack(satellite,nowMs){
-    const track=Array.isArray(satellite.track)?satellite.track:[];
-    if(track.length<2)return false;
-    const points=track.map(point=>({...point,_time:Date.parse(point.time_utc)})).filter(point=>Number.isFinite(point._time));
+    const points=preparedTrack(satellite);
     if(points.length<2)return false;
-    let left=points[0],right=points[points.length-1];
-    if(nowMs<=left._time){right=points[1]}
-    else if(nowMs>=right._time){left=points[points.length-2]}
-    else{
-      for(let i=0;i<points.length-1;i++){
-        if(nowMs>=points[i]._time&&nowMs<=points[i+1]._time){left=points[i];right=points[i+1];break}
+    let leftIndex=0,rightIndex=1;
+    const finalIndex=points.length-1;
+    if(nowMs>=points[finalIndex].time){leftIndex=finalIndex-1;rightIndex=finalIndex}
+    else if(nowMs>points[0].time){
+      for(let i=0;i<finalIndex;i++){
+        if(nowMs>=points[i].time&&nowMs<=points[i+1].time){leftIndex=i;rightIndex=i+1;break}
       }
     }
-    const span=Math.max(1,right._time-left._time);
-    const ratio=Math.max(0,Math.min(1,(nowMs-left._time)/span));
-    const leftAz=Number(left.azimuth_deg),rightAz=Number(right.azimuth_deg);
-    satellite.azimuth_deg=(leftAz+shortestAzimuthDelta(leftAz,rightAz)*ratio+360)%360;
-    satellite.elevation_deg=Number(left.elevation_deg)+(Number(right.elevation_deg)-Number(left.elevation_deg))*ratio;
-    satellite.range_km=Number(left.range_km)+(Number(right.range_km)-Number(left.range_km))*ratio;
+    const left=points[leftIndex],right=points[rightIndex];
+    const span=Math.max(1,right.time-left.time);
+    const ratio=Math.max(0,Math.min(1,(nowMs-left.time)/span));
+    satellite.azimuth_deg=(left.azimuth+shortestAzimuthDelta(left.azimuth,right.azimuth)*ratio+360)%360;
+    satellite.elevation_deg=left.elevation+(right.elevation-left.elevation)*ratio;
+    satellite.range_km=left.range+(right.range-left.range)*ratio;
     return true;
   }
 
@@ -45,11 +61,21 @@
     }
   }
 
+  function trackedSatellite(satellite){
+    if(typeof trackedObject==="undefined"||trackedObject?.kind!=="satellite")return false;
+    const key=satellite.norad_id||satellite.name;
+    return trackedObject.key===key;
+  }
+
   function drawPredictedSatellitePaths(w,h){
     if(!layers.satellites)return;
     ctx.save();
     ctx.lineWidth=1;
     for(const satellite of skySatellites){
+      // Do not walk seven future points for every ACTIVE catalogue object when
+      // its current position is nowhere near the viewport. The object itself is
+      // still retained and drawn as soon as it enters view.
+      if(!trackedSatellite(satellite)&&!skyXY(Number(satellite.azimuth_deg),Number(satellite.elevation_deg),w,h))continue;
       const track=Array.isArray(satellite.track)?satellite.track:[];
       if(track.length<2)continue;
       ctx.strokeStyle=satellite.category==="Starlink"?"rgba(112,220,255,.34)":"rgba(255,215,106,.20)";
@@ -94,11 +120,20 @@
   };
 
   function animate(now){
-    if(now-lastDraw>=UPDATE_MS){
+    if(!document.hidden&&now-lastDraw>=UPDATE_MS){
       const current=Date.now();
-      let moved=false;
-      for(const satellite of skySatellites)moved=interpolateTrack(satellite,current)||moved;
-      if(moved){updateTrainCounts();drawSky()}
+      const satelliteLayerVisible=typeof layers!=="undefined"&&layers.satellites!==false;
+      const followingSatellite=typeof trackedObject!=="undefined"&&trackedObject?.kind==="satellite";
+      if(satelliteLayerVisible||followingSatellite){
+        let moved=false;
+        for(const satellite of skySatellites)moved=interpolateTrack(satellite,current)||moved;
+        if(lastCatalogue!==skySatellites||current-lastTrainCountUpdate>=TRAIN_COUNT_UPDATE_MS){
+          updateTrainCounts();
+          lastCatalogue=skySatellites;
+          lastTrainCountUpdate=current;
+        }
+        if(moved)drawSky();
+      }
       lastDraw=now;
     }
     requestAnimationFrame(animate);
