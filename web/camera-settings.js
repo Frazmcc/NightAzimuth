@@ -14,8 +14,6 @@ const frameCanvas=document.querySelector("#camera-frame");
 const frameStatus=document.querySelector("#camera-frame-status");
 const settingsPanel=document.querySelector("#settings-panel");
 const locationForm=document.querySelector("#settings-location-form");
-const latitudeInput=document.querySelector("#settings-latitude");
-const longitudeInput=document.querySelector("#settings-longitude");
 if(!deviceSelect||!detectButton||!startButton||!stopButton||!captureButton||!profileInput||!focalLengthInput||!sensorWidthInput||!status||!previewShell||!preview||!frameCanvas||!frameStatus)return;
 
 const solveActions=document.createElement("div");
@@ -39,6 +37,8 @@ const DEVICE_KEY="nightazimuth.cameraDeviceId";
 const PROFILE_KEY="nightazimuth.cameraProfile";
 const FOCAL_KEY="nightazimuth.cameraFocalLengthMm";
 const SENSOR_KEY="nightazimuth.cameraSensorWidthMm";
+const LATITUDE_KEY="nightazimuth.latitude";
+const LONGITUDE_KEY="nightazimuth.longitude";
 const CATALOGUE_CACHE_MS=15000;
 const config=window.NIGHTAZIMUTH_CONFIG||{};
 const apiBase=String(config.apiBaseUrl||"").replace(/\/$/,"");
@@ -50,6 +50,15 @@ let catalogueCache=null;
 profileInput.value=localStorage.getItem(PROFILE_KEY)||"Sony A7S Gen 1";
 focalLengthInput.value=localStorage.getItem(FOCAL_KEY)||"";
 sensorWidthInput.value=localStorage.getItem(SENSOR_KEY)||"35.8";
+const savedDeviceId=localStorage.getItem(DEVICE_KEY)||"";
+if(savedDeviceId){
+  const savedOption=document.createElement("option");
+  savedOption.value=savedDeviceId;
+  savedOption.textContent="Saved camera / capture device";
+  savedOption.selected=true;
+  deviceSelect.append(savedOption);
+  status.textContent="Saved camera selection ready. Start camera or Detect cameras to refresh device names.";
+}
 
 function setStatus(message){status.textContent=message}
 function invalidateSolution(message="Capture a star field to attempt a catalogue match."){
@@ -64,6 +73,14 @@ function saveSettings(){
   else localStorage.removeItem(FOCAL_KEY);
   if(sensorWidthInput.value)localStorage.setItem(SENSOR_KEY,sensorWidthInput.value);
   else localStorage.removeItem(SENSOR_KEY);
+}
+function savedObserver(){
+  const latitudeText=localStorage.getItem(LATITUDE_KEY);
+  const longitudeText=localStorage.getItem(LONGITUDE_KEY);
+  if(latitudeText==null||longitudeText==null||!latitudeText.trim()||!longitudeText.trim())return null;
+  const latitude=Number(latitudeText),longitude=Number(longitudeText);
+  if(!Number.isFinite(latitude)||latitude<-90||latitude>90||!Number.isFinite(longitude)||longitude<-180||longitude>180)return null;
+  return{latitude,longitude};
 }
 function estimatedHorizontalFov(){
   const focal=Number(focalLengthInput.value),sensor=Number(sensorWidthInput.value);
@@ -98,13 +115,21 @@ async function populateDevices(){
     placeholder.value="";
     placeholder.textContent=devices.length?"Select camera / capture device":"No camera devices found";
     deviceSelect.append(placeholder);
+    let savedFound=false;
     devices.forEach((device,index)=>{
       const option=document.createElement("option");
       option.value=device.deviceId;
       option.textContent=device.label||`Camera ${index+1}`;
-      if(device.deviceId===saved)option.selected=true;
+      if(device.deviceId===saved){option.selected=true;savedFound=true}
       deviceSelect.append(option);
     });
+    if(saved&&!savedFound){
+      const option=document.createElement("option");
+      option.value=saved;
+      option.textContent="Saved camera / capture device (not currently listed)";
+      option.selected=true;
+      deviceSelect.append(option);
+    }
     setStatus(devices.length?`${devices.length} camera device${devices.length===1?"":"s"} found.`:"No camera devices were found.");
   }catch{
     setStatus("Unable to enumerate camera devices.");
@@ -135,10 +160,12 @@ function stopCamera({preserveSolution=false}={}){
 async function startCamera(){
   if(!navigator.mediaDevices?.getUserMedia){setStatus("Camera access is not supported by this browser.");return}
   saveSettings();
+  if(activeStream)stopCamera();
+  else clearCapturedFrame();
+  invalidateSolution("Camera started or restarted. Capture and solve a new frame before using alignment.");
   startButton.disabled=true;
   setStatus("Starting camera…");
   try{
-    if(activeStream)stopCamera();
     const selected=deviceSelect.value;
     const video=selected?{deviceId:{exact:selected},width:{ideal:1920},height:{ideal:1080}}:{width:{ideal:1920},height:{ideal:1080}};
     activeStream=await navigator.mediaDevices.getUserMedia({video,audio:false});
@@ -222,7 +249,7 @@ function ensurePlateSolver(){
   if(solverLoadPromise)return solverLoadPromise;
   solverLoadPromise=new Promise((resolve,reject)=>{
     const script=document.createElement("script");
-    script.src="./camera-plate-solver.js?v=21.11.17";
+    script.src="./camera-plate-solver.js?v=21.11.18";
     script.async=true;
     script.onload=()=>window.NightAzimuthPlateSolver?resolve(window.NightAzimuthPlateSolver):reject(new Error("Plate solver did not initialise"));
     script.onerror=()=>reject(new Error("Unable to load plate solver"));
@@ -246,8 +273,9 @@ function currentCatalogueStars(latitude,longitude){
   }catch{return null}
 }
 async function fetchCatalogueStars(){
-  const latitude=Number(latitudeInput?.value),longitude=Number(longitudeInput?.value);
-  if(!Number.isFinite(latitude)||latitude<-90||latitude>90||!Number.isFinite(longitude)||longitude<-180||longitude>180)throw new Error("Set and save a valid observer location first.");
+  const saved=savedObserver();
+  if(!saved)throw new Error("Set and save a valid observer location first.");
+  const {latitude,longitude}=saved;
   const current=currentCatalogueStars(latitude,longitude);
   if(current)return current;
   if(catalogueCache&&Date.now()-catalogueCache.fetchedAt<=CATALOGUE_CACHE_MS&&catalogueCache.latitude===latitude&&catalogueCache.longitude===longitude)return catalogueCache.stars;
@@ -268,7 +296,7 @@ async function fetchCatalogueStars(){
 function solveWithWorker(payload){
   if(typeof Worker==="undefined")return ensurePlateSolver().then(solver=>solver.solve(payload));
   return new Promise((resolve,reject)=>{
-    const worker=new Worker("./camera-plate-worker.js?v=21.11.17");
+    const worker=new Worker("./camera-plate-worker.js?v=21.11.18");
     const timer=setTimeout(()=>{
       worker.terminate();
       reject(new Error("Plate solver timed out."));
