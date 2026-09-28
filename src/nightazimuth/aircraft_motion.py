@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from math import asin, atan2, cos, degrees, radians, sin
+from threading import RLock
 from typing import Iterable
 
 from .aircraft import AircraftObservation
@@ -52,35 +53,43 @@ class AircraftMotionHistory:
         self._max_age = timedelta(seconds=max_history_age_seconds)
         self._prediction_limit = timedelta(seconds=prediction_limit_seconds)
         self._history: dict[str, list[AircraftObservation]] = {}
+        # API endpoints share one history instance and FastAPI can execute sync
+        # handlers concurrently in worker threads. Protect both mutations and
+        # resolution reads so a list cannot be changed while it is being walked.
+        self._lock = RLock()
 
     def add(self, observation: AircraftObservation) -> None:
-        fixes = self._history.setdefault(observation.icao24, [])
-        timestamp = observation.position_observed_at
+        with self._lock:
+            fixes = self._history.setdefault(observation.icao24, [])
+            timestamp = observation.position_observed_at
 
-        for index, existing in enumerate(fixes):
-            if existing.position_observed_at == timestamp:
-                fixes[index] = observation
-                break
-        else:
-            if fixes and timestamp < fixes[-1].position_observed_at:
-                return
-            fixes.append(observation)
+            for index, existing in enumerate(fixes):
+                if existing.position_observed_at == timestamp:
+                    fixes[index] = observation
+                    break
+            else:
+                if fixes and timestamp < fixes[-1].position_observed_at:
+                    return
+                fixes.append(observation)
 
-        newest = fixes[-1].position_observed_at
-        cutoff = newest - self._max_age
-        fixes[:] = [fix for fix in fixes if fix.position_observed_at >= cutoff]
-        if len(fixes) > self._max_fixes:
-            del fixes[:-self._max_fixes]
+            newest = fixes[-1].position_observed_at
+            cutoff = newest - self._max_age
+            fixes[:] = [fix for fix in fixes if fix.position_observed_at >= cutoff]
+            if len(fixes) > self._max_fixes:
+                del fixes[:-self._max_fixes]
 
     def extend(self, observations: Iterable[AircraftObservation]) -> None:
-        for observation in observations:
-            self.add(observation)
+        with self._lock:
+            for observation in observations:
+                self.add(observation)
 
     def clear(self) -> None:
-        self._history.clear()
+        with self._lock:
+            self._history.clear()
 
     def clear_aircraft(self, icao24: str) -> None:
-        self._history.pop(icao24.strip().lower(), None)
+        with self._lock:
+            self._history.pop(icao24.strip().lower(), None)
 
     def resolve(
         self,
@@ -88,32 +97,33 @@ class AircraftMotionHistory:
         at: datetime | None = None,
     ) -> ResolvedAircraftPosition | None:
         target = _utc(at)
-        fixes = self._history.get(icao24.strip().lower())
-        if not fixes:
-            return None
+        with self._lock:
+            fixes = self._history.get(icao24.strip().lower())
+            if not fixes:
+                return None
 
-        for fix in fixes:
-            if fix.position_observed_at == target:
-                return _from_observation(fix, target, AircraftPositionState.MEASURED)
+            for fix in fixes:
+                if fix.position_observed_at == target:
+                    return _from_observation(fix, target, AircraftPositionState.MEASURED)
 
-        for first, second in zip(fixes, fixes[1:]):
-            if first.position_observed_at <= target <= second.position_observed_at:
-                span = (second.position_observed_at - first.position_observed_at).total_seconds()
-                if span <= 0:
-                    return _from_observation(second, target, AircraftPositionState.MEASURED)
-                fraction = (target - first.position_observed_at).total_seconds() / span
-                return _interpolate(first, second, fraction, target)
+            for first, second in zip(fixes, fixes[1:]):
+                if first.position_observed_at <= target <= second.position_observed_at:
+                    span = (second.position_observed_at - first.position_observed_at).total_seconds()
+                    if span <= 0:
+                        return _from_observation(second, target, AircraftPositionState.MEASURED)
+                    fraction = (target - first.position_observed_at).total_seconds() / span
+                    return _interpolate(first, second, fraction, target)
 
-        latest = fixes[-1]
-        if target < fixes[0].position_observed_at:
-            return None
+            latest = fixes[-1]
+            if target < fixes[0].position_observed_at:
+                return None
 
-        ahead = target - latest.position_observed_at
-        if ahead > self._prediction_limit:
-            return _from_observation(latest, target, AircraftPositionState.STALE)
-        if ahead <= timedelta(0):
-            return _from_observation(latest, target, AircraftPositionState.MEASURED)
-        return _extrapolate(latest, target)
+            ahead = target - latest.position_observed_at
+            if ahead > self._prediction_limit:
+                return _from_observation(latest, target, AircraftPositionState.STALE)
+            if ahead <= timedelta(0):
+                return _from_observation(latest, target, AircraftPositionState.MEASURED)
+            return _extrapolate(latest, target)
 
 
 def _interpolate(
