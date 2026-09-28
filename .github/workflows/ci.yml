@@ -51,7 +51,10 @@ jobs:
             $js = Get-Content $_.FullName -Raw
             $ids = [regex]::Matches($js, 'querySelector\("#([^"]+)"\)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
             foreach ($id in $ids) {
-              if ($html -notmatch ('id="' + [regex]::Escape($id) + '"')) {
+              $htmlHasId = $html -match ('id="' + [regex]::Escape($id) + '"')
+              $createdPattern = '\.id\s*=\s*["'']' + [regex]::Escape($id) + '["'']'
+              $scriptCreatesId = $js -match $createdPattern
+              if (-not $htmlHasId -and -not $scriptCreatesId) {
                 throw "$($_.Name) references missing DOM id: $id"
               }
             }
