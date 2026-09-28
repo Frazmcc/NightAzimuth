@@ -1,6 +1,10 @@
+from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
+
 import httpx
 
-from nightazimuth.stage20_rc_airports import ResilientAirportLandmarkProvider
+from nightazimuth.stage20_rc_airports import ResilientAirportLandmarkProvider, _Airport
 
 
 OURAIRPORTS_CSV = (
@@ -67,3 +71,35 @@ def test_airport_selection_uses_runtime_observer_location() -> None:
 
     assert [item.iata for item in near_west] == ["AAA"]
     assert [item.iata for item in near_east] == ["BBB"]
+
+
+def test_concurrent_cold_load_fetches_global_catalogue_once(monkeypatch) -> None:
+    provider = ResilientAirportLandmarkProvider()
+    records = (
+        _Airport(
+            iata="AAA",
+            icao="AAAA",
+            name="Alpha",
+            latitude_deg=0.0,
+            longitude_deg=0.0,
+            airport_type="large_airport",
+            scheduled_service=True,
+        ),
+    )
+    calls = 0
+    guard = threading.Lock()
+
+    def fetch_once():
+        nonlocal calls
+        with guard:
+            calls += 1
+        time.sleep(0.05)
+        return records
+
+    monkeypatch.setattr(provider, "_fetch_ourairports", fetch_once)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: provider._load_records(), range(2)))
+
+    assert results == [records, records]
+    assert calls == 1
