@@ -61,13 +61,23 @@
       path==="/api/v1/weather"||path==="/api/v1/observing"?5*60*1000:
       path==="/api/v1/sky"?30*1000:
       path==="/api/v1/aircraft"?14*1000:0;
+    const effectiveParams=(path,params)=>path==="/api/v1/aircraft"?{
+      ...params,
+      radius_km:400,
+      minimum_elevation_deg:-90,
+      include_ground:false
+    }:params;
     const requestKey=(path,params)=>{
       const entries=Object.entries(params||{}).sort(([a],[b])=>a.localeCompare(b));
       return `${path}?${entries.map(([key,value])=>`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&")}`;
     };
 
     getJson=async function(path,params={},options={}){
-      const key=requestKey(path,params);
+      // aircraft-sensitivity.js normalises every aircraft request to the wider
+      // 400 km / -90° acquisition. Use that effective request in the cache key
+      // so the 60-second general refresh and 15-second aircraft refresh share
+      // the same in-flight response instead of downloading it twice.
+      const key=requestKey(path,effectiveParams(path,params));
       const now=Date.now();
       const ttl=ttlForPath(path);
       const cached=responseCache.get(key);
