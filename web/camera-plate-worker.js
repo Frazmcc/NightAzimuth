@@ -1,5 +1,5 @@
 // Run the CPU-heavy star-pattern search away from the browser UI thread.
-importScripts("./camera-plate-solver.js?v=21.11.17");
+importScripts("./camera-plate-solver.js?v=21.11.18");
 
 self.onmessage=event=>{
   try{
