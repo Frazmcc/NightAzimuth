@@ -17,12 +17,20 @@ MET_NO_LOCATIONFORECAST_URL = "https://api.met.no/weatherapi/locationforecast/2.
 MET_NO_USER_AGENT = "NightAzimuth/1.0 (+https://github.com/Frazmcc/NightAzimuth)"
 _CACHE_LOCKS_GUARD = threading.Lock()
 _CACHE_LOCKS: dict[str, threading.RLock] = {}
+# Weather and observing endpoints can request the exact same observer at the
+# same time on a cold cache. Bounded striped locks make that a single upstream
+# download without creating an unbounded lock per user-supplied location.
+_LOAD_LOCKS = tuple(threading.RLock() for _ in range(64))
 
 
 def _shared_cache_lock(cache_directory: Path) -> threading.RLock:
     key = str(cache_directory.resolve())
     with _CACHE_LOCKS_GUARD:
         return _CACHE_LOCKS.setdefault(key, threading.RLock())
+
+
+def _shared_load_lock(cache_path: Path) -> threading.RLock:
+    return _LOAD_LOCKS[hash(cache_path.resolve()) % len(_LOAD_LOCKS)]
 
 
 class WeatherProviderError(RuntimeError):
@@ -97,29 +105,39 @@ class MetNorwayWeatherProvider:
 
     def load(self, observer: ObserverConfig) -> WeatherSnapshot:
         cache_path = self._cache_path(observer)
-        with self._cache_lock:
-            if self._cache_is_fresh(cache_path):
-                try:
-                    return self._read_cache(cache_path, from_cache=True, fallback_used=False)
-                except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, WeatherProviderError):
-                    # Treat an unreadable/corrupt fresh cache as a miss and try the live provider.
-                    pass
-        try:
-            payload = self._download(observer)
-            snapshot = parse_met_no_locationforecast(payload, fetched_at_utc=datetime.now(timezone.utc))
-            try:
-                with self._cache_lock:
-                    self._write_cache(cache_path, payload)
-                    self._prune_cache(keep=cache_path)
-            except OSError:
-                # Cache persistence/maintenance must not discard valid provider data.
-                pass
-            return snapshot
-        except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        with _shared_load_lock(cache_path):
             with self._cache_lock:
-                if cache_path.exists():
-                    return self._read_cache(cache_path, from_cache=True, fallback_used=True)
-            raise WeatherProviderError(f"Unable to load MET Norway weather data: {exc}") from exc
+                if self._cache_is_fresh(cache_path):
+                    try:
+                        return self._read_cache(cache_path, from_cache=True, fallback_used=False)
+                    except (
+                        OSError,
+                        ValueError,
+                        KeyError,
+                        TypeError,
+                        json.JSONDecodeError,
+                        WeatherProviderError,
+                    ):
+                        # Treat an unreadable/corrupt fresh cache as a miss and try the live provider.
+                        pass
+            try:
+                payload = self._download(observer)
+                snapshot = parse_met_no_locationforecast(
+                    payload, fetched_at_utc=datetime.now(timezone.utc)
+                )
+                try:
+                    with self._cache_lock:
+                        self._write_cache(cache_path, payload)
+                        self._prune_cache(keep=cache_path)
+                except OSError:
+                    # Cache persistence/maintenance must not discard valid provider data.
+                    pass
+                return snapshot
+            except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+                with self._cache_lock:
+                    if cache_path.exists():
+                        return self._read_cache(cache_path, from_cache=True, fallback_used=True)
+                raise WeatherProviderError(f"Unable to load MET Norway weather data: {exc}") from exc
 
     def _download(self, observer: ObserverConfig) -> dict[str, Any]:
         response = httpx.get(
