@@ -27,8 +27,9 @@ def sky(
     observer = ObserverConfig(latitude=latitude, longitude=longitude, altitude_m=altitude_m)
 
     try:
-        # Share the Skyfield cache with observing guidance so de421.bsp is not
-        # downloaded/loaded independently by two hosted API paths.
+        # The Render build preloads this shared Skyfield cache so a fresh runtime
+        # does not download Hipparcos, sky-culture and DE421 data on first use.
+        # Observing guidance uses the same files at runtime.
         engine_started = perf_counter()
         engine = StarFieldEngine(observer, _API_CACHE / "skyfield")
         engine_init_ms = (perf_counter() - engine_started) * 1000.0
