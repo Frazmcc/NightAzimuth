@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 
 from fastapi import FastAPI, Request
@@ -68,5 +69,9 @@ def health() -> dict[str, str]:
         "status": "ok",
         "api_version": API_VERSION,
         "application_version": __version__,
+        # Render supplies the exact deployed Git commit at runtime. Exposing it
+        # is safe for this public repository and lets production probes verify
+        # that they are measuring the commit which triggered the workflow.
+        "git_commit": os.environ.get("RENDER_GIT_COMMIT", ""),
         "timestamp": datetime.now(UTC).isoformat(),
     }
