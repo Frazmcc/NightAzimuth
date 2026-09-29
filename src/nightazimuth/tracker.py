@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -8,7 +9,7 @@ from math import cos, radians, sin, sqrt
 import re
 import threading
 from time import perf_counter
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 from sgp4 import omm
@@ -28,11 +29,26 @@ _PREPARED_CATALOGUE_LOCK = threading.RLock()
 
 
 @dataclass(frozen=True, slots=True)
+class _PreparedSatelliteMetadata:
+    name: str
+    norad_id: str
+    object_id: str | None
+    launch_id: str | None
+    category: str
+    source_groups: tuple[str, ...]
+    epoch_utc: str | None
+    inclination_deg: float | None
+    period_minutes: float | None
+    eccentricity: float | None
+
+
+@dataclass(frozen=True, slots=True)
 class _PreparedCatalogue:
     cache_key: object
     element_count: int
     valid_indices: tuple[int, ...]
     satrecs: tuple[Satrec, ...]
+    metadata: tuple[_PreparedSatelliteMetadata, ...]
 
 
 _PREPARED_CATALOGUE: _PreparedCatalogue | None = None
@@ -64,7 +80,28 @@ class SatellitePosition:
     track: tuple[SatelliteTrackPoint, ...] = ()
 
 
-def _catalogue_fingerprint(elements: list[dict[str, Any]]) -> bytes:
+def _optional_float(value: Any) -> float | None:
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _category_for(name: str, source_groups: tuple[str, ...]) -> str:
+    if name.upper().startswith("STARLINK"):
+        return "Starlink"
+    if "LAST-30-DAYS" in source_groups:
+        return "Recent launch"
+    if "STATIONS" in source_groups:
+        return "Space station"
+    if "VISUAL" in source_groups:
+        return "Bright satellite"
+    return "Satellite"
+
+
+def _catalogue_fingerprint(elements: list[Mapping[str, Any]]) -> bytes:
     """Hash orbital content for callers that cannot supply a generation key."""
 
     digest = hashlib.sha256()
@@ -83,12 +120,37 @@ def _catalogue_fingerprint(elements: list[dict[str, Any]]) -> bytes:
     return digest.digest()
 
 
+def _metadata_for(fields: Mapping[str, Any]) -> _PreparedSatelliteMetadata:
+    name = str(fields.get("OBJECT_NAME") or "UNKNOWN")
+    norad_id = str(fields.get("NORAD_CAT_ID") or "")
+    object_id_raw = fields.get("OBJECT_ID")
+    object_id = str(object_id_raw).strip() if object_id_raw else None
+    launch_match = _LAUNCH_ID_RE.match(object_id or "")
+    launch_id = launch_match.group(1) if launch_match else None
+    source_groups = tuple(str(group) for group in fields.get("_nightazimuth_groups", ()))
+    mean_motion = _optional_float(fields.get("MEAN_MOTION"))
+    period_minutes = 1440.0 / mean_motion if mean_motion and mean_motion > 0 else None
+    return _PreparedSatelliteMetadata(
+        name=name,
+        norad_id=norad_id,
+        object_id=object_id,
+        launch_id=launch_id,
+        category=_category_for(name, source_groups),
+        source_groups=source_groups,
+        epoch_utc=str(fields.get("EPOCH")) if fields.get("EPOCH") else None,
+        inclination_deg=_optional_float(fields.get("INCLINATION")),
+        period_minutes=period_minutes,
+        eccentricity=_optional_float(fields.get("ECCENTRICITY")),
+    )
+
+
 def _build_prepared_catalogue(
-    elements: list[dict[str, Any]],
+    elements: list[Mapping[str, Any]],
     cache_key: object,
 ) -> _PreparedCatalogue:
     valid_indices: list[int] = []
     satrecs: list[Satrec] = []
+    metadata: list[_PreparedSatelliteMetadata] = []
     for index, fields in enumerate(elements):
         try:
             satrec = Satrec()
@@ -97,17 +159,19 @@ def _build_prepared_catalogue(
             continue
         valid_indices.append(index)
         satrecs.append(satrec)
+        metadata.append(_metadata_for(fields))
 
     return _PreparedCatalogue(
         cache_key=cache_key,
         element_count=len(elements),
         valid_indices=tuple(valid_indices),
         satrecs=tuple(satrecs),
+        metadata=tuple(metadata),
     )
 
 
 def _prepared_catalogue_for(
-    elements: list[dict[str, Any]],
+    elements: list[Mapping[str, Any]],
     cache_key: object | None = None,
 ) -> tuple[_PreparedCatalogue, bool]:
     """Return the one cached Satrec generation, replacing it when data changes."""
@@ -157,7 +221,7 @@ class SatelliteTracker:
 
     def positions_above_horizon(
         self,
-        elements: Iterable[dict[str, Any]],
+        elements: Iterable[Mapping[str, Any]],
         *,
         minimum_elevation_deg: float = 0.0,
         at: datetime | None = None,
@@ -168,12 +232,12 @@ class SatelliteTracker:
         Propagation is deliberately independent of visual brightness. The full
         ACTIVE catalogue is large, so current positions are propagated as one
         native batch. Future track points are then propagated only for satellites
-        that are visible at the current instant. The immutable OMM-to-Satrec
-        conversion is cached for one catalogue generation while current-time
-        propagation is still performed on every request. Hosted callers can
-        supply a cheap catalogue generation key; other callers fall back to a
-        content hash. Internal stage timings are retained on ``last_timings`` for
-        diagnostics.
+        that are visible at the current instant. Immutable OMM-to-Satrec
+        conversion and display metadata are cached for one catalogue generation,
+        while current-time propagation is still performed on every request.
+        Hosted callers can supply a cheap catalogue generation key; other callers
+        fall back to a content hash. Internal stage timings are retained on
+        ``last_timings`` for diagnostics.
         """
 
         moment = at or datetime.now(timezone.utc)
@@ -187,8 +251,8 @@ class SatelliteTracker:
             element_list,
             cache_key=catalogue_cache_key,
         )
-        fields_list = [element_list[index] for index in prepared.valid_indices]
         satrecs = prepared.satrecs
+        metadata_list = prepared.metadata
         self.last_timings["prepare_cache_hit"] = 1.0 if cache_hit else 0.0
 
         if not satrecs:
@@ -289,17 +353,7 @@ class SatelliteTracker:
         results: list[SatellitePosition] = []
         for visible_offset, satellite_index_raw in enumerate(visible_indices):
             satellite_index = int(satellite_index_raw)
-            fields = fields_list[satellite_index]
-            name = str(fields.get("OBJECT_NAME") or "UNKNOWN")
-            norad_id = str(fields.get("NORAD_CAT_ID") or "")
-            object_id_raw = fields.get("OBJECT_ID")
-            object_id = str(object_id_raw).strip() if object_id_raw else None
-            launch_match = _LAUNCH_ID_RE.match(object_id or "")
-            launch_id = launch_match.group(1) if launch_match else None
-            source_groups = tuple(str(group) for group in fields.get("_nightazimuth_groups", ()))
-            category = self._category_for(name, source_groups)
-            mean_motion = self._optional_float(fields.get("MEAN_MOTION"))
-            period_minutes = 1440.0 / mean_motion if mean_motion and mean_motion > 0 else None
+            metadata = metadata_list[satellite_index]
 
             track: list[SatelliteTrackPoint] = [
                 SatelliteTrackPoint(
@@ -328,19 +382,19 @@ class SatelliteTracker:
 
             results.append(
                 SatellitePosition(
-                    name=name,
-                    norad_id=norad_id,
+                    name=metadata.name,
+                    norad_id=metadata.norad_id,
                     azimuth_deg=float(current_azimuth[satellite_index]),
                     elevation_deg=float(current_elevation[satellite_index]),
                     range_km=float(current_range[satellite_index]),
-                    object_id=object_id,
-                    launch_id=launch_id,
-                    category=category,
-                    source_groups=source_groups,
-                    epoch_utc=str(fields.get("EPOCH")) if fields.get("EPOCH") else None,
-                    inclination_deg=self._optional_float(fields.get("INCLINATION")),
-                    period_minutes=period_minutes,
-                    eccentricity=self._optional_float(fields.get("ECCENTRICITY")),
+                    object_id=metadata.object_id,
+                    launch_id=metadata.launch_id,
+                    category=metadata.category,
+                    source_groups=metadata.source_groups,
+                    epoch_utc=metadata.epoch_utc,
+                    inclination_deg=metadata.inclination_deg,
+                    period_minutes=metadata.period_minutes,
+                    eccentricity=metadata.eccentricity,
                     track=tuple(track),
                 )
             )
@@ -394,21 +448,8 @@ class SatelliteTracker:
 
     @staticmethod
     def _optional_float(value: Any) -> float | None:
-        if value in (None, ""):
-            return None
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
+        return _optional_float(value)
 
     @staticmethod
     def _category_for(name: str, source_groups: tuple[str, ...]) -> str:
-        if name.upper().startswith("STARLINK"):
-            return "Starlink"
-        if "LAST-30-DAYS" in source_groups:
-            return "Recent launch"
-        if "STATIONS" in source_groups:
-            return "Space station"
-        if "VISUAL" in source_groups:
-            return "Bright satellite"
-        return "Satellite"
+        return _category_for(name, source_groups)
