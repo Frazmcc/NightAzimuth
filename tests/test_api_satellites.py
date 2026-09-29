@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+import threading
+import time
+
 from fastapi.testclient import TestClient
 
 from nightazimuth.api import app
@@ -176,6 +180,40 @@ def test_satellite_detail_can_be_disabled(monkeypatch) -> None:
 
     assert requested_groups == ["ACTIVE"]
     assert payload["groups"] == ["ACTIVE"]
+
+
+def test_satellite_snapshot_builds_are_serialized(monkeypatch) -> None:
+    active = 0
+    maximum_active = 0
+    guard = threading.Lock()
+
+    def fake_build(**kwargs):
+        nonlocal active, maximum_active
+        with guard:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        time.sleep(0.05)
+        with guard:
+            active -= 1
+        return {"latitude": kwargs["latitude"]}
+
+    monkeypatch.setattr("nightazimuth.api_satellites._build_satellite_snapshot", fake_build)
+
+    def call(latitude: float):
+        return satellites(
+            latitude=latitude,
+            longitude=-4.25,
+            altitude_m=0.0,
+            minimum_elevation_deg=0.0,
+            group="ACTIVE",
+            identification_detail=True,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(call, (55.86, 55.87)))
+
+    assert maximum_active == 1
+    assert {result["latitude"] for result in results} == {55.86, 55.87}
 
 
 def test_primary_satellite_catalogue_failure_does_not_degrade_to_small_subset(
