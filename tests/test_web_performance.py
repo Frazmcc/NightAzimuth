@@ -5,6 +5,7 @@ SATELLITE_JS = Path("web/satellite-motion.js").read_text(encoding="utf-8")
 LAYOUT_JS = Path("web/live-sky-layout.js").read_text(encoding="utf-8")
 CONTACTS_JS = Path("web/live-contacts-view.js").read_text(encoding="utf-8")
 AIRCRAFT_JS = Path("web/aircraft-sensitivity.js").read_text(encoding="utf-8")
+HTML = Path("web/index.html").read_text(encoding="utf-8")
 
 
 def _function_body(source: str, start_marker: str, end_marker: str) -> str:
@@ -74,9 +75,15 @@ def test_background_tabs_do_not_keep_polling_live_data() -> None:
     assert 'document.addEventListener("visibilitychange"' in AIRCRAFT_JS
 
 
-def test_initial_aircraft_load_is_not_duplicated() -> None:
-    assert "refreshAircraftFast();\nsetInterval" not in AIRCRAFT_JS
-    assert "setInterval(refreshAircraftFast,AIRCRAFT_REFRESH_MS)" in AIRCRAFT_JS
+def test_startup_populates_the_wide_local_radar_without_waiting_for_first_interval() -> None:
+    assert "const AIRCRAFT_RADIUS_KM=400" in AIRCRAFT_JS
+    assert "minimum_elevation_deg:-90" in AIRCRAFT_JS
+    assert "refreshAircraftFast();\nsetInterval(refreshAircraftFast,AIRCRAFT_REFRESH_MS)" in AIRCRAFT_JS
+    assert "aircraft-sensitivity.js?v=21.11.19" in HTML
+
+
+def test_changed_camera_runtime_is_cache_busted() -> None:
+    assert "camera-settings.js?v=21.11.19" in HTML
 
 
 def test_satellite_redraws_do_not_rebuild_unchanged_contact_rows() -> None:
