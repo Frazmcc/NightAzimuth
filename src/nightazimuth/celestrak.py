@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from datetime import datetime, timezone
-from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
@@ -20,22 +20,66 @@ _SAFE_GROUP_RE = re.compile(r"^[A-Z0-9_-]{1,64}$")
 # stripes instead of an ever-growing lock dictionary keyed by request input.
 _CACHE_LOCKS = tuple(threading.RLock() for _ in range(16))
 
+# Keep only the newest parsed payload for each cache file.  The previous
+# functools.lru_cache key included file mtime/size, which meant every CelesTrak
+# refresh retained another complete parsed ACTIVE catalogue until the 32-entry
+# LRU eventually evicted it.  ACTIVE is large enough for those stale generations
+# to exhaust a 512 MB hosted instance over time.
+_PARSED_CACHE_MAX_ENTRIES = 8
+_PARSED_CACHE_LOCK = threading.RLock()
+_PARSED_CACHE: OrderedDict[
+    str, tuple[int, int, list[dict[str, Any]]]
+] = OrderedDict()
+
 
 def _cache_lock(path: Path) -> threading.RLock:
     return _CACHE_LOCKS[hash(path.resolve()) % len(_CACHE_LOCKS)]
 
 
-@lru_cache(maxsize=32)
-def _read_cached_json(path_string: str, modified_ns: int, size: int) -> list[dict[str, Any]]:
-    # modified_ns and size are intentionally part of the key so replacing a
-    # cache file automatically invalidates the parsed in-process entry.
-    del modified_ns, size
+def _remember_cached_json(
+    path_string: str,
+    modified_ns: int,
+    size: int,
+    payload: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    with _PARSED_CACHE_LOCK:
+        # Assignment by pathname replaces the previous generation immediately,
+        # so an updated ACTIVE file cannot leave its old parsed list resident.
+        _PARSED_CACHE[path_string] = (modified_ns, size, payload)
+        _PARSED_CACHE.move_to_end(path_string)
+        while len(_PARSED_CACHE) > _PARSED_CACHE_MAX_ENTRIES:
+            _PARSED_CACHE.popitem(last=False)
+    return payload
+
+
+def _read_cached_json(
+    path_string: str,
+    modified_ns: int,
+    size: int,
+) -> list[dict[str, Any]]:
+    with _PARSED_CACHE_LOCK:
+        cached = _PARSED_CACHE.get(path_string)
+        if cached is not None and cached[0] == modified_ns and cached[1] == size:
+            _PARSED_CACHE.move_to_end(path_string)
+            return cached[2]
+
     path = Path(path_string)
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
     if not isinstance(payload, list):
         raise CelestrakError(f"Invalid orbital-data cache: {path}")
-    return payload
+    return _remember_cached_json(path_string, modified_ns, size, payload)
+
+
+def _clear_parsed_cache() -> None:
+    """Clear the in-process parsed catalogue cache (primarily for tests)."""
+    with _PARSED_CACHE_LOCK:
+        _PARSED_CACHE.clear()
+
+
+def _parsed_cache_entry_count() -> int:
+    with _PARSED_CACHE_LOCK:
+        return len(_PARSED_CACHE)
 
 
 class CelestrakError(RuntimeError):
@@ -182,9 +226,15 @@ class CelestrakClient:
                 json.dump(data, handle, separators=(",", ":"))
             temp_path.replace(path)
             temp_path = None
-            # Do not clear the whole parsed LRU here. The cache key already
-            # includes mtime and size, so this file is invalidated automatically
-            # while parsed data for the other catalogue groups stays warm.
+            stat = path.stat()
+            # The downloaded list is already parsed. Store that exact object as
+            # the newest generation and release any previous one immediately.
+            _remember_cached_json(
+                str(path.resolve()),
+                stat.st_mtime_ns,
+                stat.st_size,
+                data,
+            )
         finally:
             if temp_path is not None:
                 temp_path.unlink(missing_ok=True)
