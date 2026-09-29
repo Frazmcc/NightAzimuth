@@ -30,6 +30,7 @@ _PARSED_CACHE_LOCK = threading.RLock()
 _PARSED_CACHE: OrderedDict[
     str, tuple[int, int, list[dict[str, Any]]]
 ] = OrderedDict()
+CatalogueGeneration = tuple[int, int]
 
 
 def _cache_lock(path: Path) -> threading.RLock:
@@ -98,6 +99,15 @@ class CelestrakClient:
         self.timeout_seconds = timeout_seconds
 
     def load_group(self, group: str) -> list[dict[str, Any]]:
+        payload, _generation = self.load_group_versioned(group)
+        return payload
+
+    def load_group_versioned(
+        self,
+        group: str,
+    ) -> tuple[list[dict[str, Any]], CatalogueGeneration]:
+        """Load one group together with the exact on-disk cache generation used."""
+
         normalized_group = group.strip().upper()
         if not normalized_group:
             raise ValueError("CelesTrak group must not be empty")
@@ -107,10 +117,13 @@ class CelestrakClient:
         cache_path = self._cache_path(normalized_group)
         # A stale/missing group can be requested by several public API calls at
         # once. Serialize work for a cache stripe so duplicate downloads/writes
-        # cannot race; the fixed stripes keep lock memory bounded.
+        # cannot race; the fixed stripes keep lock memory bounded. Returning the
+        # generation while this same lock is held guarantees that the token
+        # describes the exact payload returned to the caller.
         with _cache_lock(cache_path):
             if self._cache_is_fresh(cache_path):
-                return self._read_cache(cache_path)
+                data = self._read_cache(cache_path)
+                return data, self._cache_generation(cache_path)
 
             try:
                 data = self._download_group(normalized_group)
@@ -119,11 +132,12 @@ class CelestrakClient:
                 # policy is triggered. Never retry automatically. If we have an older
                 # successful cache, use it; otherwise stop and surface the server message.
                 if cache_path.exists():
-                    return self._read_cache(cache_path)
+                    data = self._read_cache(cache_path)
+                    return data, self._cache_generation(cache_path)
                 mirror_data = self._download_mirror(normalized_group)
                 if mirror_data is not None:
                     self._write_cache(cache_path, mirror_data)
-                    return mirror_data
+                    return mirror_data, self._cache_generation(cache_path)
 
                 response_text = exc.response.text.strip()
                 detail = response_text[:500] if response_text else str(exc)
@@ -134,17 +148,18 @@ class CelestrakClient:
                 ) from exc
             except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
                 if cache_path.exists():
-                    return self._read_cache(cache_path)
+                    data = self._read_cache(cache_path)
+                    return data, self._cache_generation(cache_path)
                 mirror_data = self._download_mirror(normalized_group)
                 if mirror_data is not None:
                     self._write_cache(cache_path, mirror_data)
-                    return mirror_data
+                    return mirror_data, self._cache_generation(cache_path)
                 raise CelestrakError(
                     f"Unable to load CelesTrak group {normalized_group}: {exc}"
                 ) from exc
 
             self._write_cache(cache_path, data)
-            return data
+            return data, self._cache_generation(cache_path)
 
     def _download_mirror(self, group: str) -> list[dict[str, Any]] | None:
         try:
@@ -203,6 +218,11 @@ class CelestrakClient:
         modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
         age_seconds = (datetime.now(timezone.utc) - modified).total_seconds()
         return age_seconds <= self.cache_max_age_minutes * 60
+
+    @staticmethod
+    def _cache_generation(path: Path) -> CatalogueGeneration:
+        stat = path.stat()
+        return stat.st_mtime_ns, stat.st_size
 
     @staticmethod
     def _read_cache(path: Path) -> list[dict[str, Any]]:
