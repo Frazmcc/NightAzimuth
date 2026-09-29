@@ -119,3 +119,42 @@ def test_prepared_satrec_generation_is_reused_until_orbital_data_changes(monkeyp
     )
     assert initialize_calls == 2
     assert third.last_timings["prepare_cache_hit"] == 0.0
+
+
+def test_future_track_propagation_runs_only_for_currently_visible_satellites(monkeypatch) -> None:
+    _clear_prepared_catalogue_cache()
+    at = datetime(2020, 10, 13, 4, 52, 48, tzinfo=UTC)
+    observer = ObserverConfig(latitude=51.5, longitude=-0.1, altitude_m=25.0)
+    original_satrec_array = tracker_module.SatrecArray
+    calls: list[tuple[int, int]] = []
+
+    class RecordingSatrecArray:
+        def __init__(self, satrecs) -> None:
+            satrec_list = list(satrecs)
+            self._count = len(satrec_list)
+            self._inner = original_satrec_array(satrec_list)
+
+        def sgp4(self, julian_days, julian_fractions):
+            calls.append((self._count, len(julian_days)))
+            return self._inner.sgp4(julian_days, julian_fractions)
+
+    monkeypatch.setattr(tracker_module, "SatrecArray", RecordingSatrecArray)
+    tracker = SatelliteTracker(observer)
+
+    hidden = tracker.positions_above_horizon(
+        [VANGUARD_OMM],
+        minimum_elevation_deg=91.0,
+        at=at,
+    )
+    assert hidden == []
+    assert calls == [(1, 1)]
+
+    calls.clear()
+    visible = tracker.positions_above_horizon(
+        [VANGUARD_OMM],
+        minimum_elevation_deg=-90.0,
+        at=at,
+    )
+    assert len(visible) == 1
+    assert len(visible[0].track) == 7
+    assert calls == [(1, 1), (1, 6)]
