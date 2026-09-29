@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 import logging
@@ -13,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 
 from .celestrak import CelestrakClient, CelestrakError
 from .config import ObserverConfig
-from .tracker import SatelliteTracker
+from .tracker import SatellitePosition, SatelliteTracker
 
 router = APIRouter(prefix="/api/v1/satellites", tags=["satellites"])
 logger = logging.getLogger(__name__)
@@ -198,6 +197,35 @@ def _merged_catalogue_for(
         merged = _build_merged_catalogue(requested_groups, group_payloads)
         _MERGED_CATALOGUE_CACHE = (cache_key, merged)
         return merged, False
+
+
+def _satellite_payload(position: SatellitePosition) -> dict[str, object]:
+    """Convert one tracker result without dataclasses.asdict deepcopy recursion."""
+
+    return {
+        "name": position.name,
+        "norad_id": position.norad_id,
+        "azimuth_deg": position.azimuth_deg,
+        "elevation_deg": position.elevation_deg,
+        "range_km": position.range_km,
+        "object_id": position.object_id,
+        "launch_id": position.launch_id,
+        "category": position.category,
+        "source_groups": position.source_groups,
+        "epoch_utc": position.epoch_utc,
+        "inclination_deg": position.inclination_deg,
+        "period_minutes": position.period_minutes,
+        "eccentricity": position.eccentricity,
+        "track": tuple(
+            {
+                "time_utc": point.time_utc,
+                "azimuth_deg": point.azimuth_deg,
+                "elevation_deg": point.elevation_deg,
+                "range_km": point.range_km,
+            }
+            for point in position.track
+        ),
+    }
 
 
 @router.get("")
@@ -400,7 +428,7 @@ def _build_satellite_snapshot(
     # references. The cached merged view retains only tiny wrappers over the same
     # parsed dictionaries already owned by the bounded CelesTrak cache.
     payload_build_started = perf_counter()
-    satellite_payloads = [asdict(position) for position in positions]
+    satellite_payloads = [_satellite_payload(position) for position in positions]
     count = len(satellite_payloads)
     del positions
     del merged_elements
