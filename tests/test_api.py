@@ -8,7 +8,8 @@ from nightazimuth import __version__
 from nightazimuth.api import API_VERSION, app
 
 
-def test_health_endpoint_contract() -> None:
+def test_health_endpoint_contract(monkeypatch) -> None:
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "0123456789abcdef")
     client = TestClient(app)
 
     response = client.get("/api/v1/health")
@@ -19,6 +20,7 @@ def test_health_endpoint_contract() -> None:
     assert payload["api_version"] == "v1"
     assert payload["api_version"] == API_VERSION
     assert payload["application_version"] == __version__
+    assert payload["git_commit"] == "0123456789abcdef"
 
     timestamp = datetime.fromisoformat(payload["timestamp"])
     assert timestamp.utcoffset().total_seconds() == 0

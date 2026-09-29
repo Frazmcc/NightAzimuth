@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/live-api-smoke.yml"
+      - "src/nightazimuth/api.py"
       - "src/nightazimuth/api_sky.py"
       - "src/nightazimuth/star_field.py"
   workflow_dispatch:
@@ -20,7 +21,7 @@ jobs:
   probe:
     name: Probe production API
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
 
     env:
       API_BASE: https://api.nightazimuth.co.uk
@@ -30,34 +31,60 @@ jobs:
       TEST_LONGITUDE: "0.0005"
 
     steps:
-      - name: Check production health
+      - name: Wait for exact production commit
         shell: bash
         run: |
           set -euo pipefail
 
-          metrics="$(curl \
-            --silent \
-            --show-error \
-            --location \
-            --connect-timeout 10 \
-            --max-time 60 \
-            --output /tmp/health.json \
-            --write-out '%{http_code} %{time_namelookup} %{time_connect} %{time_starttransfer} %{time_total} %{size_download}' \
-            "$API_BASE/api/v1/health")"
+          deployed=""
+          for attempt in $(seq 1 40); do
+            metrics="$(curl \
+              --silent \
+              --show-error \
+              --location \
+              --connect-timeout 5 \
+              --max-time 12 \
+              --output /tmp/health.json \
+              --write-out '%{http_code} %{time_namelookup} %{time_connect} %{time_starttransfer} %{time_total} %{size_download}' \
+              "$API_BASE/api/v1/health" || true)"
 
-          read -r status dns connect ttfb total size <<<"$metrics"
+            read -r status dns connect ttfb total size <<<"${metrics:-0 0 0 0 0 0}"
+            deployed=""
+            if [[ "$status" == "200" ]]; then
+              deployed="$(python - <<'PY' 2>/dev/null || true
+          import json
+          from pathlib import Path
+          try:
+              payload = json.loads(Path('/tmp/health.json').read_text(encoding='utf-8'))
+              print(payload.get('git_commit', ''))
+          except Exception:
+              pass
+          PY
+              )"
+            fi
+
+            echo "Health attempt $attempt: HTTP=$status total=${total:-0}s deployed=${deployed:-unknown} expected=$GITHUB_SHA"
+
+            if [[ "$status" == "200" && "$deployed" == "$GITHUB_SHA" ]]; then
+              echo "Exact production commit is live."
+              break
+            fi
+
+            if [[ "$attempt" -eq 40 ]]; then
+              echo "Production did not expose expected commit $GITHUB_SHA within the probe window." >&2
+              echo "Last observed commit: ${deployed:-unknown}" >&2
+              exit 1
+            fi
+
+            sleep 10
+          done
+
           echo "Health HTTP: $status"
           echo "Health DNS: ${dns}s"
           echo "Health connect: ${connect}s"
           echo "Health TTFB: ${ttfb}s"
           echo "Health total: ${total}s"
           echo "Health bytes: $size"
-
-          if [[ "$status" != "200" ]]; then
-            echo "Production health endpoint returned HTTP $status" >&2
-            cat /tmp/health.json >&2 || true
-            exit 1
-          fi
 
           python - <<'PY'
           import json
@@ -67,60 +94,47 @@ jobs:
           if payload.get('status') != 'ok':
               raise SystemExit(f"Unexpected health payload: {payload!r}")
           print(f"Application version: {payload.get('application_version', 'unknown')}")
+          print(f"Deployed commit: {payload.get('git_commit', 'unknown')}")
           PY
 
-      - name: Wait for deployed sky instrumentation and measure it
+      - name: Measure standalone sky
         shell: bash
         run: |
           set -euo pipefail
 
           sky_url="$API_BASE/api/v1/sky?latitude=$TEST_LATITUDE&longitude=$TEST_LONGITUDE&altitude_m=0"
-          timing=""
-          metrics=""
-          status=""
+          : > /tmp/sky-samples.txt
 
-          # Render can still be rolling out the just-merged commit when this
-          # workflow starts. Retry until the expected Server-Timing header is
-          # visible, which proves that the instrumented build is live.
-          for attempt in $(seq 1 20); do
-            : > /tmp/sky-headers.txt
+          for sample in 1 2 3; do
+            : > "/tmp/sky-${sample}-headers.txt"
             metrics="$(curl \
               --silent \
               --show-error \
               --location \
+              --compressed \
               --connect-timeout 10 \
               --max-time 90 \
-              --dump-header /tmp/sky-headers.txt \
-              --output /tmp/sky.json \
+              --dump-header "/tmp/sky-${sample}-headers.txt" \
+              --output "/tmp/sky-${sample}.json" \
               --write-out '%{http_code} %{time_namelookup} %{time_connect} %{time_starttransfer} %{time_total} %{size_download}' \
-              "$sky_url" || true)"
+              "$sky_url")"
 
-            read -r status dns connect ttfb total size <<<"${metrics:-0 0 0 0 0 0}"
-            timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/sky-headers.txt)"
+            read -r status dns connect ttfb total size <<<"$metrics"
+            timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' "/tmp/sky-${sample}-headers.txt")"
 
-            echo "Attempt $attempt: HTTP=$status total=${total:-0}s Server-Timing=${timing:-missing}"
-
-            if [[ "$status" == "200" && "$timing" == *"engine_init;dur="* && "$timing" == *"snapshot;dur="* ]]; then
-              break
-            fi
-
-            if [[ "$attempt" -eq 20 ]]; then
-              echo "Instrumented production sky endpoint did not become ready after 20 attempts." >&2
-              echo "Last response headers:" >&2
-              cat /tmp/sky-headers.txt >&2 || true
+            if [[ "$status" != "200" || "$timing" != *"snapshot;dur="* ]]; then
+              echo "Standalone sky sample $sample failed: HTTP=$status Server-Timing=${timing:-missing}" >&2
               exit 1
             fi
 
-            sleep 15
+            echo "sample=$sample http=$status dns=${dns}s connect=${connect}s ttfb=${ttfb}s total=${total}s bytes=$size timing=$timing" | tee -a /tmp/sky-samples.txt
           done
-
-          read -r status dns connect ttfb total size <<<"$metrics"
 
           python - <<'PY' > /tmp/sky-counts.txt
           import json
           from pathlib import Path
 
-          payload = json.loads(Path('/tmp/sky.json').read_text(encoding='utf-8'))
+          payload = json.loads(Path('/tmp/sky-3.json').read_text(encoding='utf-8'))
           required = ('stars', 'planets', 'galaxies', 'constellation_lines')
           for key in required:
               if not isinstance(payload.get(key), list):
@@ -129,33 +143,86 @@ jobs:
               print(f"{key}={len(payload[key])}")
           PY
 
-          echo ""
-          echo "NightAzimuth production sky measurement"
-          echo "HTTP: $status"
-          echo "DNS: ${dns}s"
-          echo "Connect: ${connect}s"
-          echo "TTFB: ${ttfb}s"
-          echo "Network total: ${total}s"
-          echo "Response bytes: $size"
-          echo "Server-Timing: $timing"
           cat /tmp/sky-counts.txt
+
+      - name: Measure current Live Sky startup burst
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          lat="$TEST_LATITUDE"
+          lon="$TEST_LONGITUDE"
+
+          probe_endpoint() {
+            local name="$1"
+            local url="$2"
+            : > "/tmp/${name}.headers"
+            curl \
+              --silent \
+              --show-error \
+              --location \
+              --compressed \
+              --connect-timeout 10 \
+              --max-time 120 \
+              --dump-header "/tmp/${name}.headers" \
+              --output "/tmp/${name}.json" \
+              --write-out '%{http_code} %{time_namelookup} %{time_connect} %{time_starttransfer} %{time_total} %{size_download}' \
+              "$url" > "/tmp/${name}.metrics" 2> "/tmp/${name}.stderr" || true
+          }
+
+          # Mirror the current startup exactly. app.js immediately starts six
+          # requests, including a 200 km above-horizon aircraft query. Before
+          # that group finishes, aircraft-sensitivity.js loads and immediately
+          # starts a second 400 km / -90 degree aircraft query for the radar.
+          probe_endpoint aircraft_primary "$API_BASE/api/v1/aircraft?latitude=$lat&longitude=$lon&radius_km=200&minimum_elevation_deg=0&include_ground=false" & p1=$!
+          probe_endpoint aircraft_radar "$API_BASE/api/v1/aircraft?latitude=$lat&longitude=$lon&radius_km=400&minimum_elevation_deg=-90&include_ground=false" & p2=$!
+          probe_endpoint airports "$API_BASE/api/v1/airports?latitude=$lat&longitude=$lon&radius_km=160.934&limit=12" & p3=$!
+          probe_endpoint weather "$API_BASE/api/v1/weather?latitude=$lat&longitude=$lon" & p4=$!
+          probe_endpoint observing "$API_BASE/api/v1/observing?latitude=$lat&longitude=$lon" & p5=$!
+          probe_endpoint sky "$API_BASE/api/v1/sky?latitude=$lat&longitude=$lon&altitude_m=0" & p6=$!
+          probe_endpoint satellites "$API_BASE/api/v1/satellites?latitude=$lat&longitude=$lon&minimum_elevation_deg=0" & p7=$!
+
+          wait "$p1" "$p2" "$p3" "$p4" "$p5" "$p6" "$p7"
+
+          echo ""
+          echo "NightAzimuth current seven-request startup burst"
+          printf '%-18s %-6s %-10s %-10s %-10s\n' "endpoint" "HTTP" "TTFB(s)" "total(s)" "bytes"
+          printf '%-18s %-6s %-10s %-10s %-10s\n' "--------" "----" "-------" "--------" "-----"
+
+          : > /tmp/burst-summary.txt
+          for name in aircraft_primary aircraft_radar airports weather observing sky satellites; do
+            metrics="$(cat "/tmp/${name}.metrics")"
+            read -r status dns connect ttfb total size <<<"${metrics:-0 0 0 0 0 0}"
+            printf '%-18s %-6s %-10s %-10s %-10s\n' "$name" "$status" "$ttfb" "$total" "$size"
+            echo "$name $status $dns $connect $ttfb $total $size" >> /tmp/burst-summary.txt
+            if [[ "$status" != "200" ]]; then
+              echo "$name stderr:" >&2
+              cat "/tmp/${name}.stderr" >&2 || true
+            fi
+          done
+
+          sky_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/sky.headers)"
+          echo "Concurrent Sky Server-Timing: ${sky_timing:-missing}"
 
           {
             echo "## NightAzimuth production API probe"
             echo ""
-            echo "| Measurement | Result |"
-            echo "| --- | --- |"
-            echo "| Health | 200 OK |"
-            echo "| Sky HTTP | $status |"
-            echo "| DNS | ${dns}s |"
-            echo "| Connect | ${connect}s |"
-            echo "| TTFB | ${ttfb}s |"
-            echo "| Network total | ${total}s |"
-            echo "| Response size | $size bytes |"
-            echo "| Server-Timing | \`$timing\` |"
-            while IFS='=' read -r key value; do
-              echo "| $key | $value |"
-            done < /tmp/sky-counts.txt
+            echo "Deployed commit: \`$GITHUB_SHA\`"
+            echo ""
+            echo "### Standalone Sky samples"
+            echo '```text'
+            cat /tmp/sky-samples.txt
+            cat /tmp/sky-counts.txt
+            echo '```'
+            echo ""
+            echo "### Current seven-request Live Sky startup burst"
+            echo "| Endpoint | HTTP | DNS | Connect | TTFB | Total | Bytes |"
+            echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"
+            while read -r name status dns connect ttfb total size; do
+              echo "| $name | $status | ${dns}s | ${connect}s | ${ttfb}s | ${total}s | $size |"
+            done < /tmp/burst-summary.txt
+            echo ""
+            echo "Concurrent Sky Server-Timing: \`$sky_timing\`"
             echo ""
             echo "Fixed test coordinates: Royal Observatory, Greenwich (public test location)."
           } >> "$GITHUB_STEP_SUMMARY"
