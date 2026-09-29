@@ -5,9 +5,13 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/live-api-smoke.yml"
+      - "render.yaml"
       - "src/nightazimuth/api.py"
       - "src/nightazimuth/api_sky.py"
       - "src/nightazimuth/api_satellites.py"
+      - "src/nightazimuth/celestrak.py"
+      - "src/nightazimuth/preload_sky.py"
+      - "src/nightazimuth/preload_satellites.py"
       - "src/nightazimuth/star_field.py"
       - "src/nightazimuth/tracker.py"
   workflow_dispatch:
