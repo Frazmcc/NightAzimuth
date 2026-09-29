@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 import logging
 import threading
-from time import perf_counter
+from time import perf_counter, time_ns
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
@@ -20,9 +20,16 @@ logger = logging.getLogger(__name__)
 _API_CACHE = Path("data/cache/api")
 _DEFAULT_GROUP = "ACTIVE"
 _IDENTIFICATION_GROUPS = ("LAST-30-DAYS", "STATIONS", "VISUAL")
+_HOSTED_HOT_GROUPS = frozenset((_DEFAULT_GROUP, *_IDENTIFICATION_GROUPS))
 # Reuse a small worker pool across requests. Creating four fresh threads for
 # every satellite poll adds avoidable overhead and scales poorly with users.
 _GROUP_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="satellite-catalogue")
+# Keep references to the already-parsed hosted catalogues while their exact file
+# generation remains inside the CelesTrak client's existing freshness window.
+# This does not duplicate ACTIVE in memory and does not cache positions. It only
+# avoids four worker submissions and filesystem freshness checks on warm polls.
+_GROUP_HOT_CACHE_LOCK = threading.RLock()
+_GROUP_HOT_CACHE: dict[str, tuple[int, int, list[dict[str, object]]]] = {}
 # Building an ACTIVE snapshot temporarily owns a copied catalogue, SGP4 arrays,
 # thousands of track dataclasses and then the JSON-ready payload.  On Render's
 # 512 MB free instance, overlapping snapshots can multiply that peak even though
@@ -30,6 +37,57 @@ _GROUP_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="satellit
 # time is appropriate for the service's 0.1 CPU and protects the process from a
 # small traffic burst or multiple open browser tabs.
 _SATELLITE_PIPELINE_LOCK = threading.Lock()
+
+
+def _clear_hot_group_cache() -> None:
+    """Clear hosted-group references (primarily for tests)."""
+
+    with _GROUP_HOT_CACHE_LOCK:
+        _GROUP_HOT_CACHE.clear()
+
+
+def _hot_group_cache_get(
+    client: object,
+    group: str,
+) -> tuple[list[dict[str, object]], object] | None:
+    """Return a still-fresh hosted catalogue without scheduling a worker."""
+
+    if group not in _HOSTED_HOT_GROUPS:
+        return None
+    max_age_minutes = getattr(client, "cache_max_age_minutes", None)
+    if not isinstance(max_age_minutes, (int, float)) or max_age_minutes <= 0:
+        return None
+
+    with _GROUP_HOT_CACHE_LOCK:
+        cached = _GROUP_HOT_CACHE.get(group)
+        if cached is None:
+            return None
+        modified_ns, size, payload = cached
+        max_age_ns = int(float(max_age_minutes) * 60.0 * 1_000_000_000)
+        if time_ns() - modified_ns > max_age_ns:
+            _GROUP_HOT_CACHE.pop(group, None)
+            return None
+        return payload, (modified_ns, size)
+
+
+def _remember_hot_group(
+    group: str,
+    payload: list[dict[str, object]],
+    generation: object | None,
+) -> None:
+    """Remember only the four bounded hosted groups and exact file generations."""
+
+    if group not in _HOSTED_HOT_GROUPS:
+        return
+    if (
+        not isinstance(generation, tuple)
+        or len(generation) != 2
+        or not all(isinstance(value, int) for value in generation)
+    ):
+        return
+    modified_ns, size = generation
+    with _GROUP_HOT_CACHE_LOCK:
+        _GROUP_HOT_CACHE[group] = (modified_ns, size, payload)
 
 
 def _load_group_with_generation(
@@ -104,7 +162,7 @@ def satellites(
         "satellite_request total_ms=%.1f lock_wait_ms=%.1f catalogue_load_ms=%.1f "
         "catalogue_merge_ms=%.1f tracker_init_ms=%.1f prepare_ms=%.1f "
         "propagation_ms=%.1f track_build_ms=%.1f payload_build_ms=%.1f "
-        "catalog_count=%d returned_count=%d",
+        "catalogue_hot_hits=%d catalog_count=%d returned_count=%d",
         total_ms,
         timings.get("lock_wait_ms", 0.0),
         timings.get("catalogue_load_ms", 0.0),
@@ -114,6 +172,7 @@ def satellites(
         timings.get("propagation_ms", 0.0),
         timings.get("track_build_ms", 0.0),
         timings.get("payload_build_ms", 0.0),
+        int(timings.get("catalogue_hot_hit_count", 0.0)),
         int(payload.get("catalog_count", 0)),
         int(payload.get("count", 0)),
     )
@@ -149,25 +208,36 @@ def _build_satellite_snapshot(
     group_payloads: dict[str, list[dict[str, object]]] = {}
     group_generations: dict[str, object | None] = {}
     failures: list[tuple[str, Exception]] = []
-    future_groups = {
-        _GROUP_EXECUTOR.submit(
+    future_groups = {}
+    hot_hit_count = 0
+    for requested_group in requested_groups:
+        cached = _hot_group_cache_get(client, requested_group)
+        if cached is not None:
+            payload, generation = cached
+            group_payloads[requested_group] = payload
+            group_generations[requested_group] = generation
+            hot_hit_count += 1
+            continue
+        future = _GROUP_EXECUTOR.submit(
             _load_group_with_generation,
             client,
             requested_group,
-        ): requested_group
-        for requested_group in requested_groups
-    }
+        )
+        future_groups[future] = requested_group
+
     for future in as_completed(future_groups):
         requested_group = future_groups[future]
         try:
             payload, generation = future.result()
             group_payloads[requested_group] = payload
             group_generations[requested_group] = generation
+            _remember_hot_group(requested_group, payload, generation)
         except (CelestrakError, ValueError) as exc:
             failures.append((requested_group, exc))
             logger.warning("Satellite group %s unavailable: %s", requested_group, exc)
     if timings is not None:
         timings["catalogue_load_ms"] = (perf_counter() - catalogue_load_started) * 1000.0
+        timings["catalogue_hot_hit_count"] = float(hot_hit_count)
 
     if primary_group not in group_payloads:
         raise HTTPException(
