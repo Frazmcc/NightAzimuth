@@ -6,7 +6,11 @@ import time
 
 import pytest
 
-from nightazimuth.celestrak import CelestrakClient, _read_cached_json
+from nightazimuth.celestrak import (
+    CelestrakClient,
+    _clear_parsed_cache,
+    _parsed_cache_entry_count,
+)
 
 
 def test_fresh_cache_is_loaded_without_network(tmp_path: Path) -> None:
@@ -82,14 +86,48 @@ def test_parsed_cache_is_reused_while_file_is_unchanged(tmp_path: Path) -> None:
     cache_path = client._cache_path("ACTIVE")
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(payload), encoding="utf-8")
-    _read_cached_json.cache_clear()
+    _clear_parsed_cache()
 
-    assert client._read_cache(cache_path) == payload
-    assert client._read_cache(cache_path) == payload
+    first = client._read_cache(cache_path)
+    second = client._read_cache(cache_path)
 
-    info = _read_cached_json.cache_info()
-    assert info.misses == 1
-    assert info.hits == 1
+    assert first == payload
+    assert second is first
+    assert _parsed_cache_entry_count() == 1
+
+
+def test_parsed_cache_replaces_old_file_generation_in_place(tmp_path: Path) -> None:
+    old_payload = [{"OBJECT_NAME": "OLD ACTIVE", "NORAD_CAT_ID": 10001}]
+    new_payload = [{"OBJECT_NAME": "NEW ACTIVE", "NORAD_CAT_ID": 10002}]
+    client = CelestrakClient(cache_directory=tmp_path)
+    cache_path = client._cache_path("ACTIVE")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(old_payload), encoding="utf-8")
+    _clear_parsed_cache()
+
+    old = client._read_cache(cache_path)
+    assert old == old_payload
+    assert _parsed_cache_entry_count() == 1
+
+    client._write_cache(cache_path, new_payload)
+    current = client._read_cache(cache_path)
+
+    assert current is new_payload
+    assert current != old
+    # The old ACTIVE generation must not remain as a second cache entry.
+    assert _parsed_cache_entry_count() == 1
+
+
+def test_parsed_cache_has_a_hard_entry_limit(tmp_path: Path) -> None:
+    _clear_parsed_cache()
+    client = CelestrakClient(cache_directory=tmp_path)
+
+    for index in range(12):
+        path = tmp_path / f"catalogue-{index}.json"
+        path.write_text(json.dumps([{"NORAD_CAT_ID": index}]), encoding="utf-8")
+        client._read_cache(path)
+
+    assert _parsed_cache_entry_count() <= 8
 
 
 def test_concurrent_refresh_downloads_a_group_only_once(tmp_path: Path, monkeypatch) -> None:
