@@ -32,6 +32,21 @@ _GROUP_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="satellit
 _SATELLITE_PIPELINE_LOCK = threading.Lock()
 
 
+def _load_group_with_generation(
+    client: object,
+    group: str,
+) -> tuple[list[dict[str, object]], object | None]:
+    """Load a group with a cheap generation token when the client supports it."""
+
+    versioned_loader = getattr(client, "load_group_versioned", None)
+    if callable(versioned_loader):
+        payload, generation = versioned_loader(group)
+        return payload, generation
+
+    loader = getattr(client, "load_group")
+    return loader(group), None
+
+
 @router.get("")
 def satellites(
     response: Response = None,
@@ -132,15 +147,22 @@ def _build_satellite_snapshot(
 
     catalogue_load_started = perf_counter()
     group_payloads: dict[str, list[dict[str, object]]] = {}
+    group_generations: dict[str, object | None] = {}
     failures: list[tuple[str, Exception]] = []
     future_groups = {
-        _GROUP_EXECUTOR.submit(client.load_group, requested_group): requested_group
+        _GROUP_EXECUTOR.submit(
+            _load_group_with_generation,
+            client,
+            requested_group,
+        ): requested_group
         for requested_group in requested_groups
     }
     for future in as_completed(future_groups):
         requested_group = future_groups[future]
         try:
-            group_payloads[requested_group] = future.result()
+            payload, generation = future.result()
+            group_payloads[requested_group] = payload
+            group_generations[requested_group] = generation
         except (CelestrakError, ValueError) as exc:
             failures.append((requested_group, exc))
             logger.warning("Satellite group %s unavailable: %s", requested_group, exc)
@@ -183,15 +205,31 @@ def _build_satellite_snapshot(
     if timings is not None:
         timings["catalogue_merge_ms"] = (perf_counter() - catalogue_merge_started) * 1000.0
 
+    catalogue_cache_key: object | None = None
+    if all(group_generations.get(group_name) is not None for group_name in available_groups):
+        catalogue_cache_key = tuple(
+            (group_name, group_generations.get(group_name))
+            for group_name in requested_groups
+        )
+
     tracker_init_started = perf_counter()
     tracker = SatelliteTracker(observer)
     if timings is not None:
         timings["tracker_init_ms"] = (perf_counter() - tracker_init_started) * 1000.0
-    positions = tracker.positions_above_horizon(
-        merged.values(),
-        minimum_elevation_deg=minimum_elevation_deg,
-        at=observed_at,
-    )
+
+    if catalogue_cache_key is None:
+        positions = tracker.positions_above_horizon(
+            merged.values(),
+            minimum_elevation_deg=minimum_elevation_deg,
+            at=observed_at,
+        )
+    else:
+        positions = tracker.positions_above_horizon(
+            merged.values(),
+            minimum_elevation_deg=minimum_elevation_deg,
+            at=observed_at,
+            catalogue_cache_key=catalogue_cache_key,
+        )
     if timings is not None:
         timings.update(getattr(tracker, "last_timings", {}))
 
@@ -205,6 +243,7 @@ def _build_satellite_snapshot(
     del positions
     del merged
     del group_payloads
+    del group_generations
     del future_groups
     if timings is not None:
         timings["payload_build_ms"] = (perf_counter() - payload_build_started) * 1000.0
