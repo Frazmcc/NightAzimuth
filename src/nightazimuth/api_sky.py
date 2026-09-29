@@ -39,10 +39,8 @@ def sky(
     except (OSError, ValueError, KeyError) as exc:
         elapsed_ms = (perf_counter() - request_started) * 1000.0
         _LOGGER.warning(
-            "sky_request_failed total_ms=%.1f latitude=%.5f longitude=%.5f error=%s",
+            "sky_request_failed total_ms=%.1f error=%s",
             elapsed_ms,
-            latitude,
-            longitude,
             type(exc).__name__,
         )
         raise HTTPException(status_code=503, detail="Celestial sky is temporarily unavailable") from exc
