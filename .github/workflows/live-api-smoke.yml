@@ -145,7 +145,7 @@ jobs:
 
           cat /tmp/sky-counts.txt
 
-      - name: Measure Live Sky concurrent API burst
+      - name: Measure current Live Sky startup burst
         shell: bash
         run: |
           set -euo pipefail
@@ -170,26 +170,30 @@ jobs:
               "$url" > "/tmp/${name}.metrics" 2> "/tmp/${name}.stderr" || true
           }
 
-          # Mirror the six requests started together by web/app.js refresh().
-          probe_endpoint aircraft "$API_BASE/api/v1/aircraft?latitude=$lat&longitude=$lon&radius_km=200&minimum_elevation_deg=0&include_ground=false" & p1=$!
-          probe_endpoint airports "$API_BASE/api/v1/airports?latitude=$lat&longitude=$lon&radius_km=160.934&limit=12" & p2=$!
-          probe_endpoint weather "$API_BASE/api/v1/weather?latitude=$lat&longitude=$lon" & p3=$!
-          probe_endpoint observing "$API_BASE/api/v1/observing?latitude=$lat&longitude=$lon" & p4=$!
-          probe_endpoint sky "$API_BASE/api/v1/sky?latitude=$lat&longitude=$lon&altitude_m=0" & p5=$!
-          probe_endpoint satellites "$API_BASE/api/v1/satellites?latitude=$lat&longitude=$lon&minimum_elevation_deg=0" & p6=$!
+          # Mirror the current startup exactly. app.js immediately starts six
+          # requests, including a 200 km above-horizon aircraft query. Before
+          # that group finishes, aircraft-sensitivity.js loads and immediately
+          # starts a second 400 km / -90 degree aircraft query for the radar.
+          probe_endpoint aircraft_primary "$API_BASE/api/v1/aircraft?latitude=$lat&longitude=$lon&radius_km=200&minimum_elevation_deg=0&include_ground=false" & p1=$!
+          probe_endpoint aircraft_radar "$API_BASE/api/v1/aircraft?latitude=$lat&longitude=$lon&radius_km=400&minimum_elevation_deg=-90&include_ground=false" & p2=$!
+          probe_endpoint airports "$API_BASE/api/v1/airports?latitude=$lat&longitude=$lon&radius_km=160.934&limit=12" & p3=$!
+          probe_endpoint weather "$API_BASE/api/v1/weather?latitude=$lat&longitude=$lon" & p4=$!
+          probe_endpoint observing "$API_BASE/api/v1/observing?latitude=$lat&longitude=$lon" & p5=$!
+          probe_endpoint sky "$API_BASE/api/v1/sky?latitude=$lat&longitude=$lon&altitude_m=0" & p6=$!
+          probe_endpoint satellites "$API_BASE/api/v1/satellites?latitude=$lat&longitude=$lon&minimum_elevation_deg=0" & p7=$!
 
-          wait "$p1" "$p2" "$p3" "$p4" "$p5" "$p6"
+          wait "$p1" "$p2" "$p3" "$p4" "$p5" "$p6" "$p7"
 
           echo ""
-          echo "NightAzimuth concurrent Live Sky burst"
-          printf '%-12s %-6s %-10s %-10s %-10s\n' "endpoint" "HTTP" "TTFB(s)" "total(s)" "bytes"
-          printf '%-12s %-6s %-10s %-10s %-10s\n' "--------" "----" "-------" "--------" "-----"
+          echo "NightAzimuth current seven-request startup burst"
+          printf '%-18s %-6s %-10s %-10s %-10s\n' "endpoint" "HTTP" "TTFB(s)" "total(s)" "bytes"
+          printf '%-18s %-6s %-10s %-10s %-10s\n' "--------" "----" "-------" "--------" "-----"
 
           : > /tmp/burst-summary.txt
-          for name in aircraft airports weather observing sky satellites; do
+          for name in aircraft_primary aircraft_radar airports weather observing sky satellites; do
             metrics="$(cat "/tmp/${name}.metrics")"
             read -r status dns connect ttfb total size <<<"${metrics:-0 0 0 0 0 0}"
-            printf '%-12s %-6s %-10s %-10s %-10s\n' "$name" "$status" "$ttfb" "$total" "$size"
+            printf '%-18s %-6s %-10s %-10s %-10s\n' "$name" "$status" "$ttfb" "$total" "$size"
             echo "$name $status $dns $connect $ttfb $total $size" >> /tmp/burst-summary.txt
             if [[ "$status" != "200" ]]; then
               echo "$name stderr:" >&2
@@ -211,7 +215,7 @@ jobs:
             cat /tmp/sky-counts.txt
             echo '```'
             echo ""
-            echo "### Concurrent Live Sky burst"
+            echo "### Current seven-request Live Sky startup burst"
             echo "| Endpoint | HTTP | DNS | Connect | TTFB | Total | Bytes |"
             echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"
             while read -r name status dns connect ttfb total size; do
