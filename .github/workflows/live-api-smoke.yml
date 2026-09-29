@@ -7,7 +7,9 @@ on:
       - ".github/workflows/live-api-smoke.yml"
       - "src/nightazimuth/api.py"
       - "src/nightazimuth/api_sky.py"
+      - "src/nightazimuth/api_satellites.py"
       - "src/nightazimuth/star_field.py"
+      - "src/nightazimuth/tracker.py"
   workflow_dispatch:
 
 permissions:
@@ -202,7 +204,14 @@ jobs:
           done
 
           sky_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/sky.headers)"
+          satellite_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/satellites.headers)"
           echo "Concurrent Sky Server-Timing: ${sky_timing:-missing}"
+          echo "Concurrent Satellite Server-Timing: ${satellite_timing:-missing}"
+
+          if [[ "$satellite_timing" != *"propagate;dur="* || "$satellite_timing" != *"track_build;dur="* ]]; then
+            echo "Satellite performance instrumentation is missing from production response." >&2
+            exit 1
+          fi
 
           {
             echo "## NightAzimuth production API probe"
@@ -223,6 +232,8 @@ jobs:
             done < /tmp/burst-summary.txt
             echo ""
             echo "Concurrent Sky Server-Timing: \`$sky_timing\`"
+            echo ""
+            echo "Concurrent Satellite Server-Timing: \`$satellite_timing\`"
             echo ""
             echo "Fixed test coordinates: Royal Observatory, Greenwich (public test location)."
           } >> "$GITHUB_STEP_SUMMARY"

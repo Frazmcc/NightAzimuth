@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from math import cos, radians, sin, sqrt
 import re
+from time import perf_counter
 from typing import Any, Iterable
 
 import numpy as np
@@ -59,6 +60,7 @@ class SatelliteTracker:
         self._cos_lat = cos(latitude)
         self._sin_lon = sin(longitude)
         self._cos_lon = cos(longitude)
+        self.last_timings: dict[str, float] = {}
 
     def positions_above_horizon(
         self,
@@ -72,12 +74,15 @@ class SatelliteTracker:
         Propagation is deliberately independent of visual brightness.  The full
         ACTIVE catalogue is large, so SGP4 is run as one native batch instead of
         constructing and propagating each EarthSatellite separately in Python.
+        Internal stage timings are retained on ``last_timings`` for diagnostics.
         """
 
         moment = at or datetime.now(timezone.utc)
         if moment.tzinfo is None:
             raise ValueError("Tracking time must be timezone-aware")
 
+        self.last_timings = {}
+        prepare_started = perf_counter()
         fields_list: list[dict[str, Any]] = []
         satrecs: list[Satrec] = []
         for fields in elements:
@@ -90,6 +95,9 @@ class SatelliteTracker:
             satrecs.append(satrec)
 
         if not satrecs:
+            self.last_timings["prepare_ms"] = (perf_counter() - prepare_started) * 1000.0
+            self.last_timings["propagation_ms"] = 0.0
+            self.last_timings["track_build_ms"] = 0.0
             return []
 
         utc_moment = moment.astimezone(timezone.utc)
@@ -112,7 +120,9 @@ class SatelliteTracker:
             )
             julian_days.append(float(jd))
             julian_fractions.append(float(fraction))
+        self.last_timings["prepare_ms"] = (perf_counter() - prepare_started) * 1000.0
 
+        propagation_started = perf_counter()
         errors, teme_positions, _teme_velocities = SatrecArray(satrecs).sgp4(
             np.asarray(julian_days, dtype=float),
             np.asarray(julian_fractions, dtype=float),
@@ -148,7 +158,9 @@ class SatelliteTracker:
             & np.isfinite(current_range)
             & (current_elevation >= minimum_elevation_deg)
         )
+        self.last_timings["propagation_ms"] = (perf_counter() - propagation_started) * 1000.0
 
+        track_build_started = perf_counter()
         results: list[SatellitePosition] = []
         for satellite_index in np.flatnonzero(valid):
             fields = fields_list[int(satellite_index)]
@@ -200,7 +212,9 @@ class SatelliteTracker:
                 )
             )
 
-        return sorted(results, key=lambda item: item.elevation_deg, reverse=True)
+        sorted_results = sorted(results, key=lambda item: item.elevation_deg, reverse=True)
+        self.last_timings["track_build_ms"] = (perf_counter() - track_build_started) * 1000.0
+        return sorted_results
 
     def _topocentric_angles(
         self, satellite_itrf_km: np.ndarray
