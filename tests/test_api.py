@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi.testclient import TestClient
 
 from nightazimuth import __version__
+import nightazimuth.api as api_module
 from nightazimuth.api import API_VERSION, app
 
 
@@ -32,6 +33,21 @@ def test_health_endpoint_does_not_require_configuration() -> None:
     response = client.get("/api/v1/health")
 
     assert response.status_code == 200
+
+
+def test_sky_runtime_prewarm_is_production_opt_in(monkeypatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(api_module, "_prewarm_sky_runtime", lambda: calls.append("prewarmed"))
+
+    monkeypatch.delenv("NIGHTAZIMUTH_PREWARM_SKY", raising=False)
+    with TestClient(app):
+        pass
+    assert calls == []
+
+    monkeypatch.setenv("NIGHTAZIMUTH_PREWARM_SKY", "1")
+    with TestClient(app):
+        pass
+    assert calls == ["prewarmed"]
 
 
 def test_cors_allows_hosted_frontend() -> None:
