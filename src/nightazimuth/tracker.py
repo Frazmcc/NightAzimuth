@@ -166,12 +166,14 @@ class SatelliteTracker:
         """Return every propagated catalogue object above the requested horizon.
 
         Propagation is deliberately independent of visual brightness. The full
-        ACTIVE catalogue is large, so SGP4 is run as one native batch. The
-        immutable OMM-to-Satrec conversion is cached for one catalogue generation
-        while current-time propagation is still performed on every request.
-        Hosted callers can supply a cheap catalogue generation key; other callers
-        fall back to a content hash. Internal stage timings are retained on
-        ``last_timings`` for diagnostics.
+        ACTIVE catalogue is large, so current positions are propagated as one
+        native batch. Future track points are then propagated only for satellites
+        that are visible at the current instant. The immutable OMM-to-Satrec
+        conversion is cached for one catalogue generation while current-time
+        propagation is still performed on every request. Hosted callers can
+        supply a cheap catalogue generation key; other callers fall back to a
+        content hash. Internal stage timings are retained on ``last_timings`` for
+        diagnostics.
         """
 
         moment = at or datetime.now(timezone.utc)
@@ -218,34 +220,26 @@ class SatelliteTracker:
         self.last_timings["prepare_ms"] = (perf_counter() - prepare_started) * 1000.0
 
         propagation_started = perf_counter()
-        errors, teme_positions, _teme_velocities = SatrecArray(list(satrecs)).sgp4(
-            np.asarray(julian_days, dtype=float),
-            np.asarray(julian_fractions, dtype=float),
+
+        # Every catalogue object must be propagated for the current instant so
+        # the visibility filter remains exact. Only satellites that pass that
+        # filter need the six future SGP4 points used for their on-screen tracks.
+        current_errors_matrix, current_teme_positions, _current_teme_velocities = SatrecArray(
+            list(satrecs)
+        ).sgp4(
+            np.asarray(julian_days[:1], dtype=float),
+            np.asarray(julian_fractions[:1], dtype=float),
         )
-
-        azimuth_series: list[np.ndarray] = []
-        elevation_series: list[np.ndarray] = []
-        range_series: list[np.ndarray] = []
-        for index, skyfield_time in enumerate(skyfield_times):
-            # Skyfield's TEME_to_ITRF() helper also computes velocity and its
-            # scalar angular-velocity cross-product does not broadcast over a
-            # satellite matrix. For position we need only the identical PEF/
-            # ITRF z-rotation (xp=yp=0), which mxv handles natively in batch.
-            r_teme = np.asarray(teme_positions[:, index, :], dtype=float).T
-            theta, _theta_dot = theta_GMST1982(
-                skyfield_time.whole,
-                skyfield_time.ut1_fraction,
-            )
-            r_itrf = mxv(rot_z(-theta), r_teme)
-            azimuth, elevation, distance = self._topocentric_angles(np.asarray(r_itrf).T)
-            azimuth_series.append(azimuth)
-            elevation_series.append(elevation)
-            range_series.append(distance)
-
-        current_azimuth = azimuth_series[0]
-        current_elevation = elevation_series[0]
-        current_range = range_series[0]
-        current_errors = np.asarray(errors[:, 0])
+        current_errors = np.asarray(current_errors_matrix[:, 0])
+        current_r_teme = np.asarray(current_teme_positions[:, 0, :], dtype=float).T
+        current_theta, _current_theta_dot = theta_GMST1982(
+            skyfield_times[0].whole,
+            skyfield_times[0].ut1_fraction,
+        )
+        current_r_itrf = mxv(rot_z(-current_theta), current_r_teme)
+        current_azimuth, current_elevation, current_range = self._topocentric_angles(
+            np.asarray(current_r_itrf).T
+        )
         valid = (
             (current_errors == 0)
             & np.isfinite(current_azimuth)
@@ -253,12 +247,49 @@ class SatelliteTracker:
             & np.isfinite(current_range)
             & (current_elevation >= minimum_elevation_deg)
         )
+        visible_indices = np.flatnonzero(valid)
+
+        future_errors = np.empty((0, len(track_moments) - 1), dtype=int)
+        future_azimuth_series: list[np.ndarray] = []
+        future_elevation_series: list[np.ndarray] = []
+        future_range_series: list[np.ndarray] = []
+
+        if visible_indices.size:
+            visible_satrecs = [satrecs[int(index)] for index in visible_indices]
+            future_errors, future_teme_positions, _future_teme_velocities = SatrecArray(
+                visible_satrecs
+            ).sgp4(
+                np.asarray(julian_days[1:], dtype=float),
+                np.asarray(julian_fractions[1:], dtype=float),
+            )
+
+            for future_index, skyfield_time in enumerate(skyfield_times[1:]):
+                # Skyfield's TEME_to_ITRF() helper also computes velocity and its
+                # scalar angular-velocity cross-product does not broadcast over a
+                # satellite matrix. For position we need only the identical PEF/
+                # ITRF z-rotation (xp=yp=0), which mxv handles natively in batch.
+                r_teme = np.asarray(
+                    future_teme_positions[:, future_index, :], dtype=float
+                ).T
+                theta, _theta_dot = theta_GMST1982(
+                    skyfield_time.whole,
+                    skyfield_time.ut1_fraction,
+                )
+                r_itrf = mxv(rot_z(-theta), r_teme)
+                azimuth, elevation, distance = self._topocentric_angles(
+                    np.asarray(r_itrf).T
+                )
+                future_azimuth_series.append(azimuth)
+                future_elevation_series.append(elevation)
+                future_range_series.append(distance)
+
         self.last_timings["propagation_ms"] = (perf_counter() - propagation_started) * 1000.0
 
         track_build_started = perf_counter()
         results: list[SatellitePosition] = []
-        for satellite_index in np.flatnonzero(valid):
-            fields = fields_list[int(satellite_index)]
+        for visible_offset, satellite_index_raw in enumerate(visible_indices):
+            satellite_index = int(satellite_index_raw)
+            fields = fields_list[satellite_index]
             name = str(fields.get("OBJECT_NAME") or "UNKNOWN")
             norad_id = str(fields.get("NORAD_CAT_ID") or "")
             object_id_raw = fields.get("OBJECT_ID")
@@ -270,13 +301,20 @@ class SatelliteTracker:
             mean_motion = self._optional_float(fields.get("MEAN_MOTION"))
             period_minutes = 1440.0 / mean_motion if mean_motion and mean_motion > 0 else None
 
-            track: list[SatelliteTrackPoint] = []
-            for track_index, track_moment in enumerate(track_moments):
-                if int(errors[satellite_index, track_index]) != 0:
+            track: list[SatelliteTrackPoint] = [
+                SatelliteTrackPoint(
+                    time_utc=track_moments[0].isoformat(),
+                    azimuth_deg=float(current_azimuth[satellite_index]),
+                    elevation_deg=float(current_elevation[satellite_index]),
+                    range_km=float(current_range[satellite_index]),
+                )
+            ]
+            for future_index, track_moment in enumerate(track_moments[1:]):
+                if int(future_errors[visible_offset, future_index]) != 0:
                     continue
-                azimuth = float(azimuth_series[track_index][satellite_index])
-                elevation = float(elevation_series[track_index][satellite_index])
-                distance = float(range_series[track_index][satellite_index])
+                azimuth = float(future_azimuth_series[future_index][visible_offset])
+                elevation = float(future_elevation_series[future_index][visible_offset])
+                distance = float(future_range_series[future_index][visible_offset])
                 if not all(np.isfinite((azimuth, elevation, distance))):
                     continue
                 track.append(
