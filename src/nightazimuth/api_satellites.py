@@ -34,7 +34,7 @@ _SATELLITE_PIPELINE_LOCK = threading.Lock()
 
 @router.get("")
 def satellites(
-    response: Response,
+    response: Response = None,
     latitude: float = Query(ge=-90.0, le=90.0),
     longitude: float = Query(ge=-180.0, le=180.0),
     altitude_m: float = Query(default=0.0),
@@ -73,17 +73,18 @@ def satellites(
 
     total_ms = (perf_counter() - request_started) * 1000.0
     timings["total_ms"] = total_ms
-    response.headers["Server-Timing"] = (
-        f"lock_wait;dur={timings.get('lock_wait_ms', 0.0):.1f}, "
-        f"catalogue_load;dur={timings.get('catalogue_load_ms', 0.0):.1f}, "
-        f"catalogue_merge;dur={timings.get('catalogue_merge_ms', 0.0):.1f}, "
-        f"tracker_init;dur={timings.get('tracker_init_ms', 0.0):.1f}, "
-        f"prepare;dur={timings.get('prepare_ms', 0.0):.1f}, "
-        f"propagate;dur={timings.get('propagation_ms', 0.0):.1f}, "
-        f"track_build;dur={timings.get('track_build_ms', 0.0):.1f}, "
-        f"payload_build;dur={timings.get('payload_build_ms', 0.0):.1f}, "
-        f"total;dur={total_ms:.1f}"
-    )
+    if response is not None:
+        response.headers["Server-Timing"] = (
+            f"lock_wait;dur={timings.get('lock_wait_ms', 0.0):.1f}, "
+            f"catalogue_load;dur={timings.get('catalogue_load_ms', 0.0):.1f}, "
+            f"catalogue_merge;dur={timings.get('catalogue_merge_ms', 0.0):.1f}, "
+            f"tracker_init;dur={timings.get('tracker_init_ms', 0.0):.1f}, "
+            f"prepare;dur={timings.get('prepare_ms', 0.0):.1f}, "
+            f"propagate;dur={timings.get('propagation_ms', 0.0):.1f}, "
+            f"track_build;dur={timings.get('track_build_ms', 0.0):.1f}, "
+            f"payload_build;dur={timings.get('payload_build_ms', 0.0):.1f}, "
+            f"total;dur={total_ms:.1f}"
+        )
     logger.info(
         "satellite_request total_ms=%.1f lock_wait_ms=%.1f catalogue_load_ms=%.1f "
         "catalogue_merge_ms=%.1f tracker_init_ms=%.1f prepare_ms=%.1f "
@@ -190,8 +191,9 @@ def _build_satellite_snapshot(
         merged.values(),
         minimum_elevation_deg=minimum_elevation_deg,
         at=observed_at,
-        timings=timings,
     )
+    if timings is not None:
+        timings.update(getattr(tracker, "last_timings", {}))
 
     # Convert to the response shape before returning, then explicitly release the
     # catalogue copies and dataclass graph.  FastAPI/Starlette serialisation and
