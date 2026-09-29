@@ -7,3 +7,6 @@ services:
     startCommand: uvicorn nightazimuth.api:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/v1/health
     autoDeployTrigger: commit
+    envVars:
+      - key: NIGHTAZIMUTH_PREWARM_SKY
+        value: "1"
