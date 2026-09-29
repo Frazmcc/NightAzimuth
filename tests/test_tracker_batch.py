@@ -3,7 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from nightazimuth.config import ObserverConfig
-from nightazimuth.tracker import SatelliteTracker
+import nightazimuth.tracker as tracker_module
+from nightazimuth.tracker import SatelliteTracker, _clear_prepared_catalogue_cache
 
 
 VANGUARD_OMM = {
@@ -32,6 +33,7 @@ VANGUARD_OMM = {
 
 
 def test_batch_tracker_propagates_omm_and_builds_track() -> None:
+    _clear_prepared_catalogue_cache()
     tracker = SatelliteTracker(ObserverConfig(latitude=0.0, longitude=0.0, altitude_m=0.0))
     at = datetime(2020, 10, 13, 4, 52, 48, tzinfo=UTC)
 
@@ -56,6 +58,7 @@ def test_batch_tracker_propagates_omm_and_builds_track() -> None:
 
 
 def test_batch_tracker_handles_multiple_catalogue_objects() -> None:
+    _clear_prepared_catalogue_cache()
     second = dict(VANGUARD_OMM)
     second["OBJECT_NAME"] = "VANGUARD COPY"
     second["NORAD_CAT_ID"] = 6
@@ -72,3 +75,47 @@ def test_batch_tracker_handles_multiple_catalogue_objects() -> None:
 
     assert {position.norad_id for position in positions} == {"5", "6"}
     assert all(len(position.track) == 7 for position in positions)
+
+
+def test_prepared_satrec_generation_is_reused_until_orbital_data_changes(monkeypatch) -> None:
+    _clear_prepared_catalogue_cache()
+    at = datetime(2020, 10, 13, 4, 52, 48, tzinfo=UTC)
+    observer = ObserverConfig(latitude=51.5, longitude=-0.1, altitude_m=25.0)
+    original_initialize = tracker_module.omm.initialize
+    initialize_calls = 0
+
+    def counting_initialize(satrec, fields) -> None:
+        nonlocal initialize_calls
+        initialize_calls += 1
+        original_initialize(satrec, fields)
+
+    monkeypatch.setattr(tracker_module.omm, "initialize", counting_initialize)
+
+    first = SatelliteTracker(observer)
+    first.positions_above_horizon(
+        [VANGUARD_OMM],
+        minimum_elevation_deg=-90.0,
+        at=at,
+    )
+    assert initialize_calls == 1
+    assert first.last_timings["prepare_cache_hit"] == 0.0
+
+    second = SatelliteTracker(observer)
+    second.positions_above_horizon(
+        [dict(VANGUARD_OMM)],
+        minimum_elevation_deg=-90.0,
+        at=at,
+    )
+    assert initialize_calls == 1
+    assert second.last_timings["prepare_cache_hit"] == 1.0
+
+    changed = dict(VANGUARD_OMM)
+    changed["MEAN_ANOMALY"] = float(changed["MEAN_ANOMALY"]) + 0.0001
+    third = SatelliteTracker(observer)
+    third.positions_above_horizon(
+        [changed],
+        minimum_elevation_deg=-90.0,
+        at=at,
+    )
+    assert initialize_calls == 2
+    assert third.last_timings["prepare_cache_hit"] == 0.0

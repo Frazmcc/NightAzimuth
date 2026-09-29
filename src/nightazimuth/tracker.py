@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import hashlib
+import json
 from math import cos, radians, sin, sqrt
 import re
+import threading
 from time import perf_counter
 from typing import Any, Iterable
 
@@ -21,6 +24,18 @@ _LAUNCH_ID_RE = re.compile(r"^(\d{4}-\d{3})")
 _TRACK_OFFSETS_SECONDS = (0, 10, 20, 30, 40, 50, 60)
 _WGS84_EQUATORIAL_RADIUS_KM = 6378.137
 _WGS84_FLATTENING = 1.0 / 298.257223563
+_PREPARED_CATALOGUE_LOCK = threading.RLock()
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedCatalogue:
+    fingerprint: bytes
+    element_count: int
+    valid_indices: tuple[int, ...]
+    satrecs: tuple[Satrec, ...]
+
+
+_PREPARED_CATALOGUE: _PreparedCatalogue | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +64,78 @@ class SatellitePosition:
     track: tuple[SatelliteTrackPoint, ...] = ()
 
 
+def _catalogue_fingerprint(elements: list[dict[str, Any]]) -> bytes:
+    """Hash the orbital catalogue while ignoring NightAzimuth-only metadata."""
+
+    digest = hashlib.sha256()
+    for fields in elements:
+        orbital_fields = {
+            key: value for key, value in fields.items() if key != "_nightazimuth_groups"
+        }
+        encoded = json.dumps(
+            orbital_fields,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+        digest.update(len(encoded).to_bytes(4, byteorder="big", signed=False))
+        digest.update(encoded)
+    return digest.digest()
+
+
+def _build_prepared_catalogue(
+    elements: list[dict[str, Any]],
+    fingerprint: bytes,
+) -> _PreparedCatalogue:
+    valid_indices: list[int] = []
+    satrecs: list[Satrec] = []
+    for index, fields in enumerate(elements):
+        try:
+            satrec = Satrec()
+            omm.initialize(satrec, fields)
+        except (KeyError, TypeError, ValueError):
+            continue
+        valid_indices.append(index)
+        satrecs.append(satrec)
+
+    return _PreparedCatalogue(
+        fingerprint=fingerprint,
+        element_count=len(elements),
+        valid_indices=tuple(valid_indices),
+        satrecs=tuple(satrecs),
+    )
+
+
+def _prepared_catalogue_for(
+    elements: list[dict[str, Any]],
+) -> tuple[_PreparedCatalogue, bool]:
+    """Return the one cached Satrec generation, replacing it when data changes."""
+
+    global _PREPARED_CATALOGUE
+
+    fingerprint = _catalogue_fingerprint(elements)
+    with _PREPARED_CATALOGUE_LOCK:
+        cached = _PREPARED_CATALOGUE
+        if (
+            cached is not None
+            and cached.element_count == len(elements)
+            and cached.fingerprint == fingerprint
+        ):
+            return cached, True
+
+        prepared = _build_prepared_catalogue(elements, fingerprint)
+        _PREPARED_CATALOGUE = prepared
+        return prepared, False
+
+
+def _clear_prepared_catalogue_cache() -> None:
+    """Clear the single prepared Satrec generation (primarily for tests)."""
+
+    global _PREPARED_CATALOGUE
+    with _PREPARED_CATALOGUE_LOCK:
+        _PREPARED_CATALOGUE = None
+
+
 class SatelliteTracker:
     def __init__(self, observer: ObserverConfig) -> None:
         self.observer = observer
@@ -71,9 +158,10 @@ class SatelliteTracker:
     ) -> list[SatellitePosition]:
         """Return every propagated catalogue object above the requested horizon.
 
-        Propagation is deliberately independent of visual brightness.  The full
-        ACTIVE catalogue is large, so SGP4 is run as one native batch instead of
-        constructing and propagating each EarthSatellite separately in Python.
+        Propagation is deliberately independent of visual brightness. The full
+        ACTIVE catalogue is large, so SGP4 is run as one native batch. The
+        immutable OMM-to-Satrec conversion is cached for one catalogue generation
+        while current-time propagation is still performed on every request.
         Internal stage timings are retained on ``last_timings`` for diagnostics.
         """
 
@@ -83,16 +171,11 @@ class SatelliteTracker:
 
         self.last_timings = {}
         prepare_started = perf_counter()
-        fields_list: list[dict[str, Any]] = []
-        satrecs: list[Satrec] = []
-        for fields in elements:
-            try:
-                satrec = Satrec()
-                omm.initialize(satrec, fields)
-            except (KeyError, TypeError, ValueError):
-                continue
-            fields_list.append(fields)
-            satrecs.append(satrec)
+        element_list = list(elements)
+        prepared, cache_hit = _prepared_catalogue_for(element_list)
+        fields_list = [element_list[index] for index in prepared.valid_indices]
+        satrecs = prepared.satrecs
+        self.last_timings["prepare_cache_hit"] = 1.0 if cache_hit else 0.0
 
         if not satrecs:
             self.last_timings["prepare_ms"] = (perf_counter() - prepare_started) * 1000.0
@@ -123,7 +206,7 @@ class SatelliteTracker:
         self.last_timings["prepare_ms"] = (perf_counter() - prepare_started) * 1000.0
 
         propagation_started = perf_counter()
-        errors, teme_positions, _teme_velocities = SatrecArray(satrecs).sgp4(
+        errors, teme_positions, _teme_velocities = SatrecArray(list(satrecs)).sgp4(
             np.asarray(julian_days, dtype=float),
             np.asarray(julian_fractions, dtype=float),
         )
@@ -134,7 +217,7 @@ class SatelliteTracker:
         for index, skyfield_time in enumerate(skyfield_times):
             # Skyfield's TEME_to_ITRF() helper also computes velocity and its
             # scalar angular-velocity cross-product does not broadcast over a
-            # satellite matrix.  For position we need only the identical PEF/
+            # satellite matrix. For position we need only the identical PEF/
             # ITRF z-rotation (xp=yp=0), which mxv handles natively in batch.
             r_teme = np.asarray(teme_positions[:, index, :], dtype=float).T
             theta, _theta_dot = theta_GMST1982(
