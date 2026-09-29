@@ -61,13 +61,20 @@ def test_saved_camera_device_is_restored_without_requesting_permission() -> None
     assert "savedOption.selected=true" in JS
 
 
+def test_stale_saved_camera_falls_back_to_default_device() -> None:
+    assert '["NotFoundError","OverconstrainedError"]' in JS
+    assert "localStorage.removeItem(DEVICE_KEY)" in JS
+    assert 'setStatus("Saved camera is unavailable. Trying the default camera…")' in JS
+    assert "saved selection unavailable; using default camera" in JS
+
+
 def test_camera_stream_is_stopped_when_settings_close_without_losing_solution() -> None:
     assert "if(settingsPanel.hidden&&activeStream)stopCamera({preserveSolution:true})" in JS
     assert 'window.addEventListener("beforeunload",()=>stopCamera({preserveSolution:true}))' in JS
 
 
 def test_restarting_camera_invalidates_old_alignment() -> None:
-    assert 'invalidateSolution("Camera started or restarted. Capture and solve a new frame before using alignment.")' in JS
+    assert 'invalidateSolution("Camera started or restarted. Capture and solve a new frame before using alignment."' in JS
 
 
 def test_capture_frame_reads_pixels_once_before_plate_matching() -> None:
@@ -100,6 +107,17 @@ def test_plate_solver_runs_in_worker_when_available() -> None:
     assert 'importScripts("./camera-plate-solver.js?v=21.11.18")' in WORKER_JS
     assert "self.NightAzimuthPlateSolver" in WORKER_JS
     assert "worker.postMessage(payload)" in JS
+
+
+def test_async_plate_solve_cannot_apply_to_a_replaced_frame_or_geometry() -> None:
+    assert "let solveGeneration=0" in JS
+    assert "function cancelPendingSolve()" in JS
+    assert "activeSolveCancel" in JS
+    assert "const frame=lastFrame" in JS
+    assert "const generation=solveGeneration" in JS
+    assert JS.count("generation!==solveGeneration||lastFrame!==frame") >= 3
+    assert "cancelPendingSolve();" in JS
+    assert "if(generation===solveGeneration)updateSolveAvailability()" in JS
 
 
 def test_plate_solver_requires_a_strong_multi_star_match_before_locking() -> None:
