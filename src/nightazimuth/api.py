@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+import logging
 import os
 from datetime import UTC, datetime
+from time import perf_counter
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,9 +19,36 @@ from .api_observing import router as observing_router
 from .api_satellites import router as satellites_router
 from .api_sky import router as sky_router
 from .api_weather import router as weather_router
+from .preload_sky import SKYFIELD_CACHE
+from .star_field import _load_static_resources, _prepared_catalogue
 
 API_VERSION = "v1"
 MAX_QUERY_STRING_BYTES = 2048
+_SKY_LIMITING_MAGNITUDE = 5.5
+_LOGGER = logging.getLogger("uvicorn.error")
+
+
+def _prewarm_sky_runtime() -> None:
+    """Load immutable Skyfield data and the default prepared catalogue into memory."""
+
+    cache_directory = str(SKYFIELD_CACHE.resolve())
+    started = perf_counter()
+    _load_static_resources(cache_directory)
+    _prepared_catalogue(cache_directory, _SKY_LIMITING_MAGNITUDE)
+    _LOGGER.info(
+        "sky_runtime_prewarm total_ms=%.1f",
+        (perf_counter() - started) * 1000.0,
+    )
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Warm production-only astronomy resources before accepting requests."""
+
+    if os.environ.get("NIGHTAZIMUTH_PREWARM_SKY") == "1":
+        _prewarm_sky_runtime()
+    yield
+
 
 app = FastAPI(
     title="NightAzimuth API",
@@ -27,6 +57,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url=None,
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 app.add_middleware(
     CORSMiddleware,
