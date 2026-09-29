@@ -7,9 +7,9 @@ import time
 from fastapi.testclient import TestClient
 
 from nightazimuth.api import app
-from nightazimuth.api_satellites import satellites
+from nightazimuth.api_satellites import _satellite_payload, satellites
 from nightazimuth.celestrak import CelestrakClient, CelestrakError
-from nightazimuth.tracker import SatellitePosition
+from nightazimuth.tracker import SatellitePosition, SatelliteTrackPoint
 
 
 def test_satellite_endpoint_requires_observer_coordinates() -> None:
@@ -145,6 +145,68 @@ def test_satellite_response_contract(monkeypatch) -> None:
             "track": (),
         }
     ]
+
+
+def test_direct_satellite_payload_preserves_all_fields_and_track() -> None:
+    position = SatellitePosition(
+        name="STARLINK-TEST",
+        norad_id="54321",
+        azimuth_deg=123.4,
+        elevation_deg=56.7,
+        range_km=789.1,
+        object_id="2026-123A",
+        launch_id="2026-123",
+        category="Starlink",
+        source_groups=("ACTIVE", "LAST-30-DAYS"),
+        epoch_utc="2026-09-29T12:34:56Z",
+        inclination_deg=53.2,
+        period_minutes=95.5,
+        eccentricity=0.00012,
+        track=(
+            SatelliteTrackPoint(
+                time_utc="2026-09-29T12:35:06Z",
+                azimuth_deg=124.0,
+                elevation_deg=57.0,
+                range_km=785.0,
+            ),
+            SatelliteTrackPoint(
+                time_utc="2026-09-29T12:35:16Z",
+                azimuth_deg=125.0,
+                elevation_deg=58.0,
+                range_km=780.0,
+            ),
+        ),
+    )
+
+    assert _satellite_payload(position) == {
+        "name": "STARLINK-TEST",
+        "norad_id": "54321",
+        "azimuth_deg": 123.4,
+        "elevation_deg": 56.7,
+        "range_km": 789.1,
+        "object_id": "2026-123A",
+        "launch_id": "2026-123",
+        "category": "Starlink",
+        "source_groups": ("ACTIVE", "LAST-30-DAYS"),
+        "epoch_utc": "2026-09-29T12:34:56Z",
+        "inclination_deg": 53.2,
+        "period_minutes": 95.5,
+        "eccentricity": 0.00012,
+        "track": (
+            {
+                "time_utc": "2026-09-29T12:35:06Z",
+                "azimuth_deg": 124.0,
+                "elevation_deg": 57.0,
+                "range_km": 785.0,
+            },
+            {
+                "time_utc": "2026-09-29T12:35:16Z",
+                "azimuth_deg": 125.0,
+                "elevation_deg": 58.0,
+                "range_km": 780.0,
+            },
+        ),
+    }
 
 
 def test_satellite_detail_can_be_disabled(monkeypatch) -> None:
