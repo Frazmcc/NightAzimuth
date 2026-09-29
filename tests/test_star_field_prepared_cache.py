@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pandas as pd
 
 import nightazimuth.star_field as star_field
