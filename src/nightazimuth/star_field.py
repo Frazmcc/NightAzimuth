@@ -136,15 +136,20 @@ def _load_static_resources(cache_directory: str) -> tuple[Any, dict[int, str], t
 
 
 @lru_cache(maxsize=16)
-def _prepared_catalogue(cache_directory: str, limiting_magnitude: float) -> tuple[Any, frozenset[int]]:
-    """Cache the filtered Hipparcos rows used by a given magnitude profile."""
+def _prepared_catalogue(
+    cache_directory: str,
+    limiting_magnitude: float,
+) -> tuple[Any, frozenset[int], Any]:
+    """Cache filtered Hipparcos rows and their immutable Skyfield Star target."""
 
     catalogue, _proper_names, edges, _ephemeris, _timescale = _load_static_resources(cache_directory)
     bright = catalogue[catalogue["magnitude"] <= limiting_magnitude]
     edge_ids = {hip_id for _abbr, start, end in edges for hip_id in (start, end)}
     wanted_ids = {int(value) for value in bright.index} | edge_ids
     selected_ids = catalogue.index.intersection(sorted(wanted_ids))
-    return catalogue.loc[selected_ids], frozenset(int(value) for value in bright.index)
+    selected = catalogue.loc[selected_ids]
+    bright_ids = frozenset(int(value) for value in bright.index)
+    return selected, bright_ids, Star.from_dataframe(selected)
 
 
 class StarFieldEngine:
@@ -168,7 +173,7 @@ class StarFieldEngine:
             self._ephemeris,
             self._timescale,
         ) = _load_static_resources(self._cache_key)
-        self._selected, self._bright_ids = _prepared_catalogue(
+        self._selected, self._bright_ids, self._selected_stars = _prepared_catalogue(
             self._cache_key,
             self.limiting_magnitude,
         )
@@ -187,7 +192,7 @@ class StarFieldEngine:
         )
         t = self._timescale.from_datetime(moment)
 
-        apparent = topocentric_observer.at(t).observe(Star.from_dataframe(self._selected)).apparent()
+        apparent = topocentric_observer.at(t).observe(self._selected_stars).apparent()
         altitude, azimuth, _distance = apparent.altaz()
 
         position_map: dict[int, tuple[float, float]] = {}
