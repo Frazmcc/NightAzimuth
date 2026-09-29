@@ -6,8 +6,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 import logging
 import threading
+from time import perf_counter
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from .celestrak import CelestrakClient, CelestrakError
 from .config import ObserverConfig
@@ -33,6 +34,7 @@ _SATELLITE_PIPELINE_LOCK = threading.Lock()
 
 @router.get("")
 def satellites(
+    response: Response,
     latitude: float = Query(ge=-90.0, le=90.0),
     longitude: float = Query(ge=-180.0, le=180.0),
     altitude_m: float = Query(default=0.0),
@@ -54,15 +56,52 @@ def satellites(
     larger catalogue practical without reverting to per-object propagation.
     """
 
+    request_started = perf_counter()
+    lock_started = perf_counter()
+    timings: dict[str, float] = {}
     with _SATELLITE_PIPELINE_LOCK:
-        return _build_satellite_snapshot(
+        timings["lock_wait_ms"] = (perf_counter() - lock_started) * 1000.0
+        payload = _build_satellite_snapshot(
             latitude=latitude,
             longitude=longitude,
             altitude_m=altitude_m,
             minimum_elevation_deg=minimum_elevation_deg,
             group=group,
             identification_detail=identification_detail,
+            timings=timings,
         )
+
+    total_ms = (perf_counter() - request_started) * 1000.0
+    timings["total_ms"] = total_ms
+    response.headers["Server-Timing"] = (
+        f"lock_wait;dur={timings.get('lock_wait_ms', 0.0):.1f}, "
+        f"catalogue_load;dur={timings.get('catalogue_load_ms', 0.0):.1f}, "
+        f"catalogue_merge;dur={timings.get('catalogue_merge_ms', 0.0):.1f}, "
+        f"tracker_init;dur={timings.get('tracker_init_ms', 0.0):.1f}, "
+        f"prepare;dur={timings.get('prepare_ms', 0.0):.1f}, "
+        f"propagate;dur={timings.get('propagation_ms', 0.0):.1f}, "
+        f"track_build;dur={timings.get('track_build_ms', 0.0):.1f}, "
+        f"payload_build;dur={timings.get('payload_build_ms', 0.0):.1f}, "
+        f"total;dur={total_ms:.1f}"
+    )
+    logger.info(
+        "satellite_request total_ms=%.1f lock_wait_ms=%.1f catalogue_load_ms=%.1f "
+        "catalogue_merge_ms=%.1f tracker_init_ms=%.1f prepare_ms=%.1f "
+        "propagation_ms=%.1f track_build_ms=%.1f payload_build_ms=%.1f "
+        "catalog_count=%d returned_count=%d",
+        total_ms,
+        timings.get("lock_wait_ms", 0.0),
+        timings.get("catalogue_load_ms", 0.0),
+        timings.get("catalogue_merge_ms", 0.0),
+        timings.get("tracker_init_ms", 0.0),
+        timings.get("prepare_ms", 0.0),
+        timings.get("propagation_ms", 0.0),
+        timings.get("track_build_ms", 0.0),
+        timings.get("payload_build_ms", 0.0),
+        int(payload.get("catalog_count", 0)),
+        int(payload.get("count", 0)),
+    )
+    return payload
 
 
 def _build_satellite_snapshot(
@@ -73,6 +112,7 @@ def _build_satellite_snapshot(
     minimum_elevation_deg: float,
     group: str,
     identification_detail: bool,
+    timings: dict[str, float] | None = None,
 ) -> dict[str, object]:
     observed_at = datetime.now(UTC)
     observer = ObserverConfig(
@@ -89,6 +129,7 @@ def _build_satellite_snapshot(
             candidate for candidate in _IDENTIFICATION_GROUPS if candidate not in requested_groups
         )
 
+    catalogue_load_started = perf_counter()
     group_payloads: dict[str, list[dict[str, object]]] = {}
     failures: list[tuple[str, Exception]] = []
     future_groups = {
@@ -102,6 +143,8 @@ def _build_satellite_snapshot(
         except (CelestrakError, ValueError) as exc:
             failures.append((requested_group, exc))
             logger.warning("Satellite group %s unavailable: %s", requested_group, exc)
+    if timings is not None:
+        timings["catalogue_load_ms"] = (perf_counter() - catalogue_load_started) * 1000.0
 
     if primary_group not in group_payloads:
         raise HTTPException(
@@ -109,6 +152,7 @@ def _build_satellite_snapshot(
             detail="Primary satellite catalogue is temporarily unavailable",
         )
 
+    catalogue_merge_started = perf_counter()
     merged: dict[str, dict[str, object]] = {}
     for requested_group in requested_groups:
         for fields in group_payloads.get(requested_group, []):
@@ -135,24 +179,33 @@ def _build_satellite_snapshot(
     ]
     unavailable_groups = [requested_group for requested_group, _exc in failures]
     catalog_count = len(merged)
+    if timings is not None:
+        timings["catalogue_merge_ms"] = (perf_counter() - catalogue_merge_started) * 1000.0
 
+    tracker_init_started = perf_counter()
     tracker = SatelliteTracker(observer)
+    if timings is not None:
+        timings["tracker_init_ms"] = (perf_counter() - tracker_init_started) * 1000.0
     positions = tracker.positions_above_horizon(
         merged.values(),
         minimum_elevation_deg=minimum_elevation_deg,
         at=observed_at,
+        timings=timings,
     )
 
     # Convert to the response shape before returning, then explicitly release the
     # catalogue copies and dataclass graph.  FastAPI/Starlette serialisation and
     # gzip happen after this function returns; keeping both object graphs alive
     # until then needlessly raises peak RSS for the largest endpoint.
+    payload_build_started = perf_counter()
     satellite_payloads = [asdict(position) for position in positions]
     count = len(satellite_payloads)
     del positions
     del merged
     del group_payloads
     del future_groups
+    if timings is not None:
+        timings["payload_build_ms"] = (perf_counter() - payload_build_started) * 1000.0
 
     return {
         "observed_at": observed_at.isoformat(),
