@@ -46,6 +46,8 @@ let activeStream=null;
 let lastFrame=null;
 let solverLoadPromise=null;
 let catalogueCache=null;
+let solveGeneration=0;
+let activeSolveCancel=null;
 
 profileInput.value=localStorage.getItem(PROFILE_KEY)||"Sony A7S Gen 1";
 focalLengthInput.value=localStorage.getItem(FOCAL_KEY)||"";
@@ -61,7 +63,14 @@ if(savedDeviceId){
 }
 
 function setStatus(message){status.textContent=message}
-function invalidateSolution(message="Capture a star field to attempt a catalogue match."){
+function cancelPendingSolve(){
+  solveGeneration+=1;
+  const cancel=activeSolveCancel;
+  activeSolveCancel=null;
+  if(cancel)cancel();
+}
+function invalidateSolution(message="Capture a star field to attempt a catalogue match.",{cancelPending=true}={}){
+  if(cancelPending)cancelPendingSolve();
   delete window.NIGHTAZIMUTH_CAMERA_SOLUTION;
   solutionStatus.textContent=message;
 }
@@ -140,11 +149,12 @@ async function populateDevices(){
 }
 
 function clearCapturedFrame({preserveSolution=false}={}){
+  cancelPendingSolve();
   lastFrame=null;
   frameCanvas.hidden=true;
   frameStatus.textContent="No frame captured.";
   solveButton.disabled=true;
-  if(!preserveSolution)invalidateSolution();
+  if(!preserveSolution)invalidateSolution(undefined,{cancelPending:false});
 }
 function stopCamera({preserveSolution=false}={}){
   activeStream?.getTracks().forEach(track=>track.stop());
@@ -162,20 +172,31 @@ async function startCamera(){
   saveSettings();
   if(activeStream)stopCamera();
   else clearCapturedFrame();
-  invalidateSolution("Camera started or restarted. Capture and solve a new frame before using alignment.");
+  invalidateSolution("Camera started or restarted. Capture and solve a new frame before using alignment.",{cancelPending:false});
   startButton.disabled=true;
   setStatus("Starting camera…");
   try{
     const selected=deviceSelect.value;
-    const video=selected?{deviceId:{exact:selected},width:{ideal:1920},height:{ideal:1080}}:{width:{ideal:1920},height:{ideal:1080}};
-    activeStream=await navigator.mediaDevices.getUserMedia({video,audio:false});
+    const preferredVideo=selected?{deviceId:{exact:selected},width:{ideal:1920},height:{ideal:1080}}:{width:{ideal:1920},height:{ideal:1080}};
+    let usedFallback=false;
+    try{
+      activeStream=await navigator.mediaDevices.getUserMedia({video:preferredVideo,audio:false});
+    }catch(error){
+      const staleSelection=Boolean(selected)&&["NotFoundError","OverconstrainedError"].includes(String(error?.name||""));
+      if(!staleSelection)throw error;
+      localStorage.removeItem(DEVICE_KEY);
+      deviceSelect.value="";
+      usedFallback=true;
+      setStatus("Saved camera is unavailable. Trying the default camera…");
+      activeStream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1920},height:{ideal:1080}},audio:false});
+    }
     preview.srcObject=activeStream;
     await preview.play();
     previewShell.hidden=false;
     startButton.disabled=true;
     stopButton.disabled=false;
     captureButton.disabled=false;
-    setStatus(cameraDescription());
+    setStatus(usedFallback?`${cameraDescription()} · saved selection unavailable; using default camera.`:cameraDescription());
   }catch(error){
     stopCamera();
     setStatus(error?.name==="NotAllowedError"?"Camera permission was denied.":"Unable to start the selected camera.");
@@ -298,16 +319,30 @@ function solveWithWorker(payload){
   return new Promise((resolve,reject)=>{
     const worker=new Worker("./camera-plate-worker.js?v=21.11.18");
     const timer=setTimeout(()=>{
+      if(activeSolveCancel===cancel)activeSolveCancel=null;
       worker.terminate();
       reject(new Error("Plate solver timed out."));
     },30000);
-    const finish=()=>{clearTimeout(timer);worker.terminate()};
+    let settled=false;
+    const complete=()=>{
+      if(settled)return false;
+      settled=true;
+      clearTimeout(timer);
+      worker.terminate();
+      if(activeSolveCancel===cancel)activeSolveCancel=null;
+      return true;
+    };
+    const cancel=()=>{
+      if(!complete())return;
+      reject(new Error("Plate solve cancelled."));
+    };
+    activeSolveCancel=cancel;
     worker.onmessage=event=>{
-      finish();
+      if(!complete())return;
       if(event.data?.error)reject(new Error(event.data.error));
       else resolve(event.data?.solution);
     };
-    worker.onerror=()=>{finish();reject(new Error("Plate solver worker failed."))};
+    worker.onerror=()=>{if(complete())reject(new Error("Plate solver worker failed."))};
     worker.postMessage(payload);
   });
 }
@@ -330,13 +365,18 @@ function drawSolution(solution){
 }
 async function solveCapturedFrame(){
   if(!lastFrame){solutionStatus.textContent="Capture a frame first.";return}
+  const frame=lastFrame;
   const hfov=estimatedHorizontalFov();
   if(!hfov){solutionStatus.textContent="Enter the lens focal length before solving.";return}
+  cancelPendingSolve();
+  const generation=solveGeneration;
   solveButton.disabled=true;
   solutionStatus.textContent="Matching captured star pattern against the current sky catalogue…";
   try{
     const stars=await fetchCatalogueStars();
-    const solution=await solveWithWorker({points:lastFrame.detection.points,stars,width:lastFrame.width,height:lastFrame.height,estimatedHfovDeg:hfov});
+    if(generation!==solveGeneration||lastFrame!==frame)return;
+    const solution=await solveWithWorker({points:frame.detection.points,stars,width:frame.width,height:frame.height,estimatedHfovDeg:hfov});
+    if(generation!==solveGeneration||lastFrame!==frame)return;
     if(!solution)throw new Error("Plate solver returned no solution.");
     drawSolution(solution);
     if(solution.locked){
@@ -344,11 +384,14 @@ async function solveCapturedFrame(){
       window.dispatchEvent(new CustomEvent("nightazimuth:camera-solved",{detail:window.NIGHTAZIMUTH_CAMERA_SOLUTION}));
       solutionStatus.textContent=`LOCKED · ${solution.matches} star matches · az ${solution.azimuthDeg.toFixed(2)}° · el ${solution.elevationDeg.toFixed(2)}° · roll ${solution.rollDeg.toFixed(2)}° · HFOV ${solution.hfovDeg.toFixed(1)}° · RMS ${solution.rmsDeg.toFixed(2)}° · confidence ${Math.round(solution.confidence*100)}%.`;
     }else{
-      invalidateSolution(`NOT LOCKED · ${solution.matches||0} match${solution.matches===1?"":"es"}. ${solution.reason||"The star pattern is not distinctive enough yet."}`);
+      invalidateSolution(`NOT LOCKED · ${solution.matches||0} match${solution.matches===1?"":"es"}. ${solution.reason||"The star pattern is not distinctive enough yet."}`,{cancelPending:false});
     }
   }catch(error){
-    invalidateSolution(error?.name==="AbortError"?"Sky catalogue request timed out.":String(error?.message||"Unable to plate solve this frame."));
-  }finally{updateSolveAvailability()}
+    if(generation!==solveGeneration||lastFrame!==frame)return;
+    invalidateSolution(error?.name==="AbortError"?"Sky catalogue request timed out.":String(error?.message||"Unable to plate solve this frame."),{cancelPending:false});
+  }finally{
+    if(generation===solveGeneration)updateSolveAvailability();
+  }
 }
 
 function cameraGeometryChanged(){
