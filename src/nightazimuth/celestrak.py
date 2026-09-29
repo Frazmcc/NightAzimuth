@@ -99,8 +99,53 @@ class CelestrakClient:
         self.timeout_seconds = timeout_seconds
 
     def load_group(self, group: str) -> list[dict[str, Any]]:
-        payload, _generation = self.load_group_versioned(group)
-        return payload
+        normalized_group = group.strip().upper()
+        if not normalized_group:
+            raise ValueError("CelesTrak group must not be empty")
+        if not _SAFE_GROUP_RE.fullmatch(normalized_group):
+            raise ValueError("CelesTrak group may contain only letters, numbers, hyphens, and underscores")
+
+        cache_path = self._cache_path(normalized_group)
+        # A stale/missing group can be requested by several public API calls at
+        # once. Serialize work for a cache stripe so duplicate downloads/writes
+        # cannot race; the fixed stripes keep lock memory bounded.
+        with _cache_lock(cache_path):
+            if self._cache_is_fresh(cache_path):
+                return self._read_cache(cache_path)
+
+            try:
+                data = self._download_group(normalized_group)
+            except httpx.HTTPStatusError as exc:
+                # CelesTrak deliberately returns 403 when its one-download-per-update
+                # policy is triggered. Never retry automatically. If we have an older
+                # successful cache, use it; otherwise stop and surface the server message.
+                if cache_path.exists():
+                    return self._read_cache(cache_path)
+                mirror_data = self._download_mirror(normalized_group)
+                if mirror_data is not None:
+                    self._write_cache(cache_path, mirror_data)
+                    return mirror_data
+
+                response_text = exc.response.text.strip()
+                detail = response_text[:500] if response_text else str(exc)
+                raise CelestrakError(
+                    f"CelesTrak returned HTTP {exc.response.status_code} for group "
+                    f"{normalized_group}. NightAzimuth will not retry automatically. "
+                    f"Server message: {detail}"
+                ) from exc
+            except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
+                if cache_path.exists():
+                    return self._read_cache(cache_path)
+                mirror_data = self._download_mirror(normalized_group)
+                if mirror_data is not None:
+                    self._write_cache(cache_path, mirror_data)
+                    return mirror_data
+                raise CelestrakError(
+                    f"Unable to load CelesTrak group {normalized_group}: {exc}"
+                ) from exc
+
+            self._write_cache(cache_path, data)
+            return data
 
     def load_group_versioned(
         self,
@@ -115,50 +160,11 @@ class CelestrakClient:
             raise ValueError("CelesTrak group may contain only letters, numbers, hyphens, and underscores")
 
         cache_path = self._cache_path(normalized_group)
-        # A stale/missing group can be requested by several public API calls at
-        # once. Serialize work for a cache stripe so duplicate downloads/writes
-        # cannot race; the fixed stripes keep lock memory bounded. Returning the
-        # generation while this same lock is held guarantees that the token
-        # describes the exact payload returned to the caller.
+        # Hold the same re-entrant cache stripe around the existing public loader
+        # and the generation stat. This keeps payload+generation atomic while
+        # preserving subclasses/tests that intentionally override load_group().
         with _cache_lock(cache_path):
-            if self._cache_is_fresh(cache_path):
-                data = self._read_cache(cache_path)
-                return data, self._cache_generation(cache_path)
-
-            try:
-                data = self._download_group(normalized_group)
-            except httpx.HTTPStatusError as exc:
-                # CelesTrak deliberately returns 403 when its one-download-per-update
-                # policy is triggered. Never retry automatically. If we have an older
-                # successful cache, use it; otherwise stop and surface the server message.
-                if cache_path.exists():
-                    data = self._read_cache(cache_path)
-                    return data, self._cache_generation(cache_path)
-                mirror_data = self._download_mirror(normalized_group)
-                if mirror_data is not None:
-                    self._write_cache(cache_path, mirror_data)
-                    return mirror_data, self._cache_generation(cache_path)
-
-                response_text = exc.response.text.strip()
-                detail = response_text[:500] if response_text else str(exc)
-                raise CelestrakError(
-                    f"CelesTrak returned HTTP {exc.response.status_code} for group "
-                    f"{normalized_group}. NightAzimuth will not retry automatically. "
-                    f"Server message: {detail}"
-                ) from exc
-            except (httpx.HTTPError, ValueError, json.JSONDecodeError) as exc:
-                if cache_path.exists():
-                    data = self._read_cache(cache_path)
-                    return data, self._cache_generation(cache_path)
-                mirror_data = self._download_mirror(normalized_group)
-                if mirror_data is not None:
-                    self._write_cache(cache_path, mirror_data)
-                    return mirror_data, self._cache_generation(cache_path)
-                raise CelestrakError(
-                    f"Unable to load CelesTrak group {normalized_group}: {exc}"
-                ) from exc
-
-            self._write_cache(cache_path, data)
+            data = self.load_group(normalized_group)
             return data, self._cache_generation(cache_path)
 
     def _download_mirror(self, group: str) -> list[dict[str, Any]] | None:
