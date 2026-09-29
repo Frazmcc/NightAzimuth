@@ -81,6 +81,7 @@ def test_explicit_generation_key_does_not_hash_catalogue_content(monkeypatch) ->
             element_count=len(prepared_elements),
             valid_indices=(),
             satrecs=(),
+            metadata=(),
         )
 
     monkeypatch.setattr(tracker_module, "_catalogue_fingerprint", fail_fingerprint)
@@ -99,3 +100,52 @@ def test_explicit_generation_key_does_not_hash_catalogue_content(monkeypatch) ->
     assert second_hit is True
     assert second is first
     assert build_calls == 1
+
+
+def test_prepared_metadata_is_reused_for_same_generation(monkeypatch) -> None:
+    tracker_module._clear_prepared_catalogue_cache()
+    elements = [{"OBJECT_NAME": "STARLINK-TEST", "NORAD_CAT_ID": "12345"}]
+    metadata_calls = 0
+
+    class FakeSatrec:
+        pass
+
+    def fake_initialize(_satrec, _fields):
+        return None
+
+    def fake_metadata(fields):
+        nonlocal metadata_calls
+        metadata_calls += 1
+        assert fields is elements[0]
+        return tracker_module._PreparedSatelliteMetadata(
+            name="STARLINK-TEST",
+            norad_id="12345",
+            object_id=None,
+            launch_id=None,
+            category="Starlink",
+            source_groups=(),
+            epoch_utc=None,
+            inclination_deg=None,
+            period_minutes=None,
+            eccentricity=None,
+        )
+
+    monkeypatch.setattr(tracker_module, "Satrec", FakeSatrec)
+    monkeypatch.setattr(tracker_module.omm, "initialize", fake_initialize)
+    monkeypatch.setattr(tracker_module, "_metadata_for", fake_metadata)
+
+    first, first_hit = tracker_module._prepared_catalogue_for(
+        elements,
+        cache_key=(("ACTIVE", (123, 456)),),
+    )
+    second, second_hit = tracker_module._prepared_catalogue_for(
+        elements,
+        cache_key=(("ACTIVE", (123, 456)),),
+    )
+
+    assert first_hit is False
+    assert second_hit is True
+    assert second is first
+    assert second.metadata is first.metadata
+    assert metadata_calls == 1
+    tracker_module._clear_prepared_catalogue_cache()
