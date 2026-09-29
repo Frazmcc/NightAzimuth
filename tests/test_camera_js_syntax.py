@@ -4,7 +4,11 @@ import subprocess
 
 
 def test_camera_javascript_parses() -> None:
-    for path in ("web/camera-settings.js", "web/camera-plate-solver.js"):
+    for path in (
+        "web/camera-settings.js",
+        "web/camera-plate-solver.js",
+        "web/camera-plate-worker.js",
+    ):
         completed = subprocess.run(
             ["node", "--check", path],
             check=False,

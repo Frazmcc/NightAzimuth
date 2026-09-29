@@ -4,6 +4,7 @@ if(!root||typeof skyXY!=="function"||typeof drawSky!=="function"||typeof renderC
 
 const baseDrawSky=drawSky;
 let renderTimer=null;
+let lastRenderSignature=null;
 
 function currentViewAircraft(){
   try{
@@ -31,8 +32,27 @@ function contactRow(aircraft){
   return row;
 }
 
+function renderSignature(items){
+  const layerHidden=typeof layers!=="undefined"&&layers.aircraft===false;
+  if(layerHidden)return"hidden";
+  const view=[Number(facing).toFixed(2),Number(elevationCentre).toFixed(2),Number(fov).toFixed(2),innerWidth,innerHeight].join("|");
+  const contacts=items.map(item=>[
+    item.icao24||"",
+    Number(item.azimuth_deg).toFixed(2),
+    Number(item.elevation_deg).toFixed(2),
+    Math.round(Number(item.altitude_m)||0),
+    item.callsign||item.registration||"",
+    item.display?.role||"",
+    item.display?.make_model||item.type_description||item.type_code||item.position_state||""
+  ].join(":" )).join(";");
+  return `${view}|${contacts}`;
+}
+
 function renderCurrentView(){
   const items=currentViewAircraft();
+  const signature=renderSignature(items);
+  if(signature===lastRenderSignature)return;
+  lastRenderSignature=signature;
   if(typeof layers!=="undefined"&&layers.aircraft===false){root.textContent="Aircraft layer is hidden.";return}
   if(!items.length){root.textContent="No aircraft contacts in the current Live Sky view.";return}
   root.replaceChildren(...items.map(contactRow));
@@ -44,15 +64,13 @@ function queueRender(){
 }
 
 // Keep the contact list tied to the actual viewport, not the wider aircraft
-// acquisition set. Panning, zooming, following an object, resizing and layer
-// changes all call drawSky, so the list follows the user's view immediately.
+// acquisition set. The signature prevents satellite-only redraws from rebuilding
+// the contacts DOM several times per second when neither view nor aircraft changed.
 drawSky=function(){baseDrawSky();queueRender()};
 
-// Aircraft refreshes still update the backing GeoJSON data, but the visible
-// list is rebuilt from skyAircraft using the same skyXY projection as the
-// canvas so an entry cannot appear unless that aircraft is actually on screen.
 renderContacts=function(data){
   aircraftFeatures=data?.features||[];
+  lastRenderSignature=null;
   drawSky();
   queueRender();
 };

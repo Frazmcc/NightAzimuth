@@ -13,8 +13,7 @@ const preview=document.querySelector("#camera-preview");
 const frameCanvas=document.querySelector("#camera-frame");
 const frameStatus=document.querySelector("#camera-frame-status");
 const settingsPanel=document.querySelector("#settings-panel");
-const latitudeInput=document.querySelector("#settings-latitude");
-const longitudeInput=document.querySelector("#settings-longitude");
+const locationForm=document.querySelector("#settings-location-form");
 if(!deviceSelect||!detectButton||!startButton||!stopButton||!captureButton||!profileInput||!focalLengthInput||!sensorWidthInput||!status||!previewShell||!preview||!frameCanvas||!frameStatus)return;
 
 const solveActions=document.createElement("div");
@@ -38,17 +37,34 @@ const DEVICE_KEY="nightazimuth.cameraDeviceId";
 const PROFILE_KEY="nightazimuth.cameraProfile";
 const FOCAL_KEY="nightazimuth.cameraFocalLengthMm";
 const SENSOR_KEY="nightazimuth.cameraSensorWidthMm";
+const LATITUDE_KEY="nightazimuth.latitude";
+const LONGITUDE_KEY="nightazimuth.longitude";
+const CATALOGUE_CACHE_MS=15000;
 const config=window.NIGHTAZIMUTH_CONFIG||{};
 const apiBase=String(config.apiBaseUrl||"").replace(/\/$/,"");
 let activeStream=null;
 let lastFrame=null;
 let solverLoadPromise=null;
+let catalogueCache=null;
 
 profileInput.value=localStorage.getItem(PROFILE_KEY)||"Sony A7S Gen 1";
 focalLengthInput.value=localStorage.getItem(FOCAL_KEY)||"";
 sensorWidthInput.value=localStorage.getItem(SENSOR_KEY)||"35.8";
+const savedDeviceId=localStorage.getItem(DEVICE_KEY)||"";
+if(savedDeviceId){
+  const savedOption=document.createElement("option");
+  savedOption.value=savedDeviceId;
+  savedOption.textContent="Saved camera / capture device";
+  savedOption.selected=true;
+  deviceSelect.append(savedOption);
+  status.textContent="Saved camera selection ready. Start camera or Detect cameras to refresh device names.";
+}
 
 function setStatus(message){status.textContent=message}
+function invalidateSolution(message="Capture a star field to attempt a catalogue match."){
+  delete window.NIGHTAZIMUTH_CAMERA_SOLUTION;
+  solutionStatus.textContent=message;
+}
 function saveSettings(){
   if(deviceSelect.value)localStorage.setItem(DEVICE_KEY,deviceSelect.value);
   else localStorage.removeItem(DEVICE_KEY);
@@ -57,6 +73,14 @@ function saveSettings(){
   else localStorage.removeItem(FOCAL_KEY);
   if(sensorWidthInput.value)localStorage.setItem(SENSOR_KEY,sensorWidthInput.value);
   else localStorage.removeItem(SENSOR_KEY);
+}
+function savedObserver(){
+  const latitudeText=localStorage.getItem(LATITUDE_KEY);
+  const longitudeText=localStorage.getItem(LONGITUDE_KEY);
+  if(latitudeText==null||longitudeText==null||!latitudeText.trim()||!longitudeText.trim())return null;
+  const latitude=Number(latitudeText),longitude=Number(longitudeText);
+  if(!Number.isFinite(latitude)||latitude<-90||latitude>90||!Number.isFinite(longitude)||longitude<-180||longitude>180)return null;
+  return{latitude,longitude};
 }
 function estimatedHorizontalFov(){
   const focal=Number(focalLengthInput.value),sensor=Number(sensorWidthInput.value);
@@ -91,13 +115,21 @@ async function populateDevices(){
     placeholder.value="";
     placeholder.textContent=devices.length?"Select camera / capture device":"No camera devices found";
     deviceSelect.append(placeholder);
+    let savedFound=false;
     devices.forEach((device,index)=>{
       const option=document.createElement("option");
       option.value=device.deviceId;
       option.textContent=device.label||`Camera ${index+1}`;
-      if(device.deviceId===saved)option.selected=true;
+      if(device.deviceId===saved){option.selected=true;savedFound=true}
       deviceSelect.append(option);
     });
+    if(saved&&!savedFound){
+      const option=document.createElement("option");
+      option.value=saved;
+      option.textContent="Saved camera / capture device (not currently listed)";
+      option.selected=true;
+      deviceSelect.append(option);
+    }
     setStatus(devices.length?`${devices.length} camera device${devices.length===1?"":"s"} found.`:"No camera devices were found.");
   }catch{
     setStatus("Unable to enumerate camera devices.");
@@ -107,15 +139,14 @@ async function populateDevices(){
   }
 }
 
-function clearCapturedFrame(){
+function clearCapturedFrame({preserveSolution=false}={}){
   lastFrame=null;
   frameCanvas.hidden=true;
   frameStatus.textContent="No frame captured.";
-  solutionStatus.textContent="Capture a star field to attempt a catalogue match.";
   solveButton.disabled=true;
-  delete window.NIGHTAZIMUTH_CAMERA_SOLUTION;
+  if(!preserveSolution)invalidateSolution();
 }
-function stopCamera(){
+function stopCamera({preserveSolution=false}={}){
   activeStream?.getTracks().forEach(track=>track.stop());
   activeStream=null;
   preview.srcObject=null;
@@ -123,16 +154,18 @@ function stopCamera(){
   startButton.disabled=false;
   stopButton.disabled=true;
   captureButton.disabled=true;
-  clearCapturedFrame();
+  clearCapturedFrame({preserveSolution});
 }
 
 async function startCamera(){
   if(!navigator.mediaDevices?.getUserMedia){setStatus("Camera access is not supported by this browser.");return}
   saveSettings();
+  if(activeStream)stopCamera();
+  else clearCapturedFrame();
+  invalidateSolution("Camera started or restarted. Capture and solve a new frame before using alignment.");
   startButton.disabled=true;
   setStatus("Starting camera…");
   try{
-    if(activeStream)stopCamera();
     const selected=deviceSelect.value;
     const video=selected?{deviceId:{exact:selected},width:{ideal:1920},height:{ideal:1080}}:{width:{ideal:1920},height:{ideal:1080}};
     activeStream=await navigator.mediaDevices.getUserMedia({video,audio:false});
@@ -149,8 +182,8 @@ async function startCamera(){
   }
 }
 
-function detectBrightPoints(context,width,height){
-  const image=context.getImageData(0,0,width,height).data;
+function detectBrightPoints(imageData,width,height){
+  const image=imageData.data;
   const step=Math.max(2,Math.ceil(Math.max(width,height)/960));
   let sum=0,sumSq=0,count=0;
   for(let y=0;y<height;y+=step)for(let x=0;x<width;x+=step){
@@ -199,8 +232,11 @@ function captureFrame(){
   frameCanvas.width=width;frameCanvas.height=height;
   const context=frameCanvas.getContext("2d",{willReadFrequently:true});
   context.drawImage(preview,0,0,width,height);
-  const raw=context.getImageData(0,0,width,height),detection=detectBrightPoints(context,width,height);
+  // Read pixels once. The previous path allocated/read the full frame twice: once
+  // for restoration and again for bright-point detection.
+  const raw=context.getImageData(0,0,width,height),detection=detectBrightPoints(raw,width,height);
   lastFrame={width,height,raw,detection};
+  invalidateSolution();
   drawDetectionOverlay(context,detection);
   frameCanvas.hidden=false;
   frameStatus.textContent=`${width}×${height} frame · ${detection.points.length} bright point candidate${detection.points.length===1?"":"s"} detected.`;
@@ -213,17 +249,36 @@ function ensurePlateSolver(){
   if(solverLoadPromise)return solverLoadPromise;
   solverLoadPromise=new Promise((resolve,reject)=>{
     const script=document.createElement("script");
-    script.src="./camera-plate-solver.js?v=21.11.16";
+    script.src="./camera-plate-solver.js?v=21.11.18";
     script.async=true;
     script.onload=()=>window.NightAzimuthPlateSolver?resolve(window.NightAzimuthPlateSolver):reject(new Error("Plate solver did not initialise"));
     script.onerror=()=>reject(new Error("Unable to load plate solver"));
     document.head.append(script);
+  }).catch(error=>{
+    // A transient asset/network failure must not permanently poison every later
+    // solve attempt with the same rejected promise.
+    solverLoadPromise=null;
+    throw error;
   });
   return solverLoadPromise;
 }
+function currentCatalogueStars(latitude,longitude){
+  try{
+    if(typeof celestialSky==="undefined")return null;
+    const sky=celestialSky,observer=sky?.observer||{};
+    const calculated=Date.parse(sky?.calculated_at||"");
+    const fresh=Number.isFinite(calculated)&&Math.abs(Date.now()-calculated)<=CATALOGUE_CACHE_MS;
+    const sameObserver=Math.abs(Number(observer.latitude_deg)-latitude)<1e-6&&Math.abs(Number(observer.longitude_deg)-longitude)<1e-6;
+    return fresh&&sameObserver&&Array.isArray(sky.stars)&&sky.stars.length>=4?sky.stars:null;
+  }catch{return null}
+}
 async function fetchCatalogueStars(){
-  const latitude=Number(latitudeInput?.value),longitude=Number(longitudeInput?.value);
-  if(!Number.isFinite(latitude)||latitude<-90||latitude>90||!Number.isFinite(longitude)||longitude<-180||longitude>180)throw new Error("Set and save a valid observer location first.");
+  const saved=savedObserver();
+  if(!saved)throw new Error("Set and save a valid observer location first.");
+  const {latitude,longitude}=saved;
+  const current=currentCatalogueStars(latitude,longitude);
+  if(current)return current;
+  if(catalogueCache&&Date.now()-catalogueCache.fetchedAt<=CATALOGUE_CACHE_MS&&catalogueCache.latitude===latitude&&catalogueCache.longitude===longitude)return catalogueCache.stars;
   if(!apiBase)throw new Error("NightAzimuth API is not configured.");
   const target=new URL(`${apiBase}/api/v1/sky`);
   target.searchParams.set("latitude",String(latitude));
@@ -233,8 +288,28 @@ async function fetchCatalogueStars(){
     const response=await fetch(target,{headers:{Accept:"application/json"},signal:controller.signal});
     if(!response.ok)throw new Error(`Sky catalogue request failed (${response.status}).`);
     const data=await response.json();
-    return Array.isArray(data.stars)?data.stars:[];
+    const stars=Array.isArray(data.stars)?data.stars:[];
+    catalogueCache={latitude,longitude,fetchedAt:Date.now(),stars};
+    return stars;
   }finally{clearTimeout(timer)}
+}
+function solveWithWorker(payload){
+  if(typeof Worker==="undefined")return ensurePlateSolver().then(solver=>solver.solve(payload));
+  return new Promise((resolve,reject)=>{
+    const worker=new Worker("./camera-plate-worker.js?v=21.11.18");
+    const timer=setTimeout(()=>{
+      worker.terminate();
+      reject(new Error("Plate solver timed out."));
+    },30000);
+    const finish=()=>{clearTimeout(timer);worker.terminate()};
+    worker.onmessage=event=>{
+      finish();
+      if(event.data?.error)reject(new Error(event.data.error));
+      else resolve(event.data?.solution);
+    };
+    worker.onerror=()=>{finish();reject(new Error("Plate solver worker failed."))};
+    worker.postMessage(payload);
+  });
 }
 function drawSolution(solution){
   if(!lastFrame)return;
@@ -260,32 +335,40 @@ async function solveCapturedFrame(){
   solveButton.disabled=true;
   solutionStatus.textContent="Matching captured star pattern against the current sky catalogue…";
   try{
-    const [solver,stars]=await Promise.all([ensurePlateSolver(),fetchCatalogueStars()]);
-    const solution=solver.solve({points:lastFrame.detection.points,stars,width:lastFrame.width,height:lastFrame.height,estimatedHfovDeg:hfov});
+    const stars=await fetchCatalogueStars();
+    const solution=await solveWithWorker({points:lastFrame.detection.points,stars,width:lastFrame.width,height:lastFrame.height,estimatedHfovDeg:hfov});
+    if(!solution)throw new Error("Plate solver returned no solution.");
     drawSolution(solution);
     if(solution.locked){
       window.NIGHTAZIMUTH_CAMERA_SOLUTION={...solution,solvedAt:new Date().toISOString()};
       window.dispatchEvent(new CustomEvent("nightazimuth:camera-solved",{detail:window.NIGHTAZIMUTH_CAMERA_SOLUTION}));
       solutionStatus.textContent=`LOCKED · ${solution.matches} star matches · az ${solution.azimuthDeg.toFixed(2)}° · el ${solution.elevationDeg.toFixed(2)}° · roll ${solution.rollDeg.toFixed(2)}° · HFOV ${solution.hfovDeg.toFixed(1)}° · RMS ${solution.rmsDeg.toFixed(2)}° · confidence ${Math.round(solution.confidence*100)}%.`;
     }else{
-      delete window.NIGHTAZIMUTH_CAMERA_SOLUTION;
-      solutionStatus.textContent=`NOT LOCKED · ${solution.matches||0} match${solution.matches===1?"":"es"}. ${solution.reason||"The star pattern is not distinctive enough yet."}`;
+      invalidateSolution(`NOT LOCKED · ${solution.matches||0} match${solution.matches===1?"":"es"}. ${solution.reason||"The star pattern is not distinctive enough yet."}`);
     }
   }catch(error){
-    delete window.NIGHTAZIMUTH_CAMERA_SOLUTION;
-    solutionStatus.textContent=error?.name==="AbortError"?"Sky catalogue request timed out.":String(error?.message||"Unable to plate solve this frame.");
+    invalidateSolution(error?.name==="AbortError"?"Sky catalogue request timed out.":String(error?.message||"Unable to plate solve this frame."));
   }finally{updateSolveAvailability()}
+}
+
+function cameraGeometryChanged(){
+  saveSettings();
+  catalogueCache=null;
+  invalidateSolution("Camera/lens settings changed. Capture and solve a new frame.");
+  updateSolveAvailability();
+  if(activeStream)setStatus(cameraDescription());
 }
 
 detectButton.addEventListener("click",populateDevices);
 startButton.addEventListener("click",startCamera);
-stopButton.addEventListener("click",()=>{stopCamera();setStatus("Camera stopped.")});
+stopButton.addEventListener("click",()=>{stopCamera({preserveSolution:true});setStatus("Camera stopped. Last plate solution retained.")});
 captureButton.addEventListener("click",captureFrame);
 solveButton.addEventListener("click",solveCapturedFrame);
-deviceSelect.addEventListener("change",()=>{saveSettings();if(activeStream){stopCamera();setStatus("Camera selection changed. Start camera to apply.")}});
-profileInput.addEventListener("change",saveSettings);
-focalLengthInput.addEventListener("change",()=>{saveSettings();updateSolveAvailability();if(activeStream)setStatus(cameraDescription())});
-sensorWidthInput.addEventListener("change",()=>{saveSettings();updateSolveAvailability();if(activeStream)setStatus(cameraDescription())});
-window.addEventListener("beforeunload",stopCamera);
-if(settingsPanel)new MutationObserver(()=>{if(settingsPanel.hidden&&activeStream)stopCamera()}).observe(settingsPanel,{attributes:true,attributeFilter:["hidden"]});
+deviceSelect.addEventListener("change",()=>{saveSettings();catalogueCache=null;invalidateSolution("Camera selection changed. Capture and solve a new frame.");if(activeStream){stopCamera();setStatus("Camera selection changed. Start camera to apply.")}});
+profileInput.addEventListener("change",cameraGeometryChanged);
+focalLengthInput.addEventListener("change",cameraGeometryChanged);
+sensorWidthInput.addEventListener("change",cameraGeometryChanged);
+if(locationForm)locationForm.addEventListener("submit",()=>{catalogueCache=null;invalidateSolution("Observer location changed. Capture and solve a new frame.")});
+window.addEventListener("beforeunload",()=>stopCamera({preserveSolution:true}));
+if(settingsPanel)new MutationObserver(()=>{if(settingsPanel.hidden&&activeStream)stopCamera({preserveSolution:true})}).observe(settingsPanel,{attributes:true,attributeFilter:["hidden"]});
 })();

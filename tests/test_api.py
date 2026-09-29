@@ -78,3 +78,16 @@ def test_api_security_headers_and_openapi_location() -> None:
     assert client.get("/api/openapi.json").status_code == 200
     assert client.get("/api/docs").status_code == 200
     assert client.get("/openapi.json").status_code == 404
+
+
+def test_large_api_responses_support_gzip_compression() -> None:
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/openapi.json",
+        headers={"Accept-Encoding": "gzip"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers.get("content-encoding") == "gzip"
+    assert int(response.headers.get("content-length", "0")) > 0
