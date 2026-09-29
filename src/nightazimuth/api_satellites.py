@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from datetime import UTC, datetime
@@ -21,6 +22,7 @@ _API_CACHE = Path("data/cache/api")
 _DEFAULT_GROUP = "ACTIVE"
 _IDENTIFICATION_GROUPS = ("LAST-30-DAYS", "STATIONS", "VISUAL")
 _HOSTED_HOT_GROUPS = frozenset((_DEFAULT_GROUP, *_IDENTIFICATION_GROUPS))
+_HOSTED_MERGE_GROUPS = (_DEFAULT_GROUP, *_IDENTIFICATION_GROUPS)
 # Reuse a small worker pool across requests. Creating four fresh threads for
 # every satellite poll adds avoidable overhead and scales poorly with users.
 _GROUP_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="satellite-catalogue")
@@ -30,20 +32,57 @@ _GROUP_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="satellit
 # avoids four worker submissions and filesystem freshness checks on warm polls.
 _GROUP_HOT_CACHE_LOCK = threading.RLock()
 _GROUP_HOT_CACHE: dict[str, tuple[int, int, list[dict[str, object]]]] = {}
-# Building an ACTIVE snapshot temporarily owns a copied catalogue, SGP4 arrays,
-# thousands of track dataclasses and then the JSON-ready payload.  On Render's
-# 512 MB free instance, overlapping snapshots can multiply that peak even though
-# the steady-state catalogue cache is bounded.  One propagation pipeline at a
+# Keep a single merged hosted generation. Each element is a tiny mapping view
+# over the original CelesTrak dictionary plus virtual source-group metadata, so
+# the cache does not retain a second copied ACTIVE catalogue in memory.
+_MERGED_CATALOGUE_CACHE_LOCK = threading.RLock()
+_MERGED_CATALOGUE_CACHE: tuple[
+    object,
+    tuple["_CatalogueElementView", ...],
+] | None = None
+# Building an ACTIVE snapshot temporarily owns SGP4 arrays, thousands of track
+# dataclasses and then the JSON-ready payload. On Render's 512 MB free instance,
+# overlapping snapshots can multiply that peak. One propagation pipeline at a
 # time is appropriate for the service's 0.1 CPU and protects the process from a
 # small traffic burst or multiple open browser tabs.
 _SATELLITE_PIPELINE_LOCK = threading.Lock()
 
 
-def _clear_hot_group_cache() -> None:
-    """Clear hosted-group references (primarily for tests)."""
+class _CatalogueElementView(Mapping[str, object]):
+    """Read-only orbital record that overlays compact source-group metadata."""
 
+    __slots__ = ("_fields", "_source_groups")
+
+    def __init__(
+        self,
+        fields: dict[str, object],
+        source_groups: tuple[str, ...],
+    ) -> None:
+        self._fields = fields
+        self._source_groups = source_groups
+
+    def __getitem__(self, key: str) -> object:
+        if key == "_nightazimuth_groups":
+            return self._source_groups
+        return self._fields[key]
+
+    def __iter__(self) -> Iterator[str]:
+        yield from self._fields
+        if "_nightazimuth_groups" not in self._fields:
+            yield "_nightazimuth_groups"
+
+    def __len__(self) -> int:
+        return len(self._fields) + (0 if "_nightazimuth_groups" in self._fields else 1)
+
+
+def _clear_hot_group_cache() -> None:
+    """Clear hosted catalogue references and merged view (primarily for tests)."""
+
+    global _MERGED_CATALOGUE_CACHE
     with _GROUP_HOT_CACHE_LOCK:
         _GROUP_HOT_CACHE.clear()
+    with _MERGED_CATALOGUE_CACHE_LOCK:
+        _MERGED_CATALOGUE_CACHE = None
 
 
 def _hot_group_cache_get(
@@ -105,6 +144,62 @@ def _load_group_with_generation(
     return loader(group), None
 
 
+def _catalogue_identity(fields: Mapping[str, object]) -> str:
+    return str(
+        fields.get("NORAD_CAT_ID")
+        or fields.get("OBJECT_ID")
+        or fields.get("OBJECT_NAME")
+        or ""
+    ).strip()
+
+
+def _build_merged_catalogue(
+    requested_groups: list[str],
+    group_payloads: dict[str, list[dict[str, object]]],
+) -> tuple[_CatalogueElementView, ...]:
+    """Deduplicate groups into zero-copy orbital record views."""
+
+    base_fields: dict[str, dict[str, object]] = {}
+    source_groups: dict[str, list[str]] = {}
+    ordered_keys: list[str] = []
+
+    for requested_group in requested_groups:
+        for fields in group_payloads.get(requested_group, []):
+            key = _catalogue_identity(fields)
+            if not key:
+                continue
+            if key not in base_fields:
+                base_fields[key] = fields
+                source_groups[key] = [requested_group]
+                ordered_keys.append(key)
+            elif requested_group not in source_groups[key]:
+                source_groups[key].append(requested_group)
+
+    return tuple(
+        _CatalogueElementView(base_fields[key], tuple(source_groups[key]))
+        for key in ordered_keys
+    )
+
+
+def _merged_catalogue_for(
+    cache_key: object,
+    requested_groups: list[str],
+    group_payloads: dict[str, list[dict[str, object]]],
+) -> tuple[tuple[_CatalogueElementView, ...], bool]:
+    """Return the one cached merged hosted generation, replacing it on refresh."""
+
+    global _MERGED_CATALOGUE_CACHE
+
+    with _MERGED_CATALOGUE_CACHE_LOCK:
+        cached = _MERGED_CATALOGUE_CACHE
+        if cached is not None and cached[0] == cache_key:
+            return cached[1], True
+
+        merged = _build_merged_catalogue(requested_groups, group_payloads)
+        _MERGED_CATALOGUE_CACHE = (cache_key, merged)
+        return merged, False
+
+
 @router.get("")
 def satellites(
     response: Response = None,
@@ -118,14 +213,14 @@ def satellites(
     """Return every known catalogue satellite above the requested horizon.
 
     The hosted Live Sky defaults to CelesTrak's ACTIVE catalogue instead of the
-    much smaller VISUAL catalogue.  No brightness or likely-visibility filter is
+    much smaller VISUAL catalogue. No brightness or likely-visibility filter is
     applied: if an active catalogue object is geometrically above the requested
     horizon it is eligible to be returned and the browser decides whether it is
     inside the user's current field of view.
 
     Small supplementary groups are still loaded for identification metadata
     (recent launch, station, and bright-object membership) and deduplicated by
-    catalogue identity.  Batch SGP4 propagation in SatelliteTracker keeps the
+    catalogue identity. Batch SGP4 propagation in SatelliteTracker keeps the
     larger catalogue practical without reverting to per-object propagation.
     """
 
@@ -162,7 +257,7 @@ def satellites(
         "satellite_request total_ms=%.1f lock_wait_ms=%.1f catalogue_load_ms=%.1f "
         "catalogue_merge_ms=%.1f tracker_init_ms=%.1f prepare_ms=%.1f "
         "propagation_ms=%.1f track_build_ms=%.1f payload_build_ms=%.1f "
-        "catalogue_hot_hits=%d catalog_count=%d returned_count=%d",
+        "catalogue_hot_hits=%d merge_cache_hit=%d catalog_count=%d returned_count=%d",
         total_ms,
         timings.get("lock_wait_ms", 0.0),
         timings.get("catalogue_load_ms", 0.0),
@@ -173,6 +268,7 @@ def satellites(
         timings.get("track_build_ms", 0.0),
         timings.get("payload_build_ms", 0.0),
         int(timings.get("catalogue_hot_hit_count", 0.0)),
+        int(timings.get("catalogue_merge_cache_hit", 0.0)),
         int(payload.get("catalog_count", 0)),
         int(payload.get("count", 0)),
     )
@@ -245,35 +341,12 @@ def _build_satellite_snapshot(
             detail="Primary satellite catalogue is temporarily unavailable",
         )
 
-    catalogue_merge_started = perf_counter()
-    merged: dict[str, dict[str, object]] = {}
-    for requested_group in requested_groups:
-        for fields in group_payloads.get(requested_group, []):
-            key = str(
-                fields.get("NORAD_CAT_ID")
-                or fields.get("OBJECT_ID")
-                or fields.get("OBJECT_NAME")
-                or ""
-            ).strip()
-            if not key:
-                continue
-            if key not in merged:
-                merged[key] = dict(fields)
-                merged[key]["_nightazimuth_groups"] = [requested_group]
-            else:
-                groups = merged[key].setdefault("_nightazimuth_groups", [])
-                if isinstance(groups, list) and requested_group not in groups:
-                    groups.append(requested_group)
-
     available_groups = [
         requested_group
         for requested_group in requested_groups
         if requested_group in group_payloads
     ]
     unavailable_groups = [requested_group for requested_group, _exc in failures]
-    catalog_count = len(merged)
-    if timings is not None:
-        timings["catalogue_merge_ms"] = (perf_counter() - catalogue_merge_started) * 1000.0
 
     catalogue_cache_key: object | None = None
     if all(group_generations.get(group_name) is not None for group_name in available_groups):
@@ -282,6 +355,26 @@ def _build_satellite_snapshot(
             for group_name in requested_groups
         )
 
+    catalogue_merge_started = perf_counter()
+    merge_cache_hit = False
+    can_cache_hosted_merge = (
+        tuple(requested_groups) == _HOSTED_MERGE_GROUPS
+        and available_groups == requested_groups
+        and catalogue_cache_key is not None
+    )
+    if can_cache_hosted_merge:
+        merged_elements, merge_cache_hit = _merged_catalogue_for(
+            catalogue_cache_key,
+            requested_groups,
+            group_payloads,
+        )
+    else:
+        merged_elements = _build_merged_catalogue(requested_groups, group_payloads)
+    catalog_count = len(merged_elements)
+    if timings is not None:
+        timings["catalogue_merge_ms"] = (perf_counter() - catalogue_merge_started) * 1000.0
+        timings["catalogue_merge_cache_hit"] = 1.0 if merge_cache_hit else 0.0
+
     tracker_init_started = perf_counter()
     tracker = SatelliteTracker(observer)
     if timings is not None:
@@ -289,13 +382,13 @@ def _build_satellite_snapshot(
 
     if catalogue_cache_key is None:
         positions = tracker.positions_above_horizon(
-            merged.values(),
+            merged_elements,
             minimum_elevation_deg=minimum_elevation_deg,
             at=observed_at,
         )
     else:
         positions = tracker.positions_above_horizon(
-            merged.values(),
+            merged_elements,
             minimum_elevation_deg=minimum_elevation_deg,
             at=observed_at,
             catalogue_cache_key=catalogue_cache_key,
@@ -303,15 +396,14 @@ def _build_satellite_snapshot(
     if timings is not None:
         timings.update(getattr(tracker, "last_timings", {}))
 
-    # Convert to the response shape before returning, then explicitly release the
-    # catalogue copies and dataclass graph.  FastAPI/Starlette serialisation and
-    # gzip happen after this function returns; keeping both object graphs alive
-    # until then needlessly raises peak RSS for the largest endpoint.
+    # Convert to the response shape before returning, then release request-local
+    # references. The cached merged view retains only tiny wrappers over the same
+    # parsed dictionaries already owned by the bounded CelesTrak cache.
     payload_build_started = perf_counter()
     satellite_payloads = [asdict(position) for position in positions]
     count = len(satellite_payloads)
     del positions
-    del merged
+    del merged_elements
     del group_payloads
     del group_generations
     del future_groups
