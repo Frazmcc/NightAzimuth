@@ -32,3 +32,9 @@ def test_sky_endpoint_contract(monkeypatch):
     assert payload["planets"][0]["name"] == "Mars"
     assert payload["galaxies"][0]["name"] == "Test Galaxy"
     assert seen_cache_directories == [Path("data/cache/api/skyfield")]
+
+    timing = response.headers["Server-Timing"]
+    assert "engine_init;dur=" in timing
+    assert "snapshot;dur=" in timing
+    assert "serialize;dur=" in timing
+    assert "total;dur=" in timing
