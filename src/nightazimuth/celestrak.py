@@ -30,6 +30,7 @@ _PARSED_CACHE_LOCK = threading.RLock()
 _PARSED_CACHE: OrderedDict[
     str, tuple[int, int, list[dict[str, Any]]]
 ] = OrderedDict()
+CatalogueGeneration = tuple[int, int]
 
 
 def _cache_lock(path: Path) -> threading.RLock:
@@ -146,6 +147,26 @@ class CelestrakClient:
             self._write_cache(cache_path, data)
             return data
 
+    def load_group_versioned(
+        self,
+        group: str,
+    ) -> tuple[list[dict[str, Any]], CatalogueGeneration]:
+        """Load one group together with the exact on-disk cache generation used."""
+
+        normalized_group = group.strip().upper()
+        if not normalized_group:
+            raise ValueError("CelesTrak group must not be empty")
+        if not _SAFE_GROUP_RE.fullmatch(normalized_group):
+            raise ValueError("CelesTrak group may contain only letters, numbers, hyphens, and underscores")
+
+        cache_path = self._cache_path(normalized_group)
+        # Hold the same re-entrant cache stripe around the existing public loader
+        # and the generation stat. This keeps payload+generation atomic while
+        # preserving subclasses/tests that intentionally override load_group().
+        with _cache_lock(cache_path):
+            data = self.load_group(normalized_group)
+            return data, self._cache_generation(cache_path)
+
     def _download_mirror(self, group: str) -> list[dict[str, Any]] | None:
         try:
             response = httpx.get(
@@ -203,6 +224,11 @@ class CelestrakClient:
         modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
         age_seconds = (datetime.now(timezone.utc) - modified).total_seconds()
         return age_seconds <= self.cache_max_age_minutes * 60
+
+    @staticmethod
+    def _cache_generation(path: Path) -> CatalogueGeneration:
+        stat = path.stat()
+        return stat.st_mtime_ns, stat.st_size
 
     @staticmethod
     def _read_cache(path: Path) -> list[dict[str, Any]]:

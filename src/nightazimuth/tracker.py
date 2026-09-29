@@ -29,7 +29,7 @@ _PREPARED_CATALOGUE_LOCK = threading.RLock()
 
 @dataclass(frozen=True, slots=True)
 class _PreparedCatalogue:
-    fingerprint: bytes
+    cache_key: object
     element_count: int
     valid_indices: tuple[int, ...]
     satrecs: tuple[Satrec, ...]
@@ -65,7 +65,7 @@ class SatellitePosition:
 
 
 def _catalogue_fingerprint(elements: list[dict[str, Any]]) -> bytes:
-    """Hash the orbital catalogue while ignoring NightAzimuth-only metadata."""
+    """Hash orbital content for callers that cannot supply a generation key."""
 
     digest = hashlib.sha256()
     for fields in elements:
@@ -85,7 +85,7 @@ def _catalogue_fingerprint(elements: list[dict[str, Any]]) -> bytes:
 
 def _build_prepared_catalogue(
     elements: list[dict[str, Any]],
-    fingerprint: bytes,
+    cache_key: object,
 ) -> _PreparedCatalogue:
     valid_indices: list[int] = []
     satrecs: list[Satrec] = []
@@ -99,7 +99,7 @@ def _build_prepared_catalogue(
         satrecs.append(satrec)
 
     return _PreparedCatalogue(
-        fingerprint=fingerprint,
+        cache_key=cache_key,
         element_count=len(elements),
         valid_indices=tuple(valid_indices),
         satrecs=tuple(satrecs),
@@ -108,22 +108,28 @@ def _build_prepared_catalogue(
 
 def _prepared_catalogue_for(
     elements: list[dict[str, Any]],
+    cache_key: object | None = None,
 ) -> tuple[_PreparedCatalogue, bool]:
     """Return the one cached Satrec generation, replacing it when data changes."""
 
     global _PREPARED_CATALOGUE
 
-    fingerprint = _catalogue_fingerprint(elements)
+    resolved_key: object
+    if cache_key is None:
+        resolved_key = ("sha256", _catalogue_fingerprint(elements))
+    else:
+        resolved_key = ("generation", cache_key)
+
     with _PREPARED_CATALOGUE_LOCK:
         cached = _PREPARED_CATALOGUE
         if (
             cached is not None
             and cached.element_count == len(elements)
-            and cached.fingerprint == fingerprint
+            and cached.cache_key == resolved_key
         ):
             return cached, True
 
-        prepared = _build_prepared_catalogue(elements, fingerprint)
+        prepared = _build_prepared_catalogue(elements, resolved_key)
         _PREPARED_CATALOGUE = prepared
         return prepared, False
 
@@ -155,6 +161,7 @@ class SatelliteTracker:
         *,
         minimum_elevation_deg: float = 0.0,
         at: datetime | None = None,
+        catalogue_cache_key: object | None = None,
     ) -> list[SatellitePosition]:
         """Return every propagated catalogue object above the requested horizon.
 
@@ -162,7 +169,9 @@ class SatelliteTracker:
         ACTIVE catalogue is large, so SGP4 is run as one native batch. The
         immutable OMM-to-Satrec conversion is cached for one catalogue generation
         while current-time propagation is still performed on every request.
-        Internal stage timings are retained on ``last_timings`` for diagnostics.
+        Hosted callers can supply a cheap catalogue generation key; other callers
+        fall back to a content hash. Internal stage timings are retained on
+        ``last_timings`` for diagnostics.
         """
 
         moment = at or datetime.now(timezone.utc)
@@ -172,7 +181,10 @@ class SatelliteTracker:
         self.last_timings = {}
         prepare_started = perf_counter()
         element_list = list(elements)
-        prepared, cache_hit = _prepared_catalogue_for(element_list)
+        prepared, cache_hit = _prepared_catalogue_for(
+            element_list,
+            cache_key=catalogue_cache_key,
+        )
         fields_list = [element_list[index] for index in prepared.valid_indices]
         satrecs = prepared.satrecs
         self.last_timings["prepare_cache_hit"] = 1.0 if cache_hit else 0.0
