@@ -31,7 +31,15 @@ def test_mobile_camera_does_not_request_motion_permission_on_page_load() -> None
     assert 'stableSolveButton.addEventListener("click",captureAndSolveWhenStable)' in MOBILE_JS
     assert 'requestPermission==="function"' in MOBILE_JS
     assert "Promise.all(requests)" in MOBILE_JS
-    assert "enableHandheldTracking();" not in MOBILE_JS
+
+    # The steady-capture button is also an explicit user action, so its handler
+    # is allowed to request sensors through waitUntilStable(). What must not
+    # exist is an eager top-level invocation after event wiring during page load.
+    assert "const sensors=await enableHandheldTracking();" in MOBILE_JS
+    runtime_initialisation = MOBILE_JS[MOBILE_JS.index('fovInput.addEventListener("change"'):]
+    assert "\nenableHandheldTracking();" not in runtime_initialisation
+    assert "\nstartRearCamera();" not in runtime_initialisation
+    assert "\ncaptureAndSolveWhenStable();" not in runtime_initialisation
 
 
 def test_handheld_capture_waits_for_a_stable_window() -> None:
