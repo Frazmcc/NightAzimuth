@@ -47,19 +47,34 @@ jobs:
         shell: pwsh
         run: |
           $html = Get-Content web/index.html -Raw
-          Get-ChildItem .\web -Filter *.js | ForEach-Object {
-            $js = Get-Content $_.FullName -Raw
-            $ids = [regex]::Matches($js, 'querySelector\("#([^"]+)"\)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+          $scripts = @(Get-ChildItem .\web -Filter *.js)
+          $createdIds = [System.Collections.Generic.HashSet[string]]::new()
+
+          # Some UI helpers intentionally create controls in one script and use
+          # them from a later script. Build one page-wide set of dynamically
+          # created IDs before validating references so those legitimate
+          # cross-script contracts are recognised.
+          foreach ($script in $scripts) {
+            $source = Get-Content $script.FullName -Raw
+            [regex]::Matches($source, '\.id\s*=\s*["'']([^"'']+)["'']') | ForEach-Object {
+              [void]$createdIds.Add($_.Groups[1].Value)
+            }
+          }
+
+          foreach ($script in $scripts) {
+            $js = Get-Content $script.FullName -Raw
+            $selectorIds = [regex]::Matches($js, 'querySelector\("#([^"]+)"\)') | ForEach-Object { $_.Groups[1].Value }
+            $elementIds = [regex]::Matches($js, 'getElementById\(["'']([^"'']+)["'']\)') | ForEach-Object { $_.Groups[1].Value }
+            $ids = @($selectorIds; $elementIds) | Sort-Object -Unique
             foreach ($id in $ids) {
               $htmlHasId = $html -match ('id="' + [regex]::Escape($id) + '"')
-              $createdPattern = '\.id\s*=\s*["'']' + [regex]::Escape($id) + '["'']'
-              $scriptCreatesId = $js -match $createdPattern
-              if (-not $htmlHasId -and -not $scriptCreatesId) {
-                throw "$($_.Name) references missing DOM id: $id"
+              $pageCreatesId = $createdIds.Contains($id)
+              if (-not $htmlHasId -and -not $pageCreatesId) {
+                throw "$($script.Name) references missing DOM id: $id"
               }
             }
             if ($js.Contains('\nfunction')) {
-              throw "$($_.Name) contains a literal escaped newline before function"
+              throw "$($script.Name) contains a literal escaped newline before function"
             }
           }
 
