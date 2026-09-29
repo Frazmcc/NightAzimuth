@@ -78,9 +78,11 @@ async function refreshAircraftFast(){
   }finally{aircraftRefreshInFlight=false}
 }
 
-// app.js already performs the initial aircraft load. Starting the independent
-// 15-second cadence immediately used to duplicate that first network request.
-// Wait for the first cadence tick, and refresh promptly when a hidden tab returns.
+// app.js starts its first request before this enhancer is loaded, so that request
+// still uses the older 200 km / above-horizon query. Run one enhanced acquisition
+// now so the 400 km local radar and below-horizon nearby set are populated
+// immediately instead of remaining incomplete until the first 15-second tick.
+refreshAircraftFast();
 setInterval(refreshAircraftFast,AIRCRAFT_REFRESH_MS);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshAircraftFast()});
 })();
