@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from math import cos, radians, sin, sqrt
 import re
-from typing import Any, Iterable
+from time import perf_counter
+from typing import Any, Iterable, MutableMapping
 
 import numpy as np
 from sgp4 import omm
@@ -66,18 +67,23 @@ class SatelliteTracker:
         *,
         minimum_elevation_deg: float = 0.0,
         at: datetime | None = None,
+        timings: MutableMapping[str, float] | None = None,
     ) -> list[SatellitePosition]:
         """Return every propagated catalogue object above the requested horizon.
 
         Propagation is deliberately independent of visual brightness.  The full
         ACTIVE catalogue is large, so SGP4 is run as one native batch instead of
         constructing and propagating each EarthSatellite separately in Python.
+
+        When ``timings`` is supplied, internal stage durations are recorded for
+        API performance diagnostics without changing the tracking result.
         """
 
         moment = at or datetime.now(timezone.utc)
         if moment.tzinfo is None:
             raise ValueError("Tracking time must be timezone-aware")
 
+        prepare_started = perf_counter()
         fields_list: list[dict[str, Any]] = []
         satrecs: list[Satrec] = []
         for fields in elements:
@@ -90,6 +96,10 @@ class SatelliteTracker:
             satrecs.append(satrec)
 
         if not satrecs:
+            if timings is not None:
+                timings["prepare_ms"] = (perf_counter() - prepare_started) * 1000.0
+                timings["propagation_ms"] = 0.0
+                timings["track_build_ms"] = 0.0
             return []
 
         utc_moment = moment.astimezone(timezone.utc)
@@ -112,7 +122,10 @@ class SatelliteTracker:
             )
             julian_days.append(float(jd))
             julian_fractions.append(float(fraction))
+        if timings is not None:
+            timings["prepare_ms"] = (perf_counter() - prepare_started) * 1000.0
 
+        propagation_started = perf_counter()
         errors, teme_positions, _teme_velocities = SatrecArray(satrecs).sgp4(
             np.asarray(julian_days, dtype=float),
             np.asarray(julian_fractions, dtype=float),
@@ -148,7 +161,10 @@ class SatelliteTracker:
             & np.isfinite(current_range)
             & (current_elevation >= minimum_elevation_deg)
         )
+        if timings is not None:
+            timings["propagation_ms"] = (perf_counter() - propagation_started) * 1000.0
 
+        track_build_started = perf_counter()
         results: list[SatellitePosition] = []
         for satellite_index in np.flatnonzero(valid):
             fields = fields_list[int(satellite_index)]
@@ -200,7 +216,10 @@ class SatelliteTracker:
                 )
             )
 
-        return sorted(results, key=lambda item: item.elevation_deg, reverse=True)
+        sorted_results = sorted(results, key=lambda item: item.elevation_deg, reverse=True)
+        if timings is not None:
+            timings["track_build_ms"] = (perf_counter() - track_build_started) * 1000.0
+        return sorted_results
 
     def _topocentric_angles(
         self, satellite_itrf_km: np.ndarray
