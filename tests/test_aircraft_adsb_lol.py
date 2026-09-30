@@ -1,4 +1,6 @@
 from datetime import datetime, timezone
+from threading import Lock, Thread
+import time
 
 import httpx
 import pytest
@@ -8,6 +10,7 @@ from nightazimuth.aircraft_adsb_lol import (
     AdsbLolProvider,
     FOOT_TO_M,
     KNOT_TO_MPS,
+    _PROVIDER_REQUEST_CONCURRENCY,
     close_shared_adsb_http_client,
 )
 
@@ -68,6 +71,7 @@ def test_adsb_lol_normalises_units_ages_and_identity_metadata():
     assert aircraft.military is True
     for stage in (
         "provider_client_ms",
+        "provider_wait_ms",
         "provider_request_ms",
         "provider_decode_ms",
         "provider_close_ms",
@@ -119,12 +123,64 @@ def test_default_providers_reuse_one_process_http_client(monkeypatch):
         assert created[0].is_closed is False
         assert first.last_timings["provider_client_ms"] >= 0.0
         assert second.last_timings["provider_client_ms"] >= 0.0
+        assert first.last_timings["provider_wait_ms"] >= 0.0
+        assert second.last_timings["provider_wait_ms"] >= 0.0
         assert first.last_timings["provider_close_ms"] >= 0.0
         assert second.last_timings["provider_close_ms"] >= 0.0
     finally:
         close_shared_adsb_http_client()
 
     assert created[0].is_closed is True
+
+
+def test_adsb_provider_limits_simultaneous_outbound_requests():
+    assert _PROVIDER_REQUEST_CONCURRENCY == 2
+    active = 0
+    maximum_active = 0
+    state_lock = Lock()
+    results = []
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return {"now": datetime.now(timezone.utc).timestamp(), "ac": []}
+
+    class BlockingClient:
+        def get(self, url):
+            nonlocal active, maximum_active
+            with state_lock:
+                active += 1
+                maximum_active = max(maximum_active, active)
+            try:
+                time.sleep(0.05)
+                return FakeResponse()
+            finally:
+                with state_lock:
+                    active -= 1
+
+    client = BlockingClient()
+
+    def worker(index: int) -> None:
+        provider = AdsbLolProvider(client=client)
+        snapshot = provider.fetch_snapshot(
+            AircraftObserver(51.0 + index * 0.01, -0.1),
+            100.0,
+        )
+        results.append((snapshot, provider.last_timings))
+
+    threads = [Thread(target=worker, args=(index,)) for index in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2.0)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(results) == 4
+    assert maximum_active == _PROVIDER_REQUEST_CONCURRENCY
+    assert all(snapshot.state == AircraftSnapshotState.LIVE for snapshot, _ in results)
+    assert sum(timings["provider_wait_ms"] > 10.0 for _, timings in results) >= 2
 
 
 def test_adsb_lol_ground_contact_does_not_fabricate_barometric_altitude():
@@ -171,6 +227,7 @@ def test_adsb_lol_http_failure_returns_unavailable_snapshot():
     assert snapshot.observations == ()
     assert snapshot.error is not None
     assert provider.last_timings["provider_client_ms"] >= 0.0
+    assert provider.last_timings["provider_wait_ms"] >= 0.0
     assert provider.last_timings["provider_request_ms"] >= 0.0
     assert provider.last_timings["provider_decode_ms"] == 0.0
     assert provider.last_timings["provider_close_ms"] >= 0.0
