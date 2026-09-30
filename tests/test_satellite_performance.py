@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from nightazimuth.api import app
 import nightazimuth.api_satellites as satellites_module
 from nightazimuth.config import ObserverConfig
+import nightazimuth.tracker as tracker_module
 from nightazimuth.tracker import SatelliteTracker
 
 
@@ -79,6 +80,30 @@ def test_real_tracker_records_init_timing_breakdown() -> None:
     assert tracker.init_timings["tracker_init_internal_ms"] >= tracker.init_timings[
         "tracker_observer_ms"
     ]
+
+
+def test_satellite_trackers_reuse_one_process_timescale(monkeypatch) -> None:
+    tracker_module._clear_timescale_cache()
+    calls = 0
+    shared = object()
+
+    def fake_timescale():
+        nonlocal calls
+        calls += 1
+        return shared
+
+    monkeypatch.setattr(tracker_module.load, "timescale", fake_timescale)
+    observer = ObserverConfig(latitude=55.86, longitude=-4.25, altitude_m=50.0)
+
+    try:
+        first = SatelliteTracker(observer)
+        second = SatelliteTracker(observer)
+
+        assert calls == 1
+        assert first._timescale is shared
+        assert second._timescale is shared
+    finally:
+        tracker_module._clear_timescale_cache()
 
 
 def test_repeat_hosted_group_uses_hot_catalogue_reference(monkeypatch) -> None:
