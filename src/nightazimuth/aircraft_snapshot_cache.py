@@ -31,6 +31,7 @@ class _CacheEntry:
     snapshot: AircraftSnapshot | None = None
     expires_at: float = 0.0
     loading: bool = False
+    snapshot_fallback_used: bool = False
     last_good_snapshot: AircraftSnapshot | None = None
     last_good_expires_at: float = 0.0
 
@@ -82,6 +83,7 @@ class AircraftSnapshotCache:
                         provider_timings={},
                         shared_wait_ms=waited_ms,
                         cache_hit=True,
+                        fallback_used=entry.snapshot_fallback_used,
                     )
 
                 if entry is not None and entry.loading:
@@ -98,6 +100,7 @@ class AircraftSnapshotCache:
                 entry.loading = True
                 entry.snapshot = None
                 entry.expires_at = 0.0
+                entry.snapshot_fallback_used = False
                 break
 
         try:
@@ -120,6 +123,7 @@ class AircraftSnapshotCache:
             entry.snapshot = snapshot
             entry.expires_at = now + self._ttl_seconds
             entry.loading = False
+            entry.snapshot_fallback_used = fallback_used
             if snapshot.state != AircraftSnapshotState.UNAVAILABLE and not fallback_used:
                 entry.last_good_snapshot = snapshot
                 entry.last_good_expires_at = now + self._fallback_max_age_seconds
