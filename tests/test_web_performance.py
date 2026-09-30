@@ -83,11 +83,12 @@ def test_background_tabs_do_not_keep_polling_live_data() -> None:
     assert 'document.addEventListener("visibilitychange"' in AIRCRAFT_JS
 
 
-def test_startup_populates_the_wide_local_radar_without_waiting_for_first_interval() -> None:
-    assert "const AIRCRAFT_RADIUS_KM=400" in AIRCRAFT_JS
+def test_startup_populates_the_bounded_local_radar_without_waiting_for_first_interval() -> None:
+    assert "const AIRCRAFT_RADIUS_MILES=50" in AIRCRAFT_JS
+    assert "const AIRCRAFT_RADIUS_KM=AIRCRAFT_RADIUS_MILES*1.609344" in AIRCRAFT_JS
     assert "minimum_elevation_deg:-90" in AIRCRAFT_JS
     assert "refreshAircraftFast();\nsetInterval(refreshAircraftFast,AIRCRAFT_REFRESH_MS)" in AIRCRAFT_JS
-    assert "aircraft-sensitivity.js?v=21.11.19" in HTML
+    assert "aircraft-sensitivity.js?v=21.11.20" in HTML
 
 
 def test_changed_camera_runtime_is_cache_busted() -> None:
