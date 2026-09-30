@@ -164,15 +164,12 @@ def aircraft(
         timing_header = _server_timing(timings, total_ms)
         logger.warning(
             "aircraft_provider_unavailable radius_km=%.1f upstream_radius_km=%.1f "
-            "regional_shared=%s region_latitude=%.3f region_longitude=%.3f "
-            "shared_cache_hit=%s shared_wait_ms=%.1f total_ms=%.1f "
+            "regional_shared=%s shared_cache_hit=%s shared_wait_ms=%.1f total_ms=%.1f "
             "provider_client_ms=%.1f provider_wait_ms=%.1f provider_request_ms=%.1f "
             "provider_decode_ms=%.1f provider_close_ms=%.1f provider_total_ms=%.1f error=%s",
             radius_km,
             upstream_radius_km,
             regional_shared,
-            provider_observer.latitude_deg,
-            provider_observer.longitude_deg,
             shared.cache_hit,
             shared.shared_wait_ms,
             total_ms,
@@ -250,16 +247,14 @@ def aircraft(
     response.headers["Server-Timing"] = _server_timing(timings, total_ms)
     logger.info(
         "aircraft_request radius_km=%.1f upstream_radius_km=%.1f regional_shared=%s "
-        "region_latitude=%.3f region_longitude=%.3f shared_cache_hit=%s "
-        "fallback_used=%s shared_wait_ms=%.1f total_ms=%.1f provider_client_ms=%.1f "
-        "provider_wait_ms=%.1f provider_request_ms=%.1f provider_decode_ms=%.1f "
-        "provider_close_ms=%.1f provider_normalize_ms=%.1f provider_total_ms=%.1f "
-        "projection_ms=%.1f payload_ms=%.1f source_count=%d returned_count=%d",
+        "shared_cache_hit=%s fallback_used=%s shared_wait_ms=%.1f total_ms=%.1f "
+        "provider_client_ms=%.1f provider_wait_ms=%.1f provider_request_ms=%.1f "
+        "provider_decode_ms=%.1f provider_close_ms=%.1f provider_normalize_ms=%.1f "
+        "provider_total_ms=%.1f projection_ms=%.1f payload_ms=%.1f "
+        "source_count=%d returned_count=%d",
         radius_km,
         upstream_radius_km,
         regional_shared,
-        provider_observer.latitude_deg,
-        provider_observer.longitude_deg,
         shared.cache_hit,
         shared.fallback_used,
         shared.shared_wait_ms,
