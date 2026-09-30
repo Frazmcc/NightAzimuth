@@ -112,6 +112,8 @@ def test_default_providers_reuse_one_process_http_client(monkeypatch):
             self.is_closed = True
 
     monkeypatch.setattr(aircraft_adsb_lol.httpx, "Client", FakeClient)
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_MIN_START_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_NEXT_REQUEST_AT", 0.0)
     try:
         first = AdsbLolProvider()
         second = AdsbLolProvider()
@@ -133,7 +135,11 @@ def test_default_providers_reuse_one_process_http_client(monkeypatch):
     assert created[0].is_closed is True
 
 
-def test_adsb_provider_limits_simultaneous_outbound_requests():
+def test_adsb_provider_limits_simultaneous_outbound_requests(monkeypatch):
+    from nightazimuth import aircraft_adsb_lol
+
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_MIN_START_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_NEXT_REQUEST_AT", 0.0)
     assert _PROVIDER_REQUEST_CONCURRENCY == 1
     active = 0
     maximum_active = 0
@@ -212,7 +218,12 @@ def test_adsb_lol_ground_contact_does_not_fabricate_barometric_altitude():
     assert aircraft.barometric_altitude_m is None
 
 
-def test_adsb_lol_http_failure_returns_unavailable_snapshot():
+def test_adsb_lol_http_failure_returns_unavailable_snapshot(monkeypatch):
+    from nightazimuth import aircraft_adsb_lol
+
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_MIN_START_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_RETRY_DELAY_SECONDS", 0.0)
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_NEXT_REQUEST_AT", 0.0)
     client = httpx.Client(
         transport=httpx.MockTransport(lambda request: httpx.Response(503, text="unavailable"))
     )
