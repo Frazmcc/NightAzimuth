@@ -35,9 +35,13 @@ def test_health_endpoint_does_not_require_configuration() -> None:
     assert response.status_code == 200
 
 
-def test_sky_runtime_prewarm_is_production_opt_in(monkeypatch) -> None:
+def test_live_sky_runtime_prewarm_is_production_opt_in(monkeypatch) -> None:
     calls: list[str] = []
-    monkeypatch.setattr(api_module, "_prewarm_sky_runtime", lambda: calls.append("prewarmed"))
+    monkeypatch.setattr(
+        api_module,
+        "_prewarm_live_sky_runtime",
+        lambda: calls.append("prewarmed"),
+    )
 
     monkeypatch.delenv("NIGHTAZIMUTH_PREWARM_SKY", raising=False)
     with TestClient(app):
@@ -48,6 +52,22 @@ def test_sky_runtime_prewarm_is_production_opt_in(monkeypatch) -> None:
     with TestClient(app):
         pass
     assert calls == ["prewarmed"]
+
+
+def test_live_sky_runtime_prewarm_runs_all_static_stages(monkeypatch) -> None:
+    calls: list[str] = []
+    for name, label in (
+        ("_prewarm_sky_runtime", "sky"),
+        ("_prewarm_aircraft_http", "aircraft_http"),
+        ("_prewarm_observing_runtime", "observing"),
+        ("_prewarm_airport_runtime", "airports"),
+        ("_prewarm_satellite_runtime", "satellites"),
+    ):
+        monkeypatch.setattr(api_module, name, lambda label=label: calls.append(label))
+
+    api_module._prewarm_live_sky_runtime()
+
+    assert calls == ["sky", "aircraft_http", "observing", "airports", "satellites"]
 
 
 def test_cors_allows_hosted_frontend() -> None:
