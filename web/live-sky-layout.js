@@ -101,6 +101,29 @@
       }
     };
 
+    // Sky and satellite snapshots are the two heaviest observer-specific calls.
+    // Starting both at the same instant multiplied CPU pressure on the small
+    // hosted API and contributed to the 4-user production saturation observed in
+    // capacity testing. Queue them per browser instead: all lightweight/live
+    // requests still start immediately, sky gets first use of the astronomy CPU,
+    // and satellites follow. A small stable observer-derived delay prevents many
+    // newly opened clients from synchronising on exactly the same millisecond.
+    let astronomyTail=Promise.resolve();
+    const isHeavyAstronomyPath=path=>path==="/api/v1/sky"||path==="/api/v1/satellites";
+    const observerSpreadMs=params=>{
+      const lat=Number(params?.latitude||0),lon=Number(params?.longitude||0);
+      const a=Math.round((lat+90)*1000),b=Math.round((lon+180)*1000);
+      return Math.abs((a*31+b*17)%351);
+    };
+    const scheduleRequest=(path,params,run)=>{
+      if(!isHeavyAstronomyPath(path))return run();
+      const baseDelay=path==="/api/v1/satellites"?250:0;
+      const delayMs=baseDelay+observerSpreadMs(params);
+      const scheduled=astronomyTail.catch(()=>{}).then(()=>new Promise(resolve=>setTimeout(resolve,delayMs))).then(run);
+      astronomyTail=scheduled.catch(()=>{});
+      return scheduled;
+    };
+
     getJson=async function(path,params={},options={}){
       // aircraft-sensitivity.js normalises every aircraft request to the wider
       // 400 km / -90° acquisition. Use that effective request in the cache key
@@ -112,7 +135,7 @@
       const cached=responseCache.get(key);
       if(ttl>0&&cached&&now-cached.storedAt<ttl)return cached.data;
       if(inFlight.has(key))return inFlight.get(key);
-      const request=Promise.resolve(baseGetJson(path,params,options)).then(data=>{
+      const request=scheduleRequest(path,params,()=>Promise.resolve(baseGetJson(path,params,options))).then(data=>{
         if(ttl>0)storeResponse(key,data);
         return data;
       }).finally(()=>inFlight.delete(key));
