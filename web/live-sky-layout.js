@@ -77,13 +77,14 @@
     const responseCache=new Map();
     const inFlight=new Map();
     const MAX_RESPONSE_CACHE=48;
+    const AIRCRAFT_RADIUS_KM=50*1.609344;
     const ttlForPath=path=>path==="/api/v1/airports"?60*60*1000:
       path==="/api/v1/weather"||path==="/api/v1/observing"?5*60*1000:
       path==="/api/v1/sky"?30*1000:
       path==="/api/v1/aircraft"?14*1000:0;
     const effectiveParams=(path,params)=>path==="/api/v1/aircraft"?{
       ...params,
-      radius_km:400,
+      radius_km:AIRCRAFT_RADIUS_KM,
       minimum_elevation_deg:-90,
       include_ground:false
     }:params;
@@ -125,10 +126,10 @@
     };
 
     getJson=async function(path,params={},options={}){
-      // aircraft-sensitivity.js normalises every aircraft request to the wider
-      // 400 km / -90° acquisition. Use that effective request in the cache key
-      // so the 60-second general refresh and 15-second aircraft refresh share
-      // the same in-flight response instead of downloading it twice.
+      // aircraft-sensitivity.js normalises every browser aircraft request to the
+      // 50-mile / -90° acquisition. Use that effective request in the cache key
+      // so the general refresh and 15-second aircraft refresh share the same
+      // in-flight response instead of downloading it twice.
       const key=requestKey(path,effectiveParams(path,params));
       const now=Date.now();
       const ttl=ttlForPath(path);

@@ -1,30 +1,143 @@
 (()=>{
-const radar=document.querySelector("#aircraft-radar"),canvas=document.querySelector("#aircraft-radar-canvas"),countEl=document.querySelector("#radar-aircraft-count"),rangeEl=document.querySelector("#radar-range-label"),orientationEl=document.querySelector("#radar-orientation-label"),positionSelect=document.querySelector("#radar-position"),rangeSelect=document.querySelector("#radar-range"),enabledInput=document.querySelector("#radar-enabled"),forecastScreen=document.querySelector("#forecast-screen"),bearingInput=document.querySelector("#bearing-input");
+const radar=document.querySelector("#aircraft-radar");
+const canvas=document.querySelector("#aircraft-radar-canvas");
+const countEl=document.querySelector("#radar-aircraft-count");
+const rangeEl=document.querySelector("#radar-range-label");
+const orientationEl=document.querySelector("#radar-orientation-label");
+const positionSelect=document.querySelector("#radar-position");
+const rangeSelect=document.querySelector("#radar-range");
+const enabledInput=document.querySelector("#radar-enabled");
+const forecastScreen=document.querySelector("#forecast-screen");
+const bearingInput=document.querySelector("#bearing-input");
 if(!radar||!canvas||!positionSelect||!rangeSelect||!enabledInput)return;
+
 const ctx=canvas.getContext("2d");
-const POSITIONS=new Set(["bottom-right","bottom-left","top-right","top-left"]),RANGES=new Set([25,50,100,200]);
+const POSITIONS=new Set(["bottom-right","bottom-left","top-right","top-left"]);
+const RANGES=new Set([1,2,5,10,25]);
+const KM_PER_MILE=1.609344;
 const CARDINALS=[{label:"N",bearing:0},{label:"E",bearing:90},{label:"S",bearing:180},{label:"W",bearing:270}];
 let radarHits=[];
 let lastViewBearing=null,lastPeriodicDraw=0;
+
 function stored(key,fallback){const value=localStorage.getItem(key);return value==null?fallback:value}
 function normaliseBearing(value){return((Number(value)%360)+360)%360}
 function relativeBearing(absolute,view){return normaliseBearing(Number(absolute)-Number(view))}
 function angularDelta(a,b){return Math.abs(((a-b+540)%360)-180)}
 function viewBearingDeg(){try{if(typeof facing!=="undefined"&&Number.isFinite(Number(facing)))return normaliseBearing(facing)}catch{}const input=Number(bearingInput?.value);return Number.isFinite(input)?normaliseBearing(input):0}
-function loadSettings(){const position=stored("nightazimuth.radarPosition","bottom-right");const range=Number(stored("nightazimuth.radarRangeKm","200"));const enabled=stored("nightazimuth.radarEnabled","true")!=="false";positionSelect.value=POSITIONS.has(position)?position:"bottom-right";rangeSelect.value=String(RANGES.has(range)?range:200);enabledInput.checked=enabled;applySettings(false)}
-function applySettings(persist=true){const position=POSITIONS.has(positionSelect.value)?positionSelect.value:"bottom-right";const range=RANGES.has(Number(rangeSelect.value))?Number(rangeSelect.value):200;radar.dataset.position=position;if(rangeEl)rangeEl.textContent=`${range} km`;if(persist){localStorage.setItem("nightazimuth.radarPosition",position);localStorage.setItem("nightazimuth.radarRangeKm",String(range));localStorage.setItem("nightazimuth.radarEnabled",String(enabledInput.checked))}syncVisibility();drawRadar()}
+function distanceUnit(){return stored("nightazimuth.distanceUnit","miles")==="km"?"km":"miles"}
+function unitSuffix(unit=distanceUnit()){return unit==="km"?"km":"mi"}
+function unitName(unit=distanceUnit()){return unit==="km"?"kilometres":"miles"}
+function rangeStorageKey(unit=distanceUnit()){return unit==="km"?"nightazimuth.radarRangeKm":"nightazimuth.radarRangeMiles"}
+
+function ensureUnitControl(){
+  let select=document.querySelector("#distance-units");
+  if(select)return select;
+  const grid=rangeSelect.closest(".radar-settings-grid");
+  if(!grid)return null;
+  const label=document.createElement("label");
+  label.htmlFor="distance-units";
+  label.append("Distance units");
+  select=document.createElement("select");
+  select.id="distance-units";
+  const miles=document.createElement("option");miles.value="miles";miles.textContent="Miles";
+  const km=document.createElement("option");km.value="km";km.textContent="Kilometres";
+  select.append(miles,km);
+  label.append(select);
+  grid.insertBefore(label,rangeSelect.closest("label"));
+  return select;
+}
+const unitSelect=ensureUnitControl();
+
+function rebuildRangeOptions(unit,preferred=null){
+  const storedRange=Number(stored(rangeStorageKey(unit),"25"));
+  const value=RANGES.has(Number(preferred))?Number(preferred):(RANGES.has(storedRange)?storedRange:25);
+  rangeSelect.replaceChildren(...[1,2,5,10,25].map(range=>{
+    const option=document.createElement("option");
+    option.value=String(range);
+    option.textContent=`${range} ${unit==="km"?(range===1?"kilometre":"kilometres"):(range===1?"mile":"miles")}`;
+    return option;
+  }));
+  rangeSelect.value=String(value);
+}
+
+function loadSettings(){
+  const position=stored("nightazimuth.radarPosition","bottom-right");
+  const unit=distanceUnit();
+  const enabled=stored("nightazimuth.radarEnabled","true")!=="false";
+  positionSelect.value=POSITIONS.has(position)?position:"bottom-right";
+  if(unitSelect)unitSelect.value=unit;
+  rebuildRangeOptions(unit);
+  enabledInput.checked=enabled;
+  applySettings(false);
+}
+
+function applySettings(persist=true){
+  const position=POSITIONS.has(positionSelect.value)?positionSelect.value:"bottom-right";
+  const unit=unitSelect?.value==="km"?"km":"miles";
+  const range=RANGES.has(Number(rangeSelect.value))?Number(rangeSelect.value):25;
+  radar.dataset.position=position;
+  if(rangeEl)rangeEl.textContent=`${range} ${unitSuffix(unit)}`;
+  if(persist){
+    localStorage.setItem("nightazimuth.radarPosition",position);
+    localStorage.setItem("nightazimuth.distanceUnit",unit);
+    localStorage.setItem(rangeStorageKey(unit),String(range));
+    localStorage.setItem("nightazimuth.radarEnabled",String(enabledInput.checked));
+    window.dispatchEvent(new CustomEvent("nightazimuth:distance-unit",{detail:{unit}}));
+  }
+  syncVisibility();
+  drawRadar();
+}
+
+function changeUnit(){
+  const unit=unitSelect?.value==="km"?"km":"miles";
+  localStorage.setItem("nightazimuth.distanceUnit",unit);
+  rebuildRangeOptions(unit);
+  applySettings(true);
+}
+
 function syncVisibility(){radar.hidden=!enabledInput.checked||Boolean(forecastScreen&&!forecastScreen.hidden)}
 function observerCoordinates(){const lat=Number(localStorage.getItem("nightazimuth.latitude")),lon=Number(localStorage.getItem("nightazimuth.longitude"));return Number.isFinite(lat)&&Number.isFinite(lon)?{lat,lon}:null}
 function groundDistanceKm(observer,aircraft){const alat=Number(aircraft.latitude_deg),alon=Number(aircraft.longitude_deg);if(observer&&Number.isFinite(alat)&&Number.isFinite(alon)){const r=6371.0088,toRad=Math.PI/180,dLat=(alat-observer.lat)*toRad,dLon=(alon-observer.lon)*toRad,a=Math.sin(dLat/2)**2+Math.cos(observer.lat*toRad)*Math.cos(alat*toRad)*Math.sin(dLon/2)**2;return 2*r*Math.asin(Math.min(1,Math.sqrt(a)))}const slant=Number(aircraft.range_km),elevation=Number(aircraft.elevation_deg);if(Number.isFinite(slant)&&Number.isFinite(elevation))return Math.max(0,slant*Math.cos(elevation*Math.PI/180));return Number.isFinite(slant)?slant:NaN}
 function bearingDeg(observer,aircraft){const az=Number(aircraft.azimuth_deg);if(Number.isFinite(az))return normaliseBearing(az);const alat=Number(aircraft.latitude_deg),alon=Number(aircraft.longitude_deg);if(!observer||!Number.isFinite(alat)||!Number.isFinite(alon))return NaN;const toRad=Math.PI/180,lat1=observer.lat*toRad,lat2=alat*toRad,dLon=(alon-observer.lon)*toRad,y=Math.sin(dLon)*Math.cos(lat2),x=Math.cos(lat1)*Math.sin(lat2)-Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLon);return normaliseBearing(Math.atan2(y,x)*180/Math.PI)}
 function resize(){const rect=canvas.getBoundingClientRect(),size=Math.max(1,Math.min(rect.width,rect.height)),dpr=Math.min(window.devicePixelRatio||1,2),px=Math.round(size*dpr);if(canvas.width!==px||canvas.height!==px){canvas.width=px;canvas.height=px;ctx.setTransform(dpr,0,0,dpr,0,0)}return size}
 function contacts(){const expanded=window.nightAzimuthRadarAircraft;if(Array.isArray(expanded))return expanded;try{return typeof skyAircraft!=="undefined"&&Array.isArray(skyAircraft)?skyAircraft:[]}catch{return[]}}
-function drawRadar(){syncVisibility();if(radar.hidden)return;const size=resize(),c=size/2,radius=size*.405,rangeKm=Number(rangeSelect.value)||200,observer=observerCoordinates(),viewBearing=viewBearingDeg();if(orientationEl)orientationEl.textContent=`VIEW UP · ${Math.round(viewBearing)}°`;ctx.clearRect(0,0,size,size);radarHits=[];ctx.save();ctx.translate(c,c);ctx.strokeStyle="rgba(118,255,184,.24)";ctx.lineWidth=1;for(let i=1;i<=4;i++){ctx.beginPath();ctx.arc(0,0,radius*i/4,0,Math.PI*2);ctx.stroke()}ctx.strokeStyle="rgba(118,255,184,.14)";for(let deg=0;deg<360;deg+=30){const a=deg*Math.PI/180,inner=radius-(deg%90===0?9:5);ctx.beginPath();ctx.moveTo(Math.sin(a)*inner,-Math.cos(a)*inner);ctx.lineTo(Math.sin(a)*radius,-Math.cos(a)*radius);ctx.stroke()}ctx.beginPath();ctx.moveTo(-radius,0);ctx.lineTo(radius,0);ctx.moveTo(0,-radius);ctx.lineTo(0,radius);ctx.stroke();ctx.fillStyle="rgba(173,255,207,.74)";ctx.font="700 8px ui-monospace,monospace";ctx.textAlign="center";ctx.textBaseline="middle";for(const cardinal of CARDINALS){const relative=relativeBearing(cardinal.bearing,viewBearing)*Math.PI/180;ctx.fillText(cardinal.label,Math.sin(relative)*(radius+9),-Math.cos(relative)*(radius+9))}ctx.fillStyle="rgba(118,255,184,.42)";ctx.textAlign="left";ctx.font="7px ui-monospace,monospace";for(let i=1;i<=4;i++)ctx.fillText(`${Math.round(rangeKm*i/4)}`,4,-radius*i/4+8);ctx.strokeStyle="#b9ffd6";ctx.fillStyle="#b9ffd6";ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(0,0,3.3,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(-7,0);ctx.lineTo(7,0);ctx.moveTo(0,-7);ctx.lineTo(0,7);ctx.stroke();ctx.font="700 7px ui-monospace,monospace";ctx.fillText("YOU",7,8);ctx.fillStyle="rgba(255,255,255,.9)";ctx.textAlign="center";ctx.fillText("VIEW",0,-radius+10);ctx.restore();
-const plotted=[];for(const aircraft of contacts()){const distance=groundDistanceKm(observer,aircraft),bearing=bearingDeg(observer,aircraft);if(!Number.isFinite(distance)||!Number.isFinite(bearing)||distance>rangeKm)continue;const relative=relativeBearing(bearing,viewBearing),a=relative*Math.PI/180,radial=radius*(distance/rangeKm),x=c+Math.sin(a)*radial,y=c-Math.cos(a)*radial;plotted.push({aircraft,distance,x,y})}
-plotted.sort((a,b)=>a.distance-b.distance);for(const item of plotted){const {aircraft,x,y}=item,selected=typeof trackedObject!=="undefined"&&trackedObject?.kind==="aircraft"&&trackedObject.key===aircraft.icao24,special=aircraft.display?.special||aircraft.military;ctx.save();ctx.strokeStyle=selected?"#ffffff":special?"#ffd166":"#7dffb2";ctx.fillStyle=selected?"#ffffff":special?"#ffd166":"#7dffb2";ctx.lineWidth=selected?1.8:1.1;const track=Number(aircraft.track_deg);if(Number.isFinite(track)){const ta=relativeBearing(track,viewBearing)*Math.PI/180,vector=selected?12:9;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.sin(ta)*vector,y-Math.cos(ta)*vector);ctx.stroke()}ctx.beginPath();ctx.arc(x,y,selected?4.2:2.7,0,Math.PI*2);ctx.fill();if(selected){ctx.globalAlpha=.55;ctx.beginPath();ctx.arc(x,y,7.5,0,Math.PI*2);ctx.stroke()}ctx.restore();radarHits.push({aircraft,x,y,r:selected?10:8})}
-ctx.save();ctx.font="700 7px ui-monospace,monospace";ctx.textAlign="left";ctx.textBaseline="middle";for(const item of plotted.slice(0,12)){const label=(item.aircraft.callsign||item.aircraft.registration||item.aircraft.icao24||"").trim().slice(0,8);if(!label)continue;ctx.fillStyle="rgba(190,255,218,.86)";ctx.fillText(label,item.x+5,item.y-5)}ctx.restore();if(countEl)countEl.textContent=`${plotted.length} contact${plotted.length===1?"":"s"}`}
+
+function drawRadar(){
+  syncVisibility();
+  if(radar.hidden)return;
+  const unit=distanceUnit();
+  const rangeValue=Number(rangeSelect.value)||25;
+  const rangeKm=unit==="km"?rangeValue:rangeValue*KM_PER_MILE;
+  const size=resize(),c=size/2,radius=size*.405,observer=observerCoordinates(),viewBearing=viewBearingDeg();
+  if(orientationEl)orientationEl.textContent=`VIEW UP · ${Math.round(viewBearing)}°`;
+  ctx.clearRect(0,0,size,size);radarHits=[];
+  ctx.save();ctx.translate(c,c);ctx.strokeStyle="rgba(118,255,184,.24)";ctx.lineWidth=1;
+  for(let i=1;i<=4;i++){ctx.beginPath();ctx.arc(0,0,radius*i/4,0,Math.PI*2);ctx.stroke()}
+  ctx.strokeStyle="rgba(118,255,184,.14)";
+  for(let deg=0;deg<360;deg+=30){const a=deg*Math.PI/180,inner=radius-(deg%90===0?9:5);ctx.beginPath();ctx.moveTo(Math.sin(a)*inner,-Math.cos(a)*inner);ctx.lineTo(Math.sin(a)*radius,-Math.cos(a)*radius);ctx.stroke()}
+  ctx.beginPath();ctx.moveTo(-radius,0);ctx.lineTo(radius,0);ctx.moveTo(0,-radius);ctx.lineTo(0,radius);ctx.stroke();
+  ctx.fillStyle="rgba(173,255,207,.74)";ctx.font="700 8px ui-monospace,monospace";ctx.textAlign="center";ctx.textBaseline="middle";
+  for(const cardinal of CARDINALS){const relative=relativeBearing(cardinal.bearing,viewBearing)*Math.PI/180;ctx.fillText(cardinal.label,Math.sin(relative)*(radius+9),-Math.cos(relative)*(radius+9))}
+  ctx.fillStyle="rgba(118,255,184,.42)";ctx.textAlign="left";ctx.font="7px ui-monospace,monospace";
+  for(let i=1;i<=4;i++)ctx.fillText(`${Number((rangeValue*i/4).toFixed(rangeValue<5?1:0))} ${unitSuffix(unit)}`,4,-radius*i/4+8);
+  ctx.strokeStyle="#b9ffd6";ctx.fillStyle="#b9ffd6";ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(0,0,3.3,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(-7,0);ctx.lineTo(7,0);ctx.moveTo(0,-7);ctx.lineTo(0,7);ctx.stroke();ctx.font="700 7px ui-monospace,monospace";ctx.fillText("YOU",7,8);ctx.fillStyle="rgba(255,255,255,.9)";ctx.textAlign="center";ctx.fillText("VIEW",0,-radius+10);ctx.restore();
+
+  const plotted=[];
+  for(const aircraft of contacts()){const distance=groundDistanceKm(observer,aircraft),bearing=bearingDeg(observer,aircraft);if(!Number.isFinite(distance)||!Number.isFinite(bearing)||distance>rangeKm)continue;const relative=relativeBearing(bearing,viewBearing),a=relative*Math.PI/180,radial=radius*(distance/rangeKm),x=c+Math.sin(a)*radial,y=c-Math.cos(a)*radial;plotted.push({aircraft,distance,x,y})}
+  plotted.sort((a,b)=>a.distance-b.distance);
+  for(const item of plotted){const {aircraft,x,y}=item,selected=typeof trackedObject!=="undefined"&&trackedObject?.kind==="aircraft"&&trackedObject.key===aircraft.icao24,special=aircraft.display?.special||aircraft.military;ctx.save();ctx.strokeStyle=selected?"#ffffff":special?"#ffd166":"#7dffb2";ctx.fillStyle=selected?"#ffffff":special?"#ffd166":"#7dffb2";ctx.lineWidth=selected?1.8:1.1;const track=Number(aircraft.track_deg);if(Number.isFinite(track)){const ta=relativeBearing(track,viewBearing)*Math.PI/180,vector=selected?12:9;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.sin(ta)*vector,y-Math.cos(ta)*vector);ctx.stroke()}ctx.beginPath();ctx.arc(x,y,selected?4.2:2.7,0,Math.PI*2);ctx.fill();if(selected){ctx.globalAlpha=.55;ctx.beginPath();ctx.arc(x,y,7.5,0,Math.PI*2);ctx.stroke()}ctx.restore();radarHits.push({aircraft,x,y,r:selected?10:8})}
+  ctx.save();ctx.font="700 7px ui-monospace,monospace";ctx.textAlign="left";ctx.textBaseline="middle";
+  for(const item of plotted.slice(0,12)){const label=(item.aircraft.callsign||item.aircraft.registration||item.aircraft.icao24||"").trim().slice(0,8);if(!label)continue;ctx.fillStyle="rgba(190,255,218,.86)";ctx.fillText(label,item.x+5,item.y-5)}
+  ctx.restore();if(countEl)countEl.textContent=`${plotted.length} contact${plotted.length===1?"":"s"}`;
+}
+
 canvas.addEventListener("click",event=>{const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;let best=null,bestD=Infinity;for(const hit of radarHits){const d=Math.hypot(x-hit.x,y-hit.y);if(d<=hit.r&&d<bestD){best=hit;bestD=d}}if(best&&typeof focusAircraft==="function")focusAircraft(best.aircraft)});
-positionSelect.addEventListener("change",()=>applySettings());rangeSelect.addEventListener("change",()=>applySettings());enabledInput.addEventListener("change",()=>applySettings());window.addEventListener("resize",drawRadar);if(forecastScreen)new MutationObserver(()=>{syncVisibility();drawRadar()}).observe(forecastScreen,{attributes:true,attributeFilter:["hidden"]});
+positionSelect.addEventListener("change",()=>applySettings());
+rangeSelect.addEventListener("change",()=>applySettings());
+enabledInput.addEventListener("change",()=>applySettings());
+if(unitSelect)unitSelect.addEventListener("change",changeUnit);
+window.addEventListener("resize",drawRadar);
+if(forecastScreen)new MutationObserver(()=>{syncVisibility();drawRadar()}).observe(forecastScreen,{attributes:true,attributeFilter:["hidden"]});
 function animateRadar(now){const current=viewBearingDeg();if(lastViewBearing===null||angularDelta(current,lastViewBearing)>=.1||now-lastPeriodicDraw>=1200){drawRadar();lastViewBearing=current;lastPeriodicDraw=now}requestAnimationFrame(animateRadar)}
 loadSettings();drawRadar();requestAnimationFrame(animateRadar);
 })();

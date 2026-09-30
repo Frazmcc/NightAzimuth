@@ -2,6 +2,7 @@
 const root=document.querySelector("#contacts");
 if(!root||typeof skyXY!=="function"||typeof drawSky!=="function"||typeof renderContacts!=="function")return;
 
+const WEB_AIRCRAFT_RADIUS_KM=50*1.609344;
 const baseDrawSky=drawSky;
 const baseShowObject=typeof showObject==="function"?showObject:null;
 const routeCache=new Map();
@@ -14,8 +15,9 @@ function currentViewAircraft(){
     const aircraft=typeof skyAircraft!=="undefined"&&Array.isArray(skyAircraft)?skyAircraft:[];
     const w=innerWidth,h=innerHeight;
     return aircraft.filter(item=>{
-      const az=Number(item?.azimuth_deg),el=Number(item?.elevation_deg);
-      return Number.isFinite(az)&&Number.isFinite(el)&&skyXY(az,el,w,h)!==null;
+      const az=Number(item?.azimuth_deg),el=Number(item?.elevation_deg),range=Number(item?.range_km);
+      const withinRadius=!Number.isFinite(range)||range<=WEB_AIRCRAFT_RADIUS_KM;
+      return withinRadius&&Number.isFinite(az)&&Number.isFinite(el)&&skyXY(az,el,w,h)!==null;
     });
   }catch{return[]}
 }

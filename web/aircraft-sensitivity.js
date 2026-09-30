@@ -1,5 +1,6 @@
 (()=>{
-const AIRCRAFT_RADIUS_KM=400;
+const AIRCRAFT_RADIUS_MILES=50;
+const AIRCRAFT_RADIUS_KM=AIRCRAFT_RADIUS_MILES*1.609344;
 const AIRCRAFT_REFRESH_MS=15000;
 const AIRCRAFT_CONTINUITY_GRACE_MS=45000;
 if(typeof getJson!=="function")return;
@@ -11,11 +12,18 @@ const aircraftContinuity=new Map();
 
 function contactKey(contact){return String(contact?.icao24||"").trim().toLowerCase()}
 function observerKey(params){return `${Number(params?.latitude).toFixed(6)},${Number(params?.longitude).toFixed(6)}`}
-function visibleAircraft(contacts){return contacts.filter(contact=>{const elevation=Number(contact?.elevation_deg);return Number.isFinite(elevation)&&elevation>=0&&elevation<=90})}
+function preferredDistanceUnit(){return localStorage.getItem("nightazimuth.distanceUnit")==="km"?"km":"miles"}
+function webRadiusLabel(){return preferredDistanceUnit()==="km"?`${Math.round(AIRCRAFT_RADIUS_KM)} km`:`${AIRCRAFT_RADIUS_MILES} mi`}
+function withinWebRadius(contact){
+  const range=Number(contact?.range_km);
+  return !Number.isFinite(range)||range<=AIRCRAFT_RADIUS_KM;
+}
+function visibleAircraft(contacts){return contacts.filter(contact=>{const elevation=Number(contact?.elevation_deg);return withinWebRadius(contact)&&Number.isFinite(elevation)&&elevation>=0&&elevation<=90})}
 function resetContinuityForObserver(params){const next=observerKey(params);if(next!==observerSignature){observerSignature=next;aircraftContinuity.clear();window.nightAzimuthRadarAircraft=[]}}
 function reconcileAircraft(incoming,now=Date.now()){
   const seen=new Set();
   for(const contact of incoming){
+    if(!withinWebRadius(contact))continue;
     const key=contactKey(contact);
     if(!key)continue;
     seen.add(key);
@@ -40,10 +48,26 @@ function enhanceAircraftResponse(data,params){
   return{...data,aircraft:visible,count:visible.length,nearby_count:all.length,continuity_coasting_count:coastingCount};
 }
 
-// Fetch a wider area and keep below-horizon contacts for the local radar, while
-// preserving Live Contacts / Live Sky as above-horizon-only views. A contact
-// omitted by one provider snapshot is retained briefly instead of blinking out;
-// it is only removed after the same 45-second freshness window used by the API.
+// app.js can begin its initial request before this enhancer loads. Guard the actual
+// aircraft renderer as well as the data request so an older, wider response can
+// never paint an aircraft outside the 50-mile web limit, even briefly.
+const baseDrawContacts=typeof drawContacts==="function"?drawContacts:null;
+if(baseDrawContacts){
+  drawContacts=function(w,h){
+    const original=skyAircraft;
+    try{
+      skyAircraft=Array.isArray(original)?original.filter(withinWebRadius):[];
+      return baseDrawContacts(w,h);
+    }finally{
+      skyAircraft=original;
+    }
+  };
+}
+
+// Keep all browser aircraft data within 50 miles of the saved observer. The local
+// radar draws from the same bounded acquisition set and can apply a smaller radius.
+// Below-horizon contacts are retained only for the optional local radar; Live Sky
+// and Live Contacts remain above-horizon-only views.
 getJson=async function(path,params={},options={}){
   if(path!=="/api/v1/aircraft")return baseGetJson(path,params,options);
   const request={...params,radius_km:AIRCRAFT_RADIUS_KM,minimum_elevation_deg:-90,include_ground:false};
@@ -67,22 +91,19 @@ async function refreshAircraftFast(){
     const coasting=Number(data.continuity_coasting_count??0);
     const continuity=coasting?` · ${coasting} coasting`:"";
     setText("#aircraft-count",String(skyAircraft.length));
-    setText("#aircraft-detail",`${data.source?.label||"Live aircraft"} · ${skyAircraft.length} above horizon · ${nearby} nearby · ${sourceCount} source positions${continuity}`);
+    setText("#aircraft-detail",`${data.source?.label||"Live aircraft"} · ${skyAircraft.length} above horizon · ${nearby} within ${webRadiusLabel()} · ${sourceCount} source positions${continuity}`);
     setText("#updated",data.observed_at||"Loaded");
     renderContacts(data.geojson||{features:[]});
     drawSky();
   }catch{
-    // Never clear the current scene just because a refresh fails. The existing
-    // aircraft remain visible until a later successful refresh confirms expiry.
     if(skyAircraft.length)setText("#aircraft-detail",`Aircraft refresh delayed · holding ${skyAircraft.length} current contact${skyAircraft.length===1?"":"s"}`);
   }finally{aircraftRefreshInFlight=false}
 }
 
-// app.js starts its first request before this enhancer is loaded, so that request
-// still uses the older 200 km / above-horizon query. Run one enhanced acquisition
-// now so the 400 km local radar and below-horizon nearby set are populated
-// immediately instead of remaining incomplete until the first 15-second tick.
+// Run one bounded acquisition immediately so the browser settles on the 50-mile
+// dataset even if the initial app.js request was already in flight.
 refreshAircraftFast();
 setInterval(refreshAircraftFast,AIRCRAFT_REFRESH_MS);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshAircraftFast()});
+window.addEventListener("nightazimuth:distance-unit",()=>refreshAircraftFast());
 })();
