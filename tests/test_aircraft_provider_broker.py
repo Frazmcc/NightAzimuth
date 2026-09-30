@@ -37,6 +37,28 @@ def test_transient_provider_failure_is_retried_once(monkeypatch):
     assert provider.last_timings["provider_retry_wait_ms"] >= 0.0
 
 
+def test_persistent_transient_failure_stops_after_one_retry(monkeypatch):
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(503, text="temporary")
+
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_MIN_START_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_RETRY_DELAY_SECONDS", 0.0)
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_NEXT_REQUEST_AT", 0.0)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    provider = AdsbLolProvider(client=client)
+    snapshot = provider.fetch_snapshot(AircraftObserver(51.5, -0.1), 100.0)
+    client.close()
+
+    assert calls == 2
+    assert snapshot.state == AircraftSnapshotState.UNAVAILABLE
+    assert provider.last_timings["provider_retry_count"] == 1.0
+
+
 def test_non_retryable_provider_failure_is_not_retried(monkeypatch):
     calls = 0
 
