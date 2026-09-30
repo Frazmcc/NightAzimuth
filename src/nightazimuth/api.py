@@ -14,12 +14,16 @@ from starlette.middleware.gzip import GZipMiddleware
 from . import __version__
 from .aircraft_adsb_lol import close_shared_adsb_http_client, prewarm_shared_adsb_http_client
 from .api_aircraft import router as aircraft_router
+from .api_airports import _PROVIDER as _AIRPORT_PROVIDER
 from .api_airports import router as airports_router
 from .api_geojson import router as geojson_router
+from .api_observing import _API_CACHE as _OBSERVING_API_CACHE
 from .api_observing import router as observing_router
+from .api_satellites import _SATELLITE_PIPELINE_LOCK, _build_satellite_snapshot
 from .api_satellites import router as satellites_router
 from .api_sky import router as sky_router
 from .api_weather import router as weather_router
+from .observing_planner import _astronomy_resources
 from .preload_sky import SKYFIELD_CACHE
 from .star_field import _load_static_resources, _prepared_catalogue
 
@@ -53,13 +57,77 @@ def _prewarm_aircraft_http() -> None:
     )
 
 
+def _prewarm_observing_runtime() -> None:
+    """Load immutable observing-planner astronomy resources before requests compete for CPU."""
+
+    started = perf_counter()
+    _astronomy_resources(_OBSERVING_API_CACHE)
+    _LOGGER.info(
+        "observing_runtime_prewarm total_ms=%.1f",
+        (perf_counter() - started) * 1000.0,
+    )
+
+
+def _prewarm_airport_runtime() -> None:
+    """Parse the deploy-cached global airport catalogue into process memory."""
+
+    started = perf_counter()
+    count = _AIRPORT_PROVIDER.preload()
+    if count <= 0:
+        raise RuntimeError("Airport catalogue was empty during runtime preload")
+    _LOGGER.info(
+        "airport_runtime_prewarm total_ms=%.1f objects=%d",
+        (perf_counter() - started) * 1000.0,
+        count,
+    )
+
+
+def _prewarm_satellite_runtime() -> None:
+    """Prepare location-independent satellite catalogue/SGP4 caches before live traffic."""
+
+    started = perf_counter()
+    timings: dict[str, float] = {}
+    # A 90-degree synthetic horizon minimizes response/track construction while
+    # still exercising catalogue load/merge and the prepared Satrec generation.
+    # Positions themselves are never retained; every real request propagates at
+    # its own current time and observer location.
+    with _SATELLITE_PIPELINE_LOCK:
+        payload = _build_satellite_snapshot(
+            latitude=0.0,
+            longitude=0.0,
+            altitude_m=0.0,
+            minimum_elevation_deg=90.0,
+            group="ACTIVE",
+            identification_detail=True,
+            timings=timings,
+        )
+    _LOGGER.info(
+        "satellite_runtime_prewarm total_ms=%.1f catalog_count=%d "
+        "catalogue_load_ms=%.1f catalogue_merge_ms=%.1f prepare_ms=%.1f",
+        (perf_counter() - started) * 1000.0,
+        int(payload.get("catalog_count", 0)),
+        timings.get("catalogue_load_ms", 0.0),
+        timings.get("catalogue_merge_ms", 0.0),
+        timings.get("prepare_ms", 0.0),
+    )
+
+
+def _prewarm_live_sky_runtime() -> None:
+    """Warm all location-independent resources used by the initial Live Sky burst."""
+
+    _prewarm_sky_runtime()
+    _prewarm_aircraft_http()
+    _prewarm_observing_runtime()
+    _prewarm_airport_runtime()
+    _prewarm_satellite_runtime()
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Warm production-only resources before accepting requests."""
 
     if os.environ.get("NIGHTAZIMUTH_PREWARM_SKY") == "1":
-        _prewarm_sky_runtime()
-        _prewarm_aircraft_http()
+        _prewarm_live_sky_runtime()
     try:
         yield
     finally:
