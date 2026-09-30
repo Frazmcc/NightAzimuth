@@ -7,12 +7,17 @@ from time import perf_counter
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
+from .burst_cache import BurstResultCache
 from .config import ObserverConfig
 from .star_field import StarFieldEngine
 
 router = APIRouter(prefix="/api/v1/sky", tags=["sky"])
 _API_CACHE = Path("data/cache/api")
 _LOGGER = logging.getLogger("uvicorn.error")
+_BURST_CACHE: BurstResultCache[dict[str, object]] = BurstResultCache(
+    ttl_seconds=2.0,
+    max_entries=32,
+)
 
 
 @router.get("")
@@ -24,6 +29,16 @@ def sky(
 ) -> dict[str, object]:
     """Return the real celestial sky above an observer."""
     request_started = perf_counter()
+    cache_key = (latitude, longitude, altitude_m)
+    cached = _BURST_CACHE.get(cache_key)
+    if cached is not None:
+        total_ms = (perf_counter() - request_started) * 1000.0
+        response.headers["Server-Timing"] = (
+            f'burst_cache;desc="hit";dur=0.0, total;dur={total_ms:.1f}'
+        )
+        _LOGGER.info("sky_request burst_cache_hit=1 total_ms=%.1f", total_ms)
+        return cached
+
     observer = ObserverConfig(latitude=latitude, longitude=longitude, altitude_m=altitude_m)
 
     try:
@@ -56,9 +71,11 @@ def sky(
         "constellation_lines": [asdict(item) for item in snapshot.constellation_lines],
     }
     serialization_ms = (perf_counter() - serialization_started) * 1000.0
+    _BURST_CACHE.put(cache_key, payload)
     total_ms = (perf_counter() - request_started) * 1000.0
 
     response.headers["Server-Timing"] = (
+        'burst_cache;desc="miss";dur=0.0, '
         f"engine_init;dur={engine_init_ms:.1f}, "
         f"snapshot;dur={snapshot_ms:.1f}, "
         f"serialize;dur={serialization_ms:.1f}, "
@@ -66,7 +83,7 @@ def sky(
     )
 
     _LOGGER.info(
-        "sky_request total_ms=%.1f engine_init_ms=%.1f snapshot_ms=%.1f "
+        "sky_request burst_cache_hit=0 total_ms=%.1f engine_init_ms=%.1f snapshot_ms=%.1f "
         "serialization_ms=%.1f stars=%d planets=%d galaxies=%d constellation_lines=%d",
         total_ms,
         engine_init_ms,

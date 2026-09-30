@@ -4,12 +4,15 @@ from fastapi.testclient import TestClient
 
 from nightazimuth.api import app
 import nightazimuth.api_satellites as satellites_module
+import nightazimuth.api_satellites_cached as satellites_cached_module
 from nightazimuth.config import ObserverConfig
 import nightazimuth.tracker as tracker_module
 from nightazimuth.tracker import SatelliteTracker
 
 
 def test_satellite_endpoint_exposes_internal_stage_timings(monkeypatch) -> None:
+    satellites_cached_module._BURST_CACHE.clear()
+
     class FakeClient:
         def __init__(self, *_args, **_kwargs) -> None:
             pass
@@ -64,6 +67,7 @@ def test_satellite_endpoint_exposes_internal_stage_timings(monkeypatch) -> None:
     assert "prepare;dur=1.0" in timing
     assert "propagate;dur=2.0" in timing
     assert "track_build;dur=3.0" in timing
+    satellites_cached_module._BURST_CACHE.clear()
 
 
 def test_real_tracker_records_init_timing_breakdown() -> None:
@@ -108,6 +112,7 @@ def test_satellite_trackers_reuse_one_process_timescale(monkeypatch) -> None:
 
 def test_repeat_hosted_group_uses_hot_catalogue_reference(monkeypatch) -> None:
     satellites_module._clear_hot_group_cache()
+    satellites_cached_module._BURST_CACHE.clear()
     payload = [{"OBJECT_NAME": "TEST SAT", "NORAD_CAT_ID": "12345"}]
     generation = (time_ns(), 123)
     load_calls: list[str] = []
@@ -152,6 +157,9 @@ def test_repeat_hosted_group_uses_hot_catalogue_reference(monkeypatch) -> None:
     first = client.get(
         "/api/v1/satellites?latitude=55.86&longitude=-4.25&identification_detail=false"
     )
+    # This test targets the lower-level hosted catalogue hot cache, not the new
+    # top-level burst result cache, so force the second request through the base endpoint.
+    satellites_cached_module._BURST_CACHE.clear()
     second = client.get(
         "/api/v1/satellites?latitude=55.86&longitude=-4.25&identification_detail=false"
     )
@@ -160,10 +168,12 @@ def test_repeat_hosted_group_uses_hot_catalogue_reference(monkeypatch) -> None:
     assert second.status_code == 200
     assert load_calls == ["ACTIVE"]
     satellites_module._clear_hot_group_cache()
+    satellites_cached_module._BURST_CACHE.clear()
 
 
 def test_repeat_hosted_detail_reuses_zero_copy_merged_catalogue(monkeypatch) -> None:
     satellites_module._clear_hot_group_cache()
+    satellites_cached_module._BURST_CACHE.clear()
     payload = [{"OBJECT_NAME": "TEST SAT", "NORAD_CAT_ID": "12345"}]
     modified_ns = time_ns()
     load_calls: list[str] = []
@@ -230,6 +240,8 @@ def test_repeat_hosted_detail_reuses_zero_copy_merged_catalogue(monkeypatch) -> 
 
     client = TestClient(app)
     first = client.get("/api/v1/satellites?latitude=55.86&longitude=-4.25")
+    # Force the lower-level merged-catalogue cache to be exercised again.
+    satellites_cached_module._BURST_CACHE.clear()
     second = client.get("/api/v1/satellites?latitude=55.86&longitude=-4.25")
 
     assert first.status_code == 200
@@ -240,3 +252,4 @@ def test_repeat_hosted_detail_reuses_zero_copy_merged_catalogue(monkeypatch) -> 
     assert seen_element_ids[0] == seen_element_ids[1]
     assert "_nightazimuth_groups" not in payload[0]
     satellites_module._clear_hot_group_cache()
+    satellites_cached_module._BURST_CACHE.clear()

@@ -22,7 +22,7 @@ from .api_geojson import router as geojson_router
 from .api_observing import _API_CACHE as _OBSERVING_API_CACHE
 from .api_observing import router as observing_router
 from .api_satellites import _SATELLITE_PIPELINE_LOCK, _build_satellite_snapshot
-from .api_satellites import router as satellites_router
+from .api_satellites_cached import router as satellites_router
 from .api_sky import router as sky_router
 from .api_weather import router as weather_router
 from .observing_planner import _astronomy_resources
