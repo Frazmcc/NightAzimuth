@@ -2,10 +2,9 @@ from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
-from nightazimuth.aircraft import AircraftSnapshot, AircraftSnapshotState
+from nightazimuth.aircraft import AircraftObserver, AircraftSnapshot, AircraftSnapshotState
 from nightazimuth.api import app
 from nightazimuth.api_aircraft import _AIRCRAFT_SNAPSHOT_CACHE, _provider_request_scope
-from nightazimuth.aircraft import AircraftObserver
 
 
 def test_live_sky_observers_in_same_region_share_one_provider_snapshot(monkeypatch):
@@ -105,5 +104,33 @@ def test_400_km_request_uses_small_cell_and_maximum_provider_radius():
     assert provider_observer.latitude_deg == 55.75
     assert provider_observer.longitude_deg == -4.25
     assert provider_observer.altitude_m == 0.0
+    assert provider_radius == 463.0
+    assert regional_shared is True
+
+
+def test_regional_provider_scope_stays_inside_positive_coordinate_bounds():
+    observer = AircraftObserver(90.0, 180.0, 0.0)
+
+    provider_observer, provider_radius, regional_shared = _provider_request_scope(
+        observer,
+        400.0,
+    )
+
+    assert provider_observer.latitude_deg == 89.75
+    assert provider_observer.longitude_deg == 179.75
+    assert provider_radius == 463.0
+    assert regional_shared is True
+
+
+def test_regional_provider_scope_stays_inside_negative_coordinate_bounds():
+    observer = AircraftObserver(-90.0, -180.0, 0.0)
+
+    provider_observer, provider_radius, regional_shared = _provider_request_scope(
+        observer,
+        400.0,
+    )
+
+    assert provider_observer.latitude_deg == -89.75
+    assert provider_observer.longitude_deg == -179.75
     assert provider_radius == 463.0
     assert regional_shared is True
