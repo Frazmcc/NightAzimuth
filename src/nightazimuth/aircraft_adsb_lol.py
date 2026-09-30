@@ -27,7 +27,7 @@ _SHARED_CLIENT: httpx.Client | None = None
 _PROVIDER_REQUEST_CONCURRENCY = 1
 _PROVIDER_REQUEST_GATE = BoundedSemaphore(_PROVIDER_REQUEST_CONCURRENCY)
 _PROVIDER_MIN_START_INTERVAL_SECONDS = 0.75
-_PROVIDER_RETRY_DELAYS_SECONDS = (0.75, 1.5)
+_PROVIDER_RETRY_DELAY_SECONDS = 0.75
 _PROVIDER_MAX_ATTEMPTS = 3
 _PROVIDER_SCHEDULE_LOCK = Lock()
 _PROVIDER_NEXT_REQUEST_AT = 0.0
@@ -165,9 +165,7 @@ class AdsbLolProvider:
                     failure = exc
                     if attempt + 1 >= _PROVIDER_MAX_ATTEMPTS or not _retryable_provider_error(exc):
                         break
-                    retry_delay = _PROVIDER_RETRY_DELAYS_SECONDS[
-                        min(attempt, len(_PROVIDER_RETRY_DELAYS_SECONDS) - 1)
-                    ]
+                    retry_delay = _PROVIDER_RETRY_DELAY_SECONDS * (attempt + 1)
                     retry_started = perf_counter()
                     sleep(retry_delay)
                     self.last_timings["provider_retry_wait_ms"] += (
