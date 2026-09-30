@@ -351,6 +351,9 @@ def _normalise_record(
             type_description=str(record.get("desc") or "").strip() or None,
             operator=str(record.get("ownOp") or "").strip() or None,
             military=bool(db_flags & 1),
+            category=str(record.get("category") or "").strip() or None,
+            pia=bool(db_flags & 4),
+            ladd=bool(db_flags & 8),
         )
     except ValueError:
         return None
