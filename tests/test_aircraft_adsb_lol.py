@@ -134,7 +134,7 @@ def test_default_providers_reuse_one_process_http_client(monkeypatch):
 
 
 def test_adsb_provider_limits_simultaneous_outbound_requests():
-    assert _PROVIDER_REQUEST_CONCURRENCY == 2
+    assert _PROVIDER_REQUEST_CONCURRENCY == 1
     active = 0
     maximum_active = 0
     state_lock = Lock()
