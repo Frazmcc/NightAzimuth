@@ -5,6 +5,7 @@ SATELLITE_JS = Path("web/satellite-motion.js").read_text(encoding="utf-8")
 LAYOUT_JS = Path("web/live-sky-layout.js").read_text(encoding="utf-8")
 CONTACTS_JS = Path("web/live-contacts-view.js").read_text(encoding="utf-8")
 AIRCRAFT_JS = Path("web/aircraft-sensitivity.js").read_text(encoding="utf-8")
+RADAR_JS = Path("web/aircraft-radar.js").read_text(encoding="utf-8")
 HTML = Path("web/index.html").read_text(encoding="utf-8")
 
 
@@ -88,7 +89,16 @@ def test_startup_populates_the_bounded_local_radar_without_waiting_for_first_int
     assert "const AIRCRAFT_RADIUS_KM=AIRCRAFT_RADIUS_MILES*1.609344" in AIRCRAFT_JS
     assert "minimum_elevation_deg:-90" in AIRCRAFT_JS
     assert "refreshAircraftFast();\nsetInterval(refreshAircraftFast,AIRCRAFT_REFRESH_MS)" in AIRCRAFT_JS
-    assert "aircraft-sensitivity.js?v=21.11.20" in HTML
+    assert "aircraft-sensitivity.js?v=21.11.21" in HTML
+
+
+def test_aircraft_distance_units_can_be_changed_in_settings() -> None:
+    assert 'id="distance-units"' in HTML
+    assert '<option value="miles" selected>Miles</option>' in HTML
+    assert '<option value="km">Kilometres</option>' in HTML
+    assert 'localStorage.setItem("nightazimuth.distanceUnit",unit)' in RADAR_JS
+    assert 'unit==="km"?rangeValue:rangeValue*KM_PER_MILE' in RADAR_JS
+    assert "aircraft-radar.js?v=21.11.13" in HTML
 
 
 def test_changed_camera_runtime_is_cache_busted() -> None:
