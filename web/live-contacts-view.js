@@ -64,61 +64,66 @@ function queueRender(){
   renderTimer=setTimeout(()=>{renderTimer=null;renderCurrentView()},60);
 }
 
-function finiteNumber(value){
-  const number=Number(value);
-  return Number.isFinite(number)?number:null;
-}
-
-function formatNumber(value,digits=0){
-  const number=finiteNumber(value);
-  if(number===null)return null;
-  return number.toLocaleString(undefined,{minimumFractionDigits:digits,maximumFractionDigits:digits});
-}
-
-function formatDegrees(value,digits=1){
-  const number=formatNumber(value,digits);
-  return number===null?null:`${number}°`;
-}
-
-function formatAltitude(value){
-  const metres=finiteNumber(value);
-  if(metres===null)return null;
-  const feet=metres*3.280839895;
-  return `${formatNumber(feet,0)} ft (${formatNumber(metres,0)} m)`;
-}
-
-function formatGroundSpeed(value){
-  const mps=finiteNumber(value);
-  if(mps===null)return null;
-  const knots=mps/0.514444;
-  const kmh=mps*3.6;
-  return `${formatNumber(knots,0)} kt (${formatNumber(kmh,0)} km/h)`;
-}
-
-function formatVerticalRate(value){
-  const mps=finiteNumber(value);
-  if(mps===null)return null;
-  const fpm=mps/0.00508;
-  const sign=fpm>0?"+":"";
-  return `${sign}${formatNumber(fpm,0)} ft/min (${mps>0?"+":""}${formatNumber(mps,1)} m/s)`;
-}
-
-function formatAge(value){
-  const seconds=finiteNumber(value);
-  return seconds===null?null:`${formatNumber(seconds,1)} s`;
-}
-
 function displayCode(airport){
   if(!airport)return null;
-  return airport.display_code||airport.iata||airport.icao||null;
+  return airport.iata||airport.icao||airport.display_code||null;
 }
 
-function formatAirport(airport){
+function airportPlace(airport){
   if(!airport)return null;
-  const code=displayCode(airport);
-  const name=airport.name||null;
-  if(name&&code)return `${name} (${code})`;
-  return name||code;
+  if(airport.location)return String(airport.location).replace(/,.*$/,"").trim();
+  if(!airport.name)return null;
+  return String(airport.name)
+    .replace(/\s+(International\s+)?Airport$/i,"")
+    .replace(/\s+Aerodrome$/i,"")
+    .trim();
+}
+
+function routeLabel(route){
+  const departure=airportPlace(route?.departure);
+  const arrival=airportPlace(route?.arrival);
+  return departure&&arrival?`${departure} → ${arrival}`:null;
+}
+
+function registrationCountry(registration){
+  const reg=String(registration||"").trim().toUpperCase();
+  if(!reg)return null;
+  const prefixes=[
+    ["PH-","Netherlands"],["G-","United Kingdom"],["EI-","Ireland"],["D-","Germany"],
+    ["F-","France"],["OO-","Belgium"],["HB-","Switzerland"],["OE-","Austria"],
+    ["EC-","Spain"],["I-","Italy"],["CS-","Portugal"],["PH-","Netherlands"],
+    ["SE-","Sweden"],["LN-","Norway"],["OY-","Denmark"],["OH-","Finland"],
+    ["SP-","Poland"],["OK-","Czech Republic"],["OM-","Slovakia"],["HA-","Hungary"],
+    ["SX-","Greece"],["TC-","Turkey"],["9H-","Malta"],["LX-","Luxembourg"],
+    ["A6-","United Arab Emirates"],["A7-","Qatar"],["HZ-","Saudi Arabia"],
+    ["JA","Japan"],["HL","South Korea"],["VH-","Australia"],["ZK-","New Zealand"],
+    ["C-","Canada"],["N","United States"]
+  ];
+  const match=prefixes.find(([prefix])=>reg.startsWith(prefix));
+  return match?match[1]:null;
+}
+
+function aircraftClass(raw){
+  if(raw.military)return"Military aircraft";
+  const category=String(raw.category||"").toUpperCase();
+  const type=String(raw.type_code||"").toUpperCase();
+  const description=String(raw.type_description||raw.display?.make_model||"").toLowerCase();
+
+  if(category==="A7"||/helicopter|rotorcraft/.test(description))return"Helicopter";
+  if(category==="B1")return"Glider";
+  if(category==="B2")return"Balloon / airship";
+  if(category==="B3")return"Parachutist / skydiver";
+  if(category==="B4")return"Ultralight aircraft";
+  if(category==="B6")return"UAV / drone";
+  if(category==="B7")return"Space / trans-atmospheric vehicle";
+
+  if(/gulfstream|learjet|citation|falcon|challenger|phenom|hawker|global express|business jet/.test(description))return"Business jet";
+  if(/^(E17[05]|E19[05]|E2\d\d|CRJ\d|A3\d\d|A2[01]N|B7\d\d|B3[789]M)$/.test(type)||/airbus|boeing|embraer e-?1|embraer e-?2|regional jet|airliner/.test(description))return"Passenger jet";
+  if(category==="A1")return"Light aircraft";
+  if(category==="A2")return/jet/.test(description)?"Small jet":"Small aircraft";
+  if(category==="A6")return"High-performance aircraft";
+  if(["A3","A4","A5"].includes(category))return"Large aircraft";
+  return null;
 }
 
 function makeDetailRow(label,value){
@@ -143,6 +148,8 @@ function makeSection(title,rows){
   return section;
 }
 
+function yesNo(value){return value===null||value===undefined?null:(value?"Yes":"No")}
+
 function renderAircraftInspector(raw){
   const inspector=document.querySelector("#object-inspector");
   const details=document.querySelector("#inspector-details");
@@ -156,38 +163,21 @@ function renderAircraftInspector(raw){
   const sections=[
     makeSection("AIRCRAFT",[
       makeDetailRow("Aircraft type / model",display.make_model||raw.type_description||raw.type_code),
-      makeDetailRow("Capacity",display.capacity),
+      makeDetailRow("Aircraft class",aircraftClass(raw)),
       makeDetailRow("ICAO aircraft type",raw.type_code),
       makeDetailRow("Registration",raw.registration),
       makeDetailRow("Callsign",raw.callsign),
       makeDetailRow("ICAO24 / Hex",raw.icao24?String(raw.icao24).toUpperCase():null),
-      makeDetailRow("Operator",raw.operator),
-      makeDetailRow("Role",display.role),
-      makeDetailRow("Military",raw.military==null?null:(raw.military?"Yes":"No"))
+      makeDetailRow("Operator / airline",raw.operator),
+      makeDetailRow("Country",raw.country||registrationCountry(raw.registration)),
+      makeDetailRow("Military",yesNo(raw.military)),
+      makeDetailRow("PIA",yesNo(raw.pia)),
+      makeDetailRow("LADD",yesNo(raw.ladd))
     ]),
     makeSection("FLIGHT",[
-      makeDetailRow("Departure",formatAirport(route.departure)),
-      makeDetailRow("Arrival",formatAirport(route.arrival))
-    ]),
-    makeSection("POSITION",[
-      makeDetailRow("Azimuth",formatDegrees(raw.azimuth_deg,2)),
-      makeDetailRow("Elevation",formatDegrees(raw.elevation_deg,2)),
-      makeDetailRow("Position state",raw.position_state),
-      makeDetailRow("Position age",formatAge(raw.position_age_seconds))
-    ]),
-    makeSection("ALTITUDE & SPEED",[
-      makeDetailRow("Altitude",formatAltitude(raw.altitude_m)),
-      makeDetailRow("Ground speed",formatGroundSpeed(raw.ground_speed_mps)),
-      makeDetailRow("Track",formatDegrees(raw.track_deg,1)),
-      makeDetailRow("Vertical rate",formatVerticalRate(raw.vertical_rate_mps))
-    ]),
-    makeSection("TRANSPONDER",[
-      makeDetailRow("Squawk / meaning",display.squawk||raw.squawk),
-      display.squawk&&raw.squawk&&String(display.squawk)!==String(raw.squawk)?makeDetailRow("Squawk",raw.squawk):null
-    ]),
-    makeSection("ADS-B / TRACKING",[
-      makeDetailRow("Data source",raw.source_label),
-      makeDetailRow("Source ID",raw.source_id)
+      makeDetailRow("Departure",displayCode(route.departure)),
+      makeDetailRow("Arrival",displayCode(route.arrival)),
+      makeDetailRow("Route",routeLabel(route))
     ])
   ].filter(Boolean);
 
