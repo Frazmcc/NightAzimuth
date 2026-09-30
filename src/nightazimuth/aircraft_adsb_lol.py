@@ -251,6 +251,48 @@ class AdsbLolProvider:
         return snapshot
 
 
+class AirplanesLiveProvider:
+    """Compatibility shim retained while API failover references are removed.
+
+    Production diagnostics showed anonymous server-to-server requests from the
+    deployment environment receive HTTP 403 from Airplanes.live. Keep the class
+    temporarily so the API layer remains import-compatible, but perform no network
+    request and report the provider as unavailable immediately.
+    """
+
+    provider_id = "airplanes-live"
+    label = "airplanes.live"
+    source_kind = AircraftSourceKind.INTERNET
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.last_timings = {
+            "provider_client_ms": 0.0,
+            "provider_wait_ms": 0.0,
+            "provider_throttle_ms": 0.0,
+            "provider_retry_wait_ms": 0.0,
+            "provider_retry_count": 0.0,
+            "provider_request_ms": 0.0,
+            "provider_decode_ms": 0.0,
+            "provider_close_ms": 0.0,
+            "provider_normalize_ms": 0.0,
+            "provider_total_ms": 0.0,
+        }
+
+    def fetch_snapshot(self, observer: AircraftObserver, radius_km: float) -> AircraftSnapshot:
+        radius_nm = max(1, min(250, round(radius_km / 1.852)))
+        fetched_at = datetime.now(timezone.utc)
+        return AircraftSnapshot(
+            observations=(),
+            source_id=self.provider_id,
+            source_label=self.label,
+            fetched_at=fetched_at,
+            source_observed_at=None,
+            coverage_description=f"bounded observer area, {radius_nm} NM radius",
+            state=AircraftSnapshotState.UNAVAILABLE,
+            error="airplanes.live fallback disabled after production 403 responses",
+        )
+
+
 def _normalise_record(
     record: dict[str, Any],
     snapshot_time: datetime,
