@@ -31,6 +31,7 @@ def _server_timing(timings: dict[str, float], total_ms: float) -> str:
         f"shared_wait;dur={timings.get('shared_wait_ms', 0.0):.1f}, "
         f"radius_slice;dur={timings.get('radius_slice_ms', 0.0):.1f}, "
         f"provider_client;dur={timings.get('provider_client_ms', 0.0):.1f}, "
+        f"provider_wait;dur={timings.get('provider_wait_ms', 0.0):.1f}, "
         f"provider_request;dur={timings.get('provider_request_ms', 0.0):.1f}, "
         f"provider_decode;dur={timings.get('provider_decode_ms', 0.0):.1f}, "
         f"provider_close;dur={timings.get('provider_close_ms', 0.0):.1f}, "
@@ -112,14 +113,15 @@ def aircraft(
         logger.warning(
             "aircraft_provider_unavailable radius_km=%.1f upstream_radius_km=%.1f "
             "shared_cache_hit=%s shared_wait_ms=%.1f total_ms=%.1f "
-            "provider_client_ms=%.1f provider_request_ms=%.1f provider_decode_ms=%.1f "
-            "provider_close_ms=%.1f provider_total_ms=%.1f error=%s",
+            "provider_client_ms=%.1f provider_wait_ms=%.1f provider_request_ms=%.1f "
+            "provider_decode_ms=%.1f provider_close_ms=%.1f provider_total_ms=%.1f error=%s",
             radius_km,
             upstream_radius_km,
             shared.cache_hit,
             shared.shared_wait_ms,
             total_ms,
             timings.get("provider_client_ms", 0.0),
+            timings.get("provider_wait_ms", 0.0),
             timings.get("provider_request_ms", 0.0),
             timings.get("provider_decode_ms", 0.0),
             timings.get("provider_close_ms", 0.0),
@@ -192,9 +194,9 @@ def aircraft(
     logger.info(
         "aircraft_request radius_km=%.1f upstream_radius_km=%.1f shared_cache_hit=%s "
         "fallback_used=%s shared_wait_ms=%.1f total_ms=%.1f provider_client_ms=%.1f "
-        "provider_request_ms=%.1f provider_decode_ms=%.1f provider_close_ms=%.1f "
-        "provider_normalize_ms=%.1f provider_total_ms=%.1f projection_ms=%.1f "
-        "payload_ms=%.1f source_count=%d returned_count=%d",
+        "provider_wait_ms=%.1f provider_request_ms=%.1f provider_decode_ms=%.1f "
+        "provider_close_ms=%.1f provider_normalize_ms=%.1f provider_total_ms=%.1f "
+        "projection_ms=%.1f payload_ms=%.1f source_count=%d returned_count=%d",
         radius_km,
         upstream_radius_km,
         shared.cache_hit,
@@ -202,6 +204,7 @@ def aircraft(
         shared.shared_wait_ms,
         total_ms,
         timings.get("provider_client_ms", 0.0),
+        timings.get("provider_wait_ms", 0.0),
         timings.get("provider_request_ms", 0.0),
         timings.get("provider_decode_ms", 0.0),
         timings.get("provider_close_ms", 0.0),
