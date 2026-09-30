@@ -1,7 +1,11 @@
-# NightAzimuth example configuration
+# NightAzimuth local/legacy example configuration
 #
-# Copy this file to a local, untracked configuration file when runtime
-# configuration is introduced. Do not commit API keys or other secrets.
+# The supported product is the hosted web application at
+# https://nightazimuth.co.uk. The hosted browser does not use this file.
+#
+# This example is retained for local/CLI/legacy experimentation. Copy it to a
+# local, untracked configuration file if needed. Never commit API keys,
+# credentials or private observer locations.
 
 [observer]
 # Decimal degrees. Positive latitude = north, negative = south.
@@ -12,24 +16,23 @@ longitude = 0.0
 altitude_m = 0.0
 
 [tracking]
-# Minimum elevation above the local horizon to include in the live list.
+# Minimum elevation above the local horizon to include in local tracking.
 minimum_elevation_deg = 0.0
 # Minimum elevation a predicted pass must reach to be listed.
 pass_minimum_elevation_deg = 10.0
 # How far ahead to predict satellite passes.
 pass_prediction_hours = 24.0
-# Sun altitude at or below which NightAzimuth considers the local sky dark.
+# Sun altitude at or below which local calculations consider the sky dark.
 # -6 = civil twilight, -12 = nautical twilight, -18 = astronomical twilight.
 darkness_threshold_deg = -6.0
 
 [data]
-# CelesTrak GP group to load. VISUAL is the curated "100 (or so) Brightest"
-# group and is the best default for visual-satellite tracking.
+# CelesTrak GP group used by older/local tracking flows.
 celestrak_group = "VISUAL"
 cache_directory = "data/cache"
-# Refresh GP orbital data after this many minutes.
 cache_max_age_minutes = 120
 
 [weather]
-# Weather/cloud provider selection will be designed in a later approved stage.
+# Legacy/local switch only. Hosted weather configuration is controlled by the
+# deployed API implementation rather than this file.
 enabled = false
