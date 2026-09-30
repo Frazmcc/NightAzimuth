@@ -128,6 +128,7 @@ class AdsbLolProvider:
             "provider_throttle_ms": 0.0,
             "provider_retry_wait_ms": 0.0,
             "provider_retry_count": 0.0,
+            "provider_status_code": 0.0,
         }
         radius_nm = max(1, min(250, round(radius_km / 1.852)))
         url = (
@@ -156,6 +157,7 @@ class AdsbLolProvider:
                 request_started = perf_counter()
                 try:
                     response = client.get(url)
+                    self.last_timings["provider_status_code"] = float(response.status_code)
                     response.raise_for_status()
                     request_elapsed_ms += (perf_counter() - request_started) * 1000.0
                     failure = None
@@ -269,6 +271,7 @@ class AirplanesLiveProvider:
             "provider_throttle_ms": 0.0,
             "provider_retry_wait_ms": 0.0,
             "provider_retry_count": 0.0,
+            "provider_status_code": 0.0,
             "provider_request_ms": 0.0,
             "provider_decode_ms": 0.0,
             "provider_close_ms": 0.0,
