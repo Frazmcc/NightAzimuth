@@ -19,6 +19,8 @@ on:
       - "src/nightazimuth/preload_airports.py"
       - "src/nightazimuth/api_sky.py"
       - "src/nightazimuth/api_satellites.py"
+      - "src/nightazimuth/api_satellites_cached.py"
+      - "src/nightazimuth/burst_cache.py"
       - "src/nightazimuth/celestrak.py"
       - "src/nightazimuth/preload_sky.py"
       - "src/nightazimuth/preload_satellites.py"
@@ -91,21 +93,12 @@ jobs:
               echo "Last observed commit: ${deployed:-unknown}" >&2
               exit 1
             fi
-
             sleep 10
           done
-
-          echo "Health HTTP: $status"
-          echo "Health DNS: ${dns}s"
-          echo "Health connect: ${connect}s"
-          echo "Health TTFB: ${ttfb}s"
-          echo "Health total: ${total}s"
-          echo "Health bytes: $size"
 
           python - <<'PY'
           import json
           from pathlib import Path
-
           payload = json.loads(Path('/tmp/health.json').read_text(encoding='utf-8'))
           if payload.get('status') != 'ok':
               raise SystemExit(f"Unexpected health payload: {payload!r}")
@@ -113,7 +106,7 @@ jobs:
           print(f"Deployed commit: {payload.get('git_commit', 'unknown')}")
           PY
 
-      - name: Measure standalone sky
+      - name: Measure standalone sky and burst-cache behavior
         shell: bash
         run: |
           set -euo pipefail
@@ -138,36 +131,37 @@ jobs:
             read -r status dns connect ttfb total size <<<"$metrics"
             timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' "/tmp/sky-${sample}-headers.txt")"
 
-            if [[ "$status" != "200" || "$timing" != *"snapshot;dur="* ]]; then
-              echo "Standalone sky sample $sample failed: HTTP=$status Server-Timing=${timing:-missing}" >&2
+            if [[ "$status" != "200" ]]; then
+              echo "Standalone sky sample $sample failed: HTTP=$status" >&2
+              exit 1
+            fi
+            if [[ "$timing" != *"snapshot;dur="* && "$timing" != *'burst_cache;desc="hit"'* ]]; then
+              echo "Standalone sky sample $sample lacks compute/cache timing: ${timing:-missing}" >&2
               exit 1
             fi
 
             echo "sample=$sample http=$status dns=${dns}s connect=${connect}s ttfb=${ttfb}s total=${total}s bytes=$size timing=$timing" | tee -a /tmp/sky-samples.txt
           done
 
-          python - <<'PY' > /tmp/sky-counts.txt
+          python - <<'PY'
           import json
           from pathlib import Path
-
           payload = json.loads(Path('/tmp/sky-3.json').read_text(encoding='utf-8'))
           required = ('stars', 'planets', 'galaxies', 'constellation_lines')
           for key in required:
               if not isinstance(payload.get(key), list):
                   raise SystemExit(f"Sky payload field {key!r} is missing or is not a list")
-          for key in required:
               print(f"{key}={len(payload[key])}")
           PY
 
-          cat /tmp/sky-counts.txt
-
-      - name: Measure current Live Sky startup burst
+      - name: Measure current Live Sky startup
         shell: bash
         run: |
           set -euo pipefail
 
           lat="$TEST_LATITUDE"
           lon="$TEST_LONGITUDE"
+          aircraft_radius_km="80.4672"
 
           probe_endpoint() {
             local name="$1"
@@ -186,34 +180,30 @@ jobs:
               "$url" > "/tmp/${name}.metrics" 2> "/tmp/${name}.stderr" || true
           }
 
-          # Mirror the current startup exactly. app.js immediately starts six
-          # requests, including a 200 km above-horizon aircraft query. Before
-          # that group finishes, aircraft-sensitivity.js loads and immediately
-          # starts a second 400 km / -90 degree aircraft query for the radar.
-          probe_endpoint aircraft_primary "$API_BASE/api/v1/aircraft?latitude=$lat&longitude=$lon&radius_km=200&minimum_elevation_deg=0&include_ground=false" & p1=$!
-          probe_endpoint aircraft_radar "$API_BASE/api/v1/aircraft?latitude=$lat&longitude=$lon&radius_km=400&minimum_elevation_deg=-90&include_ground=false" & p2=$!
-          probe_endpoint airports "$API_BASE/api/v1/airports?latitude=$lat&longitude=$lon&radius_km=160.934&limit=12" & p3=$!
-          probe_endpoint weather "$API_BASE/api/v1/weather?latitude=$lat&longitude=$lon" & p4=$!
-          probe_endpoint observing "$API_BASE/api/v1/observing?latitude=$lat&longitude=$lon" & p5=$!
-          probe_endpoint sky "$API_BASE/api/v1/sky?latitude=$lat&longitude=$lon&altitude_m=0" & p6=$!
-          probe_endpoint satellites "$API_BASE/api/v1/satellites?latitude=$lat&longitude=$lon&minimum_elevation_deg=0" & p7=$!
+          # Current browser startup: lightweight/live requests begin immediately.
+          # The two logical aircraft consumers share one 50-mile acquisition.
+          probe_endpoint aircraft "$API_BASE/api/v1/aircraft?latitude=$lat&longitude=$lon&radius_km=$aircraft_radius_km&minimum_elevation_deg=-90&include_ground=false" & p1=$!
+          probe_endpoint airports "$API_BASE/api/v1/airports?latitude=$lat&longitude=$lon&radius_km=160.934&limit=12" & p2=$!
+          probe_endpoint weather "$API_BASE/api/v1/weather?latitude=$lat&longitude=$lon" & p3=$!
+          probe_endpoint observing "$API_BASE/api/v1/observing?latitude=$lat&longitude=$lon" & p4=$!
 
-          wait "$p1" "$p2" "$p3" "$p4" "$p5" "$p6" "$p7"
+          # Heavy astronomy work is progressive in the browser: sky first, then
+          # satellites after sky completes plus a short spread/base delay.
+          probe_endpoint sky "$API_BASE/api/v1/sky?latitude=$lat&longitude=$lon&altitude_m=0"
+          sleep 0.25
+          probe_endpoint satellites "$API_BASE/api/v1/satellites?latitude=$lat&longitude=$lon&minimum_elevation_deg=0"
 
-          echo ""
-          echo "NightAzimuth current seven-request startup burst"
-          printf '%-18s %-6s %-10s %-10s %-10s\n' "endpoint" "HTTP" "TTFB(s)" "total(s)" "bytes"
-          printf '%-18s %-6s %-10s %-10s %-10s\n' "--------" "----" "-------" "--------" "-----"
+          wait "$p1" "$p2" "$p3" "$p4"
 
-          : > /tmp/burst-summary.txt
-          for name in aircraft_primary aircraft_radar airports weather observing sky satellites; do
+          : > /tmp/startup-summary.txt
+          for name in aircraft airports weather observing sky satellites; do
             metrics="$(cat "/tmp/${name}.metrics")"
             read -r status dns connect ttfb total size <<<"${metrics:-0 0 0 0 0 0}"
-            printf '%-18s %-6s %-10s %-10s %-10s\n' "$name" "$status" "$ttfb" "$total" "$size"
-            echo "$name $status $dns $connect $ttfb $total $size" >> /tmp/burst-summary.txt
+            echo "$name $status $dns $connect $ttfb $total $size" >> /tmp/startup-summary.txt
             if [[ "$status" != "200" ]]; then
-              echo "$name stderr:" >&2
+              echo "$name failed: HTTP=$status" >&2
               cat "/tmp/${name}.stderr" >&2 || true
+              exit 1
             fi
           done
 
@@ -221,74 +211,40 @@ jobs:
             awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' "/tmp/$1.headers"
           }
 
-          aircraft_primary_timing="$(timing_for aircraft_primary)"
-          aircraft_radar_timing="$(timing_for aircraft_radar)"
+          aircraft_timing="$(timing_for aircraft)"
           airports_timing="$(timing_for airports)"
           weather_timing="$(timing_for weather)"
           observing_timing="$(timing_for observing)"
           sky_timing="$(timing_for sky)"
           satellite_timing="$(timing_for satellites)"
 
-          echo "Aircraft primary Server-Timing: ${aircraft_primary_timing:-missing}"
-          echo "Aircraft radar Server-Timing: ${aircraft_radar_timing:-missing}"
-          echo "Airports Server-Timing: ${airports_timing:-missing}"
-          echo "Weather Server-Timing: ${weather_timing:-missing}"
-          echo "Observing Server-Timing: ${observing_timing:-missing}"
-          echo "Concurrent Sky Server-Timing: ${sky_timing:-missing}"
-          echo "Concurrent Satellite Server-Timing: ${satellite_timing:-missing}"
-
-          if [[ "$aircraft_primary_timing" != *"provider_request;dur="* || "$aircraft_radar_timing" != *"provider_request;dur="* ]]; then
-            echo "Aircraft performance instrumentation is missing from production response." >&2
-            exit 1
-          fi
-          if [[ "$airports_timing" != *"provider;dur="* ]]; then
-            echo "Airport performance instrumentation is missing from production response." >&2
-            exit 1
-          fi
-          if [[ "$weather_timing" != *"weather_load;dur="* ]]; then
-            echo "Weather performance instrumentation is missing from production response." >&2
-            exit 1
-          fi
-          if [[ "$observing_timing" != *"planner_build;dur="* ]]; then
-            echo "Observing performance instrumentation is missing from production response." >&2
-            exit 1
-          fi
-          if [[ "$satellite_timing" != *"propagate;dur="* || "$satellite_timing" != *"track_build;dur="* ]]; then
-            echo "Satellite performance instrumentation is missing from production response." >&2
-            exit 1
-          fi
+          [[ "$aircraft_timing" == *"provider_request;dur="* ]] || { echo "Aircraft instrumentation missing" >&2; exit 1; }
+          [[ "$airports_timing" == *"provider;dur="* ]] || { echo "Airport instrumentation missing" >&2; exit 1; }
+          [[ "$weather_timing" == *"weather_load;dur="* ]] || { echo "Weather instrumentation missing" >&2; exit 1; }
+          [[ "$observing_timing" == *"planner_build;dur="* ]] || { echo "Observing instrumentation missing" >&2; exit 1; }
+          [[ "$sky_timing" == *"snapshot;dur="* || "$sky_timing" == *'burst_cache;desc="hit"'* ]] || { echo "Sky instrumentation missing" >&2; exit 1; }
+          [[ "$satellite_timing" == *"propagate;dur="* || "$satellite_timing" == *'burst_cache;desc="hit"'* ]] || { echo "Satellite instrumentation missing" >&2; exit 1; }
 
           {
             echo "## NightAzimuth production API probe"
             echo ""
             echo "Deployed commit: \`$GITHUB_SHA\`"
             echo ""
-            echo "### Standalone Sky samples"
+            echo "### Sky samples"
             echo '```text'
             cat /tmp/sky-samples.txt
-            cat /tmp/sky-counts.txt
             echo '```'
             echo ""
-            echo "### Current seven-request Live Sky startup burst"
+            echo "### Current six-request Live Sky startup"
             echo "| Endpoint | HTTP | DNS | Connect | TTFB | Total | Bytes |"
             echo "| --- | ---: | ---: | ---: | ---: | ---: | ---: |"
             while read -r name status dns connect ttfb total size; do
               echo "| $name | $status | ${dns}s | ${connect}s | ${ttfb}s | ${total}s | $size |"
-            done < /tmp/burst-summary.txt
+            done < /tmp/startup-summary.txt
             echo ""
-            echo "Aircraft primary Server-Timing: \`$aircraft_primary_timing\`"
+            echo "Sky Server-Timing: \`$sky_timing\`"
             echo ""
-            echo "Aircraft radar Server-Timing: \`$aircraft_radar_timing\`"
-            echo ""
-            echo "Airports Server-Timing: \`$airports_timing\`"
-            echo ""
-            echo "Weather Server-Timing: \`$weather_timing\`"
-            echo ""
-            echo "Observing Server-Timing: \`$observing_timing\`"
-            echo ""
-            echo "Concurrent Sky Server-Timing: \`$sky_timing\`"
-            echo ""
-            echo "Concurrent Satellite Server-Timing: \`$satellite_timing\`"
+            echo "Satellite Server-Timing: \`$satellite_timing\`"
             echo ""
             echo "Fixed test coordinates: Royal Observatory, Greenwich (public test location)."
           } >> "$GITHUB_STEP_SUMMARY"
