@@ -1,7 +1,8 @@
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 
 from nightazimuth.observing_planner import ObservingPlanner
-from nightazimuth.weather import WeatherPoint
+from nightazimuth.weather import WeatherPoint, WeatherSnapshot
 
 
 def _point(*, cloud: float, rain: float = 0.0, fog: float = 0.0) -> WeatherPoint:
@@ -62,6 +63,38 @@ def test_confidence_reduces_with_forecast_horizon() -> None:
     guidance = planner._guidance_for_point(point, now)
 
     assert guidance.confidence == "Lower"
+
+
+def test_build_batches_sun_altitudes_for_all_forecast_points() -> None:
+    first = _point(cloud=5.0)
+    second = replace(first, time_utc=first.time_utc + timedelta(hours=1), cloud_total_percent=15.0)
+    snapshot = WeatherSnapshot(
+        source_name="synthetic",
+        fetched_at_utc=first.time_utc,
+        source_updated_at_utc=first.time_utc,
+        points=(first, second),
+    )
+    planner = object.__new__(ObservingPlanner)
+    calls: list[tuple[datetime, ...]] = []
+
+    def sun_altitudes(moments: tuple[datetime, ...]) -> tuple[float, ...]:
+        calls.append(moments)
+        return (-25.0, -20.0)
+
+    planner._sun_altitudes = sun_altitudes
+    planner._sun_altitude = lambda _moment: (_ for _ in ()).throw(
+        AssertionError("build should use the vectorized path")
+    )
+
+    guidance = planner.build(
+        snapshot,
+        hours=3,
+        now_utc=first.time_utc - timedelta(minutes=1),
+    )
+
+    assert len(calls) == 1
+    assert calls[0] == (first.time_utc, second.time_utc)
+    assert [item.sun_altitude_deg for item in guidance] == [-25.0, -20.0]
 
 
 def test_astronomy_resources_are_reused_for_same_cache_directory(tmp_path, monkeypatch) -> None:
