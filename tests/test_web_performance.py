@@ -63,6 +63,14 @@ def test_slow_api_data_is_cached_by_observer_and_query_with_bounded_memory() -> 
     assert "effectiveParams" in LAYOUT_JS
 
 
+def test_heavy_astronomy_requests_are_progressively_scheduled() -> None:
+    assert 'path==="/api/v1/sky"||path==="/api/v1/satellites"' in LAYOUT_JS
+    assert "let astronomyTail=Promise.resolve()" in LAYOUT_JS
+    assert 'path==="/api/v1/satellites"?250:0' in LAYOUT_JS
+    assert "observerSpreadMs(params)" in LAYOUT_JS
+    assert "scheduleRequest(path,params" in LAYOUT_JS
+
+
 def test_location_change_invalidates_an_inflight_refresh() -> None:
     assert "refreshGeneration++" in LAYOUT_JS
     assert "if(refreshInFlight){setTimeout(rerun,50);return}" in LAYOUT_JS
