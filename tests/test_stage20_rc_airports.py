@@ -73,6 +73,36 @@ def test_airport_selection_uses_runtime_observer_location() -> None:
     assert [item.iata for item in near_east] == ["BBB"]
 
 
+def test_deploy_cache_avoids_runtime_airport_download(tmp_path) -> None:
+    first_client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(200, text=OURAIRPORTS_CSV)
+        )
+    )
+    build_provider = ResilientAirportLandmarkProvider(
+        client=first_client,
+        cache_directory=tmp_path,
+    )
+    assert build_provider.preload() == 2
+    first_client.close()
+
+    cache_path = tmp_path / "airports" / "ourairports.csv"
+    assert cache_path.exists()
+
+    def no_network(_request: httpx.Request) -> httpx.Response:
+        raise AssertionError("runtime should load the deploy-cached airport catalogue")
+
+    runtime_client = httpx.Client(transport=httpx.MockTransport(no_network))
+    runtime_provider = ResilientAirportLandmarkProvider(
+        client=runtime_client,
+        cache_directory=tmp_path,
+    )
+    airports = runtime_provider.nearby(0.0, 0.0, max_distance_km=100.0, limit=10)
+    runtime_client.close()
+
+    assert [item.iata for item in airports] == ["BBB", "AAA"]
+
+
 def test_concurrent_cold_load_fetches_global_catalogue_once(monkeypatch) -> None:
     provider = ResilientAirportLandmarkProvider()
     records = (
