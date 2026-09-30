@@ -15,6 +15,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from . import __version__
 from .aircraft_adsb_lol import close_shared_adsb_http_client, prewarm_shared_adsb_http_client
 from .api_aircraft import router as aircraft_router
+from .api_aircraft_route import router as aircraft_route_router
 from .api_airports import _PROVIDER as _AIRPORT_PROVIDER
 from .api_airports import router as airports_router
 from .api_geojson import router as geojson_router
@@ -163,6 +164,7 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 app.include_router(satellites_router)
 app.include_router(aircraft_router)
+app.include_router(aircraft_route_router)
 app.include_router(airports_router)
 app.include_router(geojson_router)
 app.include_router(weather_router)
@@ -212,9 +214,6 @@ def health() -> dict[str, str]:
         "status": "ok",
         "api_version": API_VERSION,
         "application_version": __version__,
-        # Render supplies the exact deployed Git commit at runtime. Exposing it
-        # is safe for this public repository and lets production probes verify
-        # that they are measuring the commit which triggered the workflow.
         "git_commit": os.environ.get("RENDER_GIT_COMMIT", ""),
         "timestamp": datetime.now(UTC).isoformat(),
     }
