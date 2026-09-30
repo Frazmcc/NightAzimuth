@@ -28,19 +28,14 @@ _PROVIDER_REQUEST_CONCURRENCY = 1
 _PROVIDER_REQUEST_GATE = BoundedSemaphore(_PROVIDER_REQUEST_CONCURRENCY)
 _PROVIDER_MIN_START_INTERVAL_SECONDS = 0.75
 _PROVIDER_RETRY_DELAY_SECONDS = 0.75
-_PROVIDER_MAX_ATTEMPTS = 2
+_PROVIDER_MAX_ATTEMPTS = 3
 _PROVIDER_SCHEDULE_LOCK = Lock()
 _PROVIDER_NEXT_REQUEST_AT = 0.0
 _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 def shared_adsb_http_client() -> httpx.Client:
-    """Return the process-wide HTTP client used by hosted aircraft providers.
-
-    httpx.Client maintains connection pools per origin, so one long-lived client
-    can safely reuse connections for the primary and secondary readsb-compatible
-    providers without rebuilding TLS state on every Live Sky refresh.
-    """
+    """Return the process-wide adsb.lol client used by the hosted API."""
 
     global _SHARED_CLIENT
     with _SHARED_CLIENT_LOCK:
@@ -54,13 +49,13 @@ def shared_adsb_http_client() -> httpx.Client:
 
 
 def prewarm_shared_adsb_http_client() -> None:
-    """Create the default aircraft-provider connection pool without making a request."""
+    """Create the default connection pool without making an upstream request."""
 
     shared_adsb_http_client()
 
 
 def close_shared_adsb_http_client() -> None:
-    """Close and discard the process-wide aircraft-provider connection pool."""
+    """Close and discard the process-wide adsb.lol connection pool."""
 
     global _SHARED_CLIENT
     with _SHARED_CLIENT_LOCK:
@@ -94,8 +89,6 @@ class AdsbLolProvider:
     provider_id = "adsb-lol"
     label = "adsb.lol"
     source_kind = AircraftSourceKind.INTERNET
-    api_base = "https://api.adsb.lol"
-    max_attempts = _PROVIDER_MAX_ATTEMPTS
 
     def __init__(
         self,
@@ -138,7 +131,7 @@ class AdsbLolProvider:
         }
         radius_nm = max(1, min(250, round(radius_km / 1.852)))
         url = (
-            f"{self.api_base}/v2/point/"
+            "https://api.adsb.lol/v2/point/"
             f"{observer.latitude_deg:.6f}/{observer.longitude_deg:.6f}/{radius_nm}"
         )
         fetched_at = datetime.now(timezone.utc)
@@ -149,16 +142,16 @@ class AdsbLolProvider:
         failure: Exception | None = None
         payload: dict[str, Any] | None = None
 
-        # Regional sharing reduces duplicates, while the process-wide gate and start
-        # schedule ensure geographically separate cold regions still cannot burst any
-        # aircraft provider. The primary provider gets one transient retry; secondary
-        # failover intentionally uses one attempt so failover stays bounded.
+        # Production measurements showed that a cold region can intermittently fail
+        # while the same region succeeds seconds later. Keep one global outbound gate,
+        # space request starts, and allow two progressively spaced retries. This makes
+        # cold-region resilience bounded and evidence-driven without creating a burst.
         wait_started = perf_counter()
         _PROVIDER_REQUEST_GATE.acquire()
         self.last_timings["provider_wait_ms"] = (perf_counter() - wait_started) * 1000.0
         request_elapsed_ms = 0.0
         try:
-            for attempt in range(self.max_attempts):
+            for attempt in range(_PROVIDER_MAX_ATTEMPTS):
                 self.last_timings["provider_throttle_ms"] += _wait_for_provider_start_slot()
                 request_started = perf_counter()
                 try:
@@ -170,10 +163,11 @@ class AdsbLolProvider:
                 except httpx.HTTPError as exc:
                     request_elapsed_ms += (perf_counter() - request_started) * 1000.0
                     failure = exc
-                    if attempt + 1 >= self.max_attempts or not _retryable_provider_error(exc):
+                    if attempt + 1 >= _PROVIDER_MAX_ATTEMPTS or not _retryable_provider_error(exc):
                         break
+                    retry_delay = _PROVIDER_RETRY_DELAY_SECONDS * (attempt + 1)
                     retry_started = perf_counter()
-                    sleep(_PROVIDER_RETRY_DELAY_SECONDS)
+                    sleep(retry_delay)
                     self.last_timings["provider_retry_wait_ms"] += (
                         perf_counter() - retry_started
                     ) * 1000.0
@@ -215,7 +209,7 @@ class AdsbLolProvider:
                 source_observed_at=None,
                 coverage_description=f"bounded observer area, {radius_nm} NM radius",
                 state=AircraftSnapshotState.UNAVAILABLE,
-                error=f"{self.label} unavailable: {failure}",
+                error=f"adsb.lol unavailable: {failure}",
             )
 
         assert payload is not None
@@ -255,13 +249,46 @@ class AdsbLolProvider:
         return snapshot
 
 
-class AirplanesLiveProvider(AdsbLolProvider):
-    """Secondary documented readsb-compatible provider used only after primary failure."""
+class AirplanesLiveProvider:
+    """Compatibility shim retained while API failover references are removed.
+
+    Production diagnostics showed anonymous server-to-server requests from the
+    deployment environment receive HTTP 403 from Airplanes.live. Keep the class
+    temporarily so the API layer remains import-compatible, but perform no network
+    request and report the provider as unavailable immediately.
+    """
 
     provider_id = "airplanes-live"
     label = "airplanes.live"
-    api_base = "https://api.airplanes.live"
-    max_attempts = 1
+    source_kind = AircraftSourceKind.INTERNET
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        self.last_timings = {
+            "provider_client_ms": 0.0,
+            "provider_wait_ms": 0.0,
+            "provider_throttle_ms": 0.0,
+            "provider_retry_wait_ms": 0.0,
+            "provider_retry_count": 0.0,
+            "provider_request_ms": 0.0,
+            "provider_decode_ms": 0.0,
+            "provider_close_ms": 0.0,
+            "provider_normalize_ms": 0.0,
+            "provider_total_ms": 0.0,
+        }
+
+    def fetch_snapshot(self, observer: AircraftObserver, radius_km: float) -> AircraftSnapshot:
+        radius_nm = max(1, min(250, round(radius_km / 1.852)))
+        fetched_at = datetime.now(timezone.utc)
+        return AircraftSnapshot(
+            observations=(),
+            source_id=self.provider_id,
+            source_label=self.label,
+            fetched_at=fetched_at,
+            source_observed_at=None,
+            coverage_description=f"bounded observer area, {radius_nm} NM radius",
+            state=AircraftSnapshotState.UNAVAILABLE,
+            error="airplanes.live fallback disabled after production 403 responses",
+        )
 
 
 def _normalise_record(
@@ -279,8 +306,6 @@ def _normalise_record(
     lon = _finite(record.get("lon"))
     seen_pos = _nonnegative(record.get("seen_pos"))
 
-    # Current readsb V2 schemas can supply a recent lastPosition object when an
-    # aircraft record has no top-level lat/lon. Retain those useful contacts.
     last_position = record.get("lastPosition")
     if (lat is None or lon is None) and isinstance(last_position, dict):
         fallback_lat = _finite(last_position.get("lat"))
