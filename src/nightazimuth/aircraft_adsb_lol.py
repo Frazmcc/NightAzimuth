@@ -152,15 +152,19 @@ class AdsbLolProvider:
         failure: Exception | None = None
         payload: dict[str, Any] | None = None
 
-        # One global outbound gate covers both the primary and failover provider.
-        # adsb.lol receives bounded retries; the failover provider overrides
-        # max_attempts to one so provider redundancy cannot turn into a retry storm.
-        wait_started = perf_counter()
-        _PROVIDER_REQUEST_GATE.acquire()
-        self.last_timings["provider_wait_ms"] = (perf_counter() - wait_started) * 1000.0
+        # The one-at-a-time gate is acquired for each individual upstream attempt,
+        # not for the whole retry sequence. A transiently failing region therefore
+        # releases the provider while it backs off, allowing another cold region to
+        # make progress instead of sitting behind several retries. Request starts
+        # remain globally paced, and the failover provider uses the same admission
+        # path with one attempt, so this improves fairness without creating a burst.
         request_elapsed_ms = 0.0
-        try:
-            for attempt in range(self.max_attempts):
+        self.last_timings["provider_wait_ms"] = 0.0
+        for attempt in range(self.max_attempts):
+            wait_started = perf_counter()
+            _PROVIDER_REQUEST_GATE.acquire()
+            self.last_timings["provider_wait_ms"] += (perf_counter() - wait_started) * 1000.0
+            try:
                 self.last_timings["provider_throttle_ms"] += _wait_for_provider_start_slot()
                 request_started = perf_counter()
                 try:
@@ -168,22 +172,26 @@ class AdsbLolProvider:
                     response.raise_for_status()
                     request_elapsed_ms += (perf_counter() - request_started) * 1000.0
                     failure = None
-                    break
                 except httpx.HTTPError as exc:
                     request_elapsed_ms += (perf_counter() - request_started) * 1000.0
                     failure = exc
-                    if attempt + 1 >= self.max_attempts or not _retryable_provider_error(exc):
-                        break
-                    retry_delay = _PROVIDER_RETRY_DELAY_SECONDS * (attempt + 1)
-                    retry_started = perf_counter()
-                    sleep(retry_delay)
-                    self.last_timings["provider_retry_wait_ms"] += (
-                        perf_counter() - retry_started
-                    ) * 1000.0
-                    self.last_timings["provider_retry_count"] += 1.0
-        finally:
-            self.last_timings["provider_request_ms"] = request_elapsed_ms
-            _PROVIDER_REQUEST_GATE.release()
+            finally:
+                _PROVIDER_REQUEST_GATE.release()
+
+            if failure is None:
+                break
+            if attempt + 1 >= self.max_attempts or not _retryable_provider_error(failure):
+                break
+
+            retry_delay = _PROVIDER_RETRY_DELAY_SECONDS * (attempt + 1)
+            retry_started = perf_counter()
+            sleep(retry_delay)
+            self.last_timings["provider_retry_wait_ms"] += (
+                perf_counter() - retry_started
+            ) * 1000.0
+            self.last_timings["provider_retry_count"] += 1.0
+
+        self.last_timings["provider_request_ms"] = request_elapsed_ms
 
         if failure is None:
             decode_started = perf_counter()
