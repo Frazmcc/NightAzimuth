@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from math import isfinite
 from threading import BoundedSemaphore, Lock
-from time import perf_counter
+from time import monotonic, perf_counter, sleep
 from typing import Any
 
 import httpx
@@ -26,6 +26,12 @@ _SHARED_CLIENT_LOCK = Lock()
 _SHARED_CLIENT: httpx.Client | None = None
 _PROVIDER_REQUEST_CONCURRENCY = 1
 _PROVIDER_REQUEST_GATE = BoundedSemaphore(_PROVIDER_REQUEST_CONCURRENCY)
+_PROVIDER_MIN_START_INTERVAL_SECONDS = 0.75
+_PROVIDER_RETRY_DELAY_SECONDS = 0.75
+_PROVIDER_MAX_ATTEMPTS = 2
+_PROVIDER_SCHEDULE_LOCK = Lock()
+_PROVIDER_NEXT_REQUEST_AT = 0.0
+_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 def shared_adsb_http_client() -> httpx.Client:
@@ -62,6 +68,26 @@ def close_shared_adsb_http_client() -> None:
         _SHARED_CLIENT = None
     if client is not None and not client.is_closed:
         client.close()
+
+
+def _wait_for_provider_start_slot() -> float:
+    """Space process-wide provider request starts to avoid bursty regional traffic."""
+
+    global _PROVIDER_NEXT_REQUEST_AT
+    with _PROVIDER_SCHEDULE_LOCK:
+        now = monotonic()
+        delay = max(0.0, _PROVIDER_NEXT_REQUEST_AT - now)
+        if delay > 0.0:
+            sleep(delay)
+            now = monotonic()
+        _PROVIDER_NEXT_REQUEST_AT = now + _PROVIDER_MIN_START_INTERVAL_SECONDS
+    return delay * 1000.0
+
+
+def _retryable_provider_error(error: Exception) -> bool:
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code in _RETRYABLE_STATUS_CODES
+    return isinstance(error, httpx.TransportError)
 
 
 class AdsbLolProvider:
@@ -103,7 +129,11 @@ class AdsbLolProvider:
             raise ValueError("radius_km must be a positive finite number")
 
         total_started = perf_counter()
-        self.last_timings = {}
+        self.last_timings = {
+            "provider_throttle_ms": 0.0,
+            "provider_retry_wait_ms": 0.0,
+            "provider_retry_count": 0.0,
+        }
         radius_nm = max(1, min(250, round(radius_km / 1.852)))
         # /v2/point is the provider's documented point-radius endpoint.  The older
         # /v2/lat/.../lon/.../dist/... alias is still documented, but using the
@@ -120,26 +150,37 @@ class AdsbLolProvider:
         failure: Exception | None = None
         payload: dict[str, Any] | None = None
 
-        # Production capacity testing showed that overlapping observer-specific
-        # point-radius calls from this hosted backend are unreliable even when the
-        # NightAzimuth process itself remains healthy. Serialize only the outbound
-        # provider I/O and expose queue time separately from upstream latency.
+        # Regional sharing dramatically reduces duplicate requests, but geographically
+        # separate cold regions can still arrive together. Serialize outbound provider
+        # I/O, space fast request starts, and retry one transient failure with backoff.
+        # This makes upstream pressure depend on the broker rather than user concurrency.
         wait_started = perf_counter()
         _PROVIDER_REQUEST_GATE.acquire()
         self.last_timings["provider_wait_ms"] = (perf_counter() - wait_started) * 1000.0
-        request_started = perf_counter()
+        request_elapsed_ms = 0.0
         try:
-            response = client.get(url)
-            response.raise_for_status()
-            self.last_timings["provider_request_ms"] = (
-                perf_counter() - request_started
-            ) * 1000.0
-        except httpx.HTTPError as exc:
-            failure = exc
-            self.last_timings.setdefault(
-                "provider_request_ms", (perf_counter() - request_started) * 1000.0
-            )
+            for attempt in range(_PROVIDER_MAX_ATTEMPTS):
+                self.last_timings["provider_throttle_ms"] += _wait_for_provider_start_slot()
+                request_started = perf_counter()
+                try:
+                    response = client.get(url)
+                    response.raise_for_status()
+                    request_elapsed_ms += (perf_counter() - request_started) * 1000.0
+                    failure = None
+                    break
+                except httpx.HTTPError as exc:
+                    request_elapsed_ms += (perf_counter() - request_started) * 1000.0
+                    failure = exc
+                    if attempt + 1 >= _PROVIDER_MAX_ATTEMPTS or not _retryable_provider_error(exc):
+                        break
+                    retry_started = perf_counter()
+                    sleep(_PROVIDER_RETRY_DELAY_SECONDS)
+                    self.last_timings["provider_retry_wait_ms"] += (
+                        perf_counter() - retry_started
+                    ) * 1000.0
+                    self.last_timings["provider_retry_count"] += 1.0
         finally:
+            self.last_timings["provider_request_ms"] = request_elapsed_ms
             _PROVIDER_REQUEST_GATE.release()
 
         if failure is None:
