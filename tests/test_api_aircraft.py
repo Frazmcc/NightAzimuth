@@ -65,9 +65,9 @@ def test_aircraft_response_contract(monkeypatch) -> None:
         }
 
         def fetch_snapshot(self, observer, radius_km):
-            assert observer.latitude_deg == 55.86
+            assert observer.latitude_deg == 55.75
             assert observer.longitude_deg == -4.25
-            assert radius_km == 100.0
+            assert radius_km == 463.0
             return snapshot
 
     monkeypatch.setattr("nightazimuth.api_aircraft.AdsbLolProvider", FakeProvider)
@@ -96,6 +96,7 @@ def test_aircraft_response_contract(monkeypatch) -> None:
     payload = response.json()
     assert payload["source"]["id"] == "adsb-lol"
     assert payload["source"]["state"] == "live"
+    assert payload["source"]["regional_shared"] is True
     assert payload["source_observation_count"] == 1
     assert payload["fresh_contact_count"] == 1
     assert payload["maximum_position_age_seconds"] == 45.0
