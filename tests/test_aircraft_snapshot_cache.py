@@ -121,13 +121,20 @@ def test_snapshot_cache_uses_recent_good_snapshot_for_transient_failure() -> Non
         ("fallback",),
         lambda: (_unavailable_snapshot(), {"provider_request_ms": 8000.0}),
     )
+    third = cache.get_or_fetch(
+        ("fallback",),
+        lambda: (_unavailable_snapshot(), {"provider_request_ms": 9000.0}),
+    )
 
     assert first.fallback_used is False
     assert second.fallback_used is True
+    assert third.cache_hit is True
+    assert third.fallback_used is True
     assert [item.icao24 for item in second.snapshot.observations] == ["abc006"]
     assert second.snapshot.state != AircraftSnapshotState.UNAVAILABLE
     assert second.snapshot.error == "temporary upstream failure"
     assert second.provider_timings["provider_request_ms"] == 8000.0
+    assert third.provider_timings == {}
 
 
 def test_snapshot_cache_without_recent_good_snapshot_preserves_unavailable_state() -> None:
