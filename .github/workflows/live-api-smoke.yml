@@ -9,6 +9,14 @@ on:
       - "src/nightazimuth/api.py"
       - "src/nightazimuth/api_aircraft.py"
       - "src/nightazimuth/aircraft_adsb_lol.py"
+      - "src/nightazimuth/api_airports.py"
+      - "src/nightazimuth/api_weather.py"
+      - "src/nightazimuth/api_observing.py"
+      - "src/nightazimuth/observing_planner.py"
+      - "src/nightazimuth/weather.py"
+      - "src/nightazimuth/weather_snapshot_cache.py"
+      - "src/nightazimuth/stage20_rc_airports.py"
+      - "src/nightazimuth/preload_airports.py"
       - "src/nightazimuth/api_sky.py"
       - "src/nightazimuth/api_satellites.py"
       - "src/nightazimuth/celestrak.py"
@@ -209,12 +217,23 @@ jobs:
             fi
           done
 
-          aircraft_primary_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/aircraft_primary.headers)"
-          aircraft_radar_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/aircraft_radar.headers)"
-          sky_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/sky.headers)"
-          satellite_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/satellites.headers)"
+          timing_for() {
+            awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' "/tmp/$1.headers"
+          }
+
+          aircraft_primary_timing="$(timing_for aircraft_primary)"
+          aircraft_radar_timing="$(timing_for aircraft_radar)"
+          airports_timing="$(timing_for airports)"
+          weather_timing="$(timing_for weather)"
+          observing_timing="$(timing_for observing)"
+          sky_timing="$(timing_for sky)"
+          satellite_timing="$(timing_for satellites)"
+
           echo "Aircraft primary Server-Timing: ${aircraft_primary_timing:-missing}"
           echo "Aircraft radar Server-Timing: ${aircraft_radar_timing:-missing}"
+          echo "Airports Server-Timing: ${airports_timing:-missing}"
+          echo "Weather Server-Timing: ${weather_timing:-missing}"
+          echo "Observing Server-Timing: ${observing_timing:-missing}"
           echo "Concurrent Sky Server-Timing: ${sky_timing:-missing}"
           echo "Concurrent Satellite Server-Timing: ${satellite_timing:-missing}"
 
@@ -222,7 +241,18 @@ jobs:
             echo "Aircraft performance instrumentation is missing from production response." >&2
             exit 1
           fi
-
+          if [[ "$airports_timing" != *"provider;dur="* ]]; then
+            echo "Airport performance instrumentation is missing from production response." >&2
+            exit 1
+          fi
+          if [[ "$weather_timing" != *"weather_load;dur="* ]]; then
+            echo "Weather performance instrumentation is missing from production response." >&2
+            exit 1
+          fi
+          if [[ "$observing_timing" != *"planner_build;dur="* ]]; then
+            echo "Observing performance instrumentation is missing from production response." >&2
+            exit 1
+          fi
           if [[ "$satellite_timing" != *"propagate;dur="* || "$satellite_timing" != *"track_build;dur="* ]]; then
             echo "Satellite performance instrumentation is missing from production response." >&2
             exit 1
@@ -249,6 +279,12 @@ jobs:
             echo "Aircraft primary Server-Timing: \`$aircraft_primary_timing\`"
             echo ""
             echo "Aircraft radar Server-Timing: \`$aircraft_radar_timing\`"
+            echo ""
+            echo "Airports Server-Timing: \`$airports_timing\`"
+            echo ""
+            echo "Weather Server-Timing: \`$weather_timing\`"
+            echo ""
+            echo "Observing Server-Timing: \`$observing_timing\`"
             echo ""
             echo "Concurrent Sky Server-Timing: \`$sky_timing\`"
             echo ""
