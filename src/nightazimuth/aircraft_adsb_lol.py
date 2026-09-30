@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from math import isfinite
-from threading import Lock
+from threading import BoundedSemaphore, Lock
 from time import perf_counter
 from typing import Any
 
@@ -24,6 +24,8 @@ _DEFAULT_TIMEOUT_SECONDS = 8.0
 _DEFAULT_USER_AGENT = "NightAzimuth/1.0 (+https://github.com/Frazmcc/NightAzimuth)"
 _SHARED_CLIENT_LOCK = Lock()
 _SHARED_CLIENT: httpx.Client | None = None
+_PROVIDER_REQUEST_CONCURRENCY = 2
+_PROVIDER_REQUEST_GATE = BoundedSemaphore(_PROVIDER_REQUEST_CONCURRENCY)
 
 
 def shared_adsb_http_client() -> httpx.Client:
@@ -117,6 +119,14 @@ class AdsbLolProvider:
         self.last_timings["provider_client_ms"] = (perf_counter() - client_started) * 1000.0
         failure: Exception | None = None
         payload: dict[str, Any] | None = None
+
+        # Capacity testing showed that four observer-specific outbound requests
+        # arriving together can make adsb.lol reject one request even while the
+        # NightAzimuth process remains healthy. Keep at most two provider calls in
+        # flight and expose queue time separately from upstream request latency.
+        wait_started = perf_counter()
+        _PROVIDER_REQUEST_GATE.acquire()
+        self.last_timings["provider_wait_ms"] = (perf_counter() - wait_started) * 1000.0
         request_started = perf_counter()
         try:
             response = client.get(url)
@@ -124,23 +134,33 @@ class AdsbLolProvider:
             self.last_timings["provider_request_ms"] = (
                 perf_counter() - request_started
             ) * 1000.0
-
-            decode_started = perf_counter()
-            payload = response.json()
-            self.last_timings["provider_decode_ms"] = (
-                perf_counter() - decode_started
-            ) * 1000.0
-        except (httpx.HTTPError, ValueError) as exc:
+        except httpx.HTTPError as exc:
             failure = exc
             self.last_timings.setdefault(
                 "provider_request_ms", (perf_counter() - request_started) * 1000.0
             )
-            self.last_timings.setdefault("provider_decode_ms", 0.0)
         finally:
-            close_started = perf_counter()
-            if owns_client:
-                client.close()
-            self.last_timings["provider_close_ms"] = (perf_counter() - close_started) * 1000.0
+            _PROVIDER_REQUEST_GATE.release()
+
+        if failure is None:
+            decode_started = perf_counter()
+            try:
+                payload = response.json()
+                self.last_timings["provider_decode_ms"] = (
+                    perf_counter() - decode_started
+                ) * 1000.0
+            except ValueError as exc:
+                failure = exc
+                self.last_timings["provider_decode_ms"] = (
+                    perf_counter() - decode_started
+                ) * 1000.0
+        else:
+            self.last_timings["provider_decode_ms"] = 0.0
+
+        close_started = perf_counter()
+        if owns_client:
+            client.close()
+        self.last_timings["provider_close_ms"] = (perf_counter() - close_started) * 1000.0
 
         if failure is not None:
             self.last_timings["provider_normalize_ms"] = 0.0
