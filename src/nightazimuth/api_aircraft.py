@@ -12,15 +12,20 @@ from .aircraft_adsb_lol import AdsbLolProvider
 from .aircraft_live import build_sky_aircraft
 from .aircraft_display import aircraft_display_identity, squawk_display
 from .aircraft_motion import AircraftMotionHistory, AircraftPositionState
+from .aircraft_snapshot_cache import AircraftSnapshotCache, slice_snapshot_radius
 
 router = APIRouter(prefix="/api/v1/aircraft", tags=["aircraft"])
 logger = logging.getLogger(__name__)
 
 _MAX_RECENT_POSITION_AGE_SECONDS = 45.0
+_LIVE_SKY_SHARED_RADIUS_KM = 400.0
+_AIRCRAFT_SNAPSHOT_CACHE = AircraftSnapshotCache(ttl_seconds=1.0, max_entries=4)
 
 
 def _server_timing(timings: dict[str, float], total_ms: float) -> str:
     return (
+        f"shared_wait;dur={timings.get('shared_wait_ms', 0.0):.1f}, "
+        f"radius_slice;dur={timings.get('radius_slice_ms', 0.0):.1f}, "
         f"provider_request;dur={timings.get('provider_request_ms', 0.0):.1f}, "
         f"provider_decode;dur={timings.get('provider_decode_ms', 0.0):.1f}, "
         f"provider_normalize;dur={timings.get('provider_normalize_ms', 0.0):.1f}, "
@@ -28,6 +33,27 @@ def _server_timing(timings: dict[str, float], total_ms: float) -> str:
         f"projection;dur={timings.get('projection_ms', 0.0):.1f}, "
         f"payload;dur={timings.get('payload_ms', 0.0):.1f}, "
         f"total;dur={total_ms:.1f}"
+    )
+
+
+def _upstream_radius_km(radius_km: float) -> float:
+    # The hosted Live Sky starts a 200 km above-horizon request and a 400 km
+    # radar request together. Fetch the broader view once so the 200 km view can
+    # be derived locally from the same provider snapshot.
+    if abs(radius_km - 200.0) < 1e-9 or abs(radius_km - 400.0) < 1e-9:
+        return _LIVE_SKY_SHARED_RADIUS_KM
+    return radius_km
+
+
+def _snapshot_cache_key(observer: AircraftObserver, upstream_radius_km: float) -> tuple[object, ...]:
+    # The provider URL is rounded to six decimal places, so use the same
+    # precision for cache identity. Include the provider factory object so test
+    # monkeypatches and future provider changes cannot reuse an incompatible entry.
+    return (
+        AdsbLolProvider,
+        round(observer.latitude_deg, 6),
+        round(observer.longitude_deg, 6),
+        round(upstream_radius_km, 3),
     )
 
 
@@ -53,17 +79,38 @@ def aircraft(
     timings: dict[str, float] = {}
     observed_at = datetime.now(UTC)
     observer = AircraftObserver(latitude, longitude, altitude_m)
-    provider = AdsbLolProvider()
-    snapshot = provider.fetch_snapshot(observer, radius_km)
-    timings.update(getattr(provider, "last_timings", {}))
+    upstream_radius_km = _upstream_radius_km(radius_km)
+
+    def fetch_snapshot():
+        provider = AdsbLolProvider()
+        provider_snapshot = provider.fetch_snapshot(observer, upstream_radius_km)
+        return provider_snapshot, getattr(provider, "last_timings", {})
+
+    shared = _AIRCRAFT_SNAPSHOT_CACHE.get_or_fetch(
+        _snapshot_cache_key(observer, upstream_radius_km),
+        fetch_snapshot,
+    )
+    timings.update(shared.provider_timings)
+    timings["shared_wait_ms"] = shared.shared_wait_ms
+
+    slice_started = perf_counter()
+    if upstream_radius_km > radius_km:
+        snapshot = slice_snapshot_radius(shared.snapshot, observer, radius_km)
+    else:
+        snapshot = shared.snapshot
+    timings["radius_slice_ms"] = (perf_counter() - slice_started) * 1000.0
 
     if snapshot.state == AircraftSnapshotState.UNAVAILABLE:
         total_ms = (perf_counter() - request_started) * 1000.0
         timing_header = _server_timing(timings, total_ms)
         logger.warning(
-            "aircraft_provider_unavailable radius_km=%.1f total_ms=%.1f "
+            "aircraft_provider_unavailable radius_km=%.1f upstream_radius_km=%.1f "
+            "shared_cache_hit=%s shared_wait_ms=%.1f total_ms=%.1f "
             "provider_request_ms=%.1f provider_decode_ms=%.1f provider_total_ms=%.1f error=%s",
             radius_km,
+            upstream_radius_km,
+            shared.cache_hit,
+            shared.shared_wait_ms,
             total_ms,
             timings.get("provider_request_ms", 0.0),
             timings.get("provider_decode_ms", 0.0),
@@ -133,10 +180,14 @@ def aircraft(
     total_ms = (perf_counter() - request_started) * 1000.0
     response.headers["Server-Timing"] = _server_timing(timings, total_ms)
     logger.info(
-        "aircraft_request radius_km=%.1f total_ms=%.1f provider_request_ms=%.1f "
+        "aircraft_request radius_km=%.1f upstream_radius_km=%.1f shared_cache_hit=%s "
+        "shared_wait_ms=%.1f total_ms=%.1f provider_request_ms=%.1f "
         "provider_decode_ms=%.1f provider_normalize_ms=%.1f provider_total_ms=%.1f "
         "projection_ms=%.1f payload_ms=%.1f source_count=%d returned_count=%d",
         radius_km,
+        upstream_radius_km,
+        shared.cache_hit,
+        shared.shared_wait_ms,
         total_ms,
         timings.get("provider_request_ms", 0.0),
         timings.get("provider_decode_ms", 0.0),
