@@ -1,5 +1,12 @@
 $ErrorActionPreference = "Stop"
 
+# LEGACY DESKTOP BUILD
+#
+# The hosted web application at https://nightazimuth.co.uk is the supported
+# NightAzimuth product. This script is retained only to keep the historical
+# Tkinter/PyInstaller client reproducible and to detect accidental breakage.
+# It is not used by the GitHub release workflow.
+
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
 
@@ -12,17 +19,14 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 }
 
 # A running NightAzimuth.exe keeps the existing file locked on Windows and
-# prevents PyInstaller from replacing it. Stop only NightAzimuth processes
-# before starting the build.
+# prevents PyInstaller from replacing it. Stop only NightAzimuth processes.
 $runningNightAzimuth = Get-Process -Name "NightAzimuth" -ErrorAction SilentlyContinue
 if ($runningNightAzimuth) {
-    Write-Host "Stopping running NightAzimuth process before rebuild..."
+    Write-Host "Stopping running NightAzimuth process before legacy rebuild..."
     $runningNightAzimuth | Stop-Process -Force
     Start-Sleep -Milliseconds 500
 }
 
-# Start every release build from an empty dist directory. This prevents stale
-# files from an earlier local build from being accidentally shipped.
 $distPath = Join-Path $repoRoot "dist"
 if (Test-Path $distPath) {
     Remove-Item $distPath -Recurse -Force
@@ -39,7 +43,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "NightAzimuth dependency installation failed."
 }
 
-Write-Host "Building NightAzimuth.exe..."
+Write-Host "Building legacy NightAzimuth.exe..."
 & .\.venv\Scripts\python.exe -m PyInstaller `
     --clean `
     --noconfirm `
@@ -58,43 +62,44 @@ if (-not (Test-Path $exePath)) {
     throw "Build finished without producing $exePath"
 }
 
-$userGuideSource = Join-Path $repoRoot "docs\NightAzimuth_User_Guide.md"
-$userGuideDestination = Join-Path $distPath "NightAzimuth_User_Guide.md"
-if (-not (Test-Path $userGuideSource)) {
-    throw "User guide was not found at $userGuideSource"
+$legacyReadmeSource = Join-Path $repoRoot "docs\LEGACY_DESKTOP.md"
+$legacyReadmeDestination = Join-Path $distPath "NightAzimuth_Legacy_Desktop.md"
+if (-not (Test-Path $legacyReadmeSource)) {
+    throw "Legacy desktop notice was not found at $legacyReadmeSource"
 }
-Copy-Item $userGuideSource $userGuideDestination -Force
-if (-not (Test-Path $userGuideDestination)) {
-    throw "Build finished without producing $userGuideDestination"
+Copy-Item $legacyReadmeSource $legacyReadmeDestination -Force
+if (-not (Test-Path $legacyReadmeDestination)) {
+    throw "Build finished without producing $legacyReadmeDestination"
 }
 
-# Release-output allowlist. Nothing else is permitted in dist.
-$expectedReleaseFiles = @(
+# Legacy-output allowlist. Nothing else is permitted in dist.
+$expectedFiles = @(
     "NightAzimuth.exe",
-    "NightAzimuth_User_Guide.md"
+    "NightAzimuth_Legacy_Desktop.md"
 )
-$releaseFiles = @(Get-ChildItem $distPath -File)
-$releaseDirectories = @(Get-ChildItem $distPath -Directory)
-$unexpectedFiles = @($releaseFiles | Where-Object { $_.Name -notin $expectedReleaseFiles })
-$missingFiles = @($expectedReleaseFiles | Where-Object { -not (Test-Path (Join-Path $distPath $_)) })
+$files = @(Get-ChildItem $distPath -File)
+$directories = @(Get-ChildItem $distPath -Directory)
+$unexpectedFiles = @($files | Where-Object { $_.Name -notin $expectedFiles })
+$missingFiles = @($expectedFiles | Where-Object { -not (Test-Path (Join-Path $distPath $_)) })
 
-if ($releaseDirectories.Count -gt 0) {
-    $names = ($releaseDirectories.Name -join ", ")
-    throw "Unexpected release directories found in dist: $names"
+if ($directories.Count -gt 0) {
+    $names = ($directories.Name -join ", ")
+    throw "Unexpected directories found in dist: $names"
 }
 if ($unexpectedFiles.Count -gt 0) {
     $names = ($unexpectedFiles.Name -join ", ")
-    throw "Unexpected release files found in dist: $names"
+    throw "Unexpected files found in dist: $names"
 }
 if ($missingFiles.Count -gt 0) {
     $names = ($missingFiles -join ", ")
-    throw "Expected release files are missing from dist: $names"
+    throw "Expected legacy build files are missing from dist: $names"
 }
-if ($releaseFiles.Count -ne $expectedReleaseFiles.Count) {
-    throw "Release output contains an unexpected number of files."
+if ($files.Count -ne $expectedFiles.Count) {
+    throw "Legacy build output contains an unexpected number of files."
 }
 
 Write-Host ""
-Write-Host "Build complete: $exePath"
-Write-Host "User guide: $userGuideDestination"
-Write-Host "Release output validated: only approved files are present in dist."
+Write-Host "Legacy build complete: $exePath"
+Write-Host "Legacy notice: $legacyReadmeDestination"
+Write-Host "This output is not published by the current GitHub release workflow."
+Write-Host "Supported product: https://nightazimuth.co.uk"
