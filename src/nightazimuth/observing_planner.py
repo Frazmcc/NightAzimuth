@@ -72,10 +72,30 @@ class ObservingPlanner:
             for point in weather.points
             if moment <= point.time_utc <= horizon
         ]
-        return tuple(self._guidance_for_point(point, moment) for point in points)
+        if not points:
+            return ()
+        sun_altitudes = self._sun_altitudes(tuple(point.time_utc for point in points))
+        return tuple(
+            self._guidance_for_point(
+                point,
+                moment,
+                sun_altitude_deg=sun_altitude,
+            )
+            for point, sun_altitude in zip(points, sun_altitudes, strict=True)
+        )
 
-    def _guidance_for_point(self, point: WeatherPoint, now_utc: datetime) -> ViewingGuidance:
-        sun_altitude = self._sun_altitude(point.time_utc)
+    def _guidance_for_point(
+        self,
+        point: WeatherPoint,
+        now_utc: datetime,
+        *,
+        sun_altitude_deg: float | None = None,
+    ) -> ViewingGuidance:
+        sun_altitude = (
+            self._sun_altitude(point.time_utc)
+            if sun_altitude_deg is None
+            else float(sun_altitude_deg)
+        )
         score = 100.0
         reasons: list[str] = []
 
@@ -127,11 +147,18 @@ class ObservingPlanner:
             reasons=tuple(reasons),
         )
 
-    def _sun_altitude(self, moment: datetime) -> float:
-        t = self._timescale.from_datetime(moment.astimezone(timezone.utc))
-        apparent = (self._earth + self._location).at(t).observe(self._sun).apparent()
+    def _sun_altitudes(self, moments: tuple[datetime, ...]) -> tuple[float, ...]:
+        if not moments:
+            return ()
+        times = self._timescale.from_datetimes(
+            [moment.astimezone(timezone.utc) for moment in moments]
+        )
+        apparent = (self._earth + self._location).at(times).observe(self._sun).apparent()
         altitude, _, _ = apparent.altaz()
-        return float(altitude.degrees)
+        return tuple(float(value) for value in altitude.degrees)
+
+    def _sun_altitude(self, moment: datetime) -> float:
+        return self._sun_altitudes((moment,))[0]
 
 
 def _bounded_percent(value: float | None) -> float | None:
