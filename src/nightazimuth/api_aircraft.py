@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import UTC, datetime
+from math import floor
 import logging
 from time import perf_counter
 
@@ -19,9 +20,12 @@ logger = logging.getLogger(__name__)
 
 _MAX_RECENT_POSITION_AGE_SECONDS = 45.0
 _LIVE_SKY_SHARED_RADIUS_KM = 400.0
+_REGIONAL_CELL_DEGREES = 0.5
+_REGIONAL_PROVIDER_RADIUS_KM = 463.0
+_REGIONAL_CACHE_TTL_SECONDS = 10.0
 _AIRCRAFT_SNAPSHOT_CACHE = AircraftSnapshotCache(
-    ttl_seconds=1.0,
-    max_entries=4,
+    ttl_seconds=_REGIONAL_CACHE_TTL_SECONDS,
+    max_entries=16,
     fallback_max_age_seconds=30.0,
 )
 
@@ -43,19 +47,47 @@ def _server_timing(timings: dict[str, float], total_ms: float) -> str:
     )
 
 
-def _upstream_radius_km(radius_km: float) -> float:
-    # The hosted Live Sky starts a 200 km above-horizon request and a 400 km
-    # radar request together. Fetch the broader view once so the 200 km view can
-    # be derived locally from the same provider snapshot.
-    if abs(radius_km - 200.0) < 1e-9 or abs(radius_km - 400.0) < 1e-9:
-        return _LIVE_SKY_SHARED_RADIUS_KM
-    return radius_km
+def _region_center_coordinate(value: float) -> float:
+    """Return the centre of the 0.5-degree aircraft-sharing cell containing value."""
+    return floor(value / _REGIONAL_CELL_DEGREES) * _REGIONAL_CELL_DEGREES + (
+        _REGIONAL_CELL_DEGREES / 2.0
+    )
+
+
+def _provider_request_scope(
+    observer: AircraftObserver,
+    radius_km: float,
+) -> tuple[AircraftObserver, float, bool]:
+    """Return the provider observer/radius and whether a shared region is used.
+
+    Live Sky requests at up to 400 km use a 0.5-degree regional cell and the
+    provider's maximum 250 NM (~463 km) point radius. The cell is small enough
+    that even a caller at a cell corner retains complete 400 km coverage after
+    the broader regional snapshot is sliced back to the caller's exact radius.
+
+    Requests above 400 km remain observer-specific because a regional offset
+    could otherwise leave part of the requested circle outside the provider's
+    maximum radius.
+    """
+    if radius_km <= _LIVE_SKY_SHARED_RADIUS_KM:
+        return (
+            AircraftObserver(
+                _region_center_coordinate(observer.latitude_deg),
+                _region_center_coordinate(observer.longitude_deg),
+                0.0,
+            ),
+            _REGIONAL_PROVIDER_RADIUS_KM,
+            True,
+        )
+    return observer, radius_km, False
 
 
 def _snapshot_cache_key(observer: AircraftObserver, upstream_radius_km: float) -> tuple[object, ...]:
-    # The provider URL is rounded to six decimal places, so use the same
-    # precision for cache identity. Include the provider factory object so test
-    # monkeypatches and future provider changes cannot reuse an incompatible entry.
+    # Provider URLs are rounded to six decimal places. Regional Live Sky callers
+    # deliberately share the same provider observer here, so nearby users collapse
+    # onto one single-flight cache entry instead of triggering separate upstream
+    # requests. Include the provider factory object so test monkeypatches and future
+    # provider changes cannot reuse an incompatible entry.
     return (
         AdsbLolProvider,
         round(observer.latitude_deg, 6),
@@ -86,22 +118,25 @@ def aircraft(
     timings: dict[str, float] = {}
     observed_at = datetime.now(UTC)
     observer = AircraftObserver(latitude, longitude, altitude_m)
-    upstream_radius_km = _upstream_radius_km(radius_km)
+    provider_observer, upstream_radius_km, regional_shared = _provider_request_scope(
+        observer,
+        radius_km,
+    )
 
     def fetch_snapshot():
         provider = AdsbLolProvider()
-        provider_snapshot = provider.fetch_snapshot(observer, upstream_radius_km)
+        provider_snapshot = provider.fetch_snapshot(provider_observer, upstream_radius_km)
         return provider_snapshot, getattr(provider, "last_timings", {})
 
     shared = _AIRCRAFT_SNAPSHOT_CACHE.get_or_fetch(
-        _snapshot_cache_key(observer, upstream_radius_km),
+        _snapshot_cache_key(provider_observer, upstream_radius_km),
         fetch_snapshot,
     )
     timings.update(shared.provider_timings)
     timings["shared_wait_ms"] = shared.shared_wait_ms
 
     slice_started = perf_counter()
-    if upstream_radius_km > radius_km:
+    if regional_shared or upstream_radius_km > radius_km:
         snapshot = slice_snapshot_radius(shared.snapshot, observer, radius_km)
     else:
         snapshot = shared.snapshot
@@ -112,11 +147,15 @@ def aircraft(
         timing_header = _server_timing(timings, total_ms)
         logger.warning(
             "aircraft_provider_unavailable radius_km=%.1f upstream_radius_km=%.1f "
+            "regional_shared=%s region_latitude=%.3f region_longitude=%.3f "
             "shared_cache_hit=%s shared_wait_ms=%.1f total_ms=%.1f "
             "provider_client_ms=%.1f provider_wait_ms=%.1f provider_request_ms=%.1f "
             "provider_decode_ms=%.1f provider_close_ms=%.1f provider_total_ms=%.1f error=%s",
             radius_km,
             upstream_radius_km,
+            regional_shared,
+            provider_observer.latitude_deg,
+            provider_observer.longitude_deg,
             shared.cache_hit,
             shared.shared_wait_ms,
             total_ms,
@@ -167,6 +206,7 @@ def aircraft(
             "label": snapshot.source_label,
             "state": snapshot.state.value,
             "fallback_used": shared.fallback_used,
+            "regional_shared": regional_shared,
             "source_observed_at": (
                 snapshot.source_observed_at.isoformat()
                 if snapshot.source_observed_at is not None
@@ -192,13 +232,17 @@ def aircraft(
     total_ms = (perf_counter() - request_started) * 1000.0
     response.headers["Server-Timing"] = _server_timing(timings, total_ms)
     logger.info(
-        "aircraft_request radius_km=%.1f upstream_radius_km=%.1f shared_cache_hit=%s "
+        "aircraft_request radius_km=%.1f upstream_radius_km=%.1f regional_shared=%s "
+        "region_latitude=%.3f region_longitude=%.3f shared_cache_hit=%s "
         "fallback_used=%s shared_wait_ms=%.1f total_ms=%.1f provider_client_ms=%.1f "
         "provider_wait_ms=%.1f provider_request_ms=%.1f provider_decode_ms=%.1f "
         "provider_close_ms=%.1f provider_normalize_ms=%.1f provider_total_ms=%.1f "
         "projection_ms=%.1f payload_ms=%.1f source_count=%d returned_count=%d",
         radius_km,
         upstream_radius_km,
+        regional_shared,
+        provider_observer.latitude_deg,
+        provider_observer.longitude_deg,
         shared.cache_hit,
         shared.fallback_used,
         shared.shared_wait_ms,
