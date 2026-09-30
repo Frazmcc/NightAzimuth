@@ -3,6 +3,7 @@ const root=document.querySelector("#contacts");
 if(!root||typeof skyXY!=="function"||typeof drawSky!=="function"||typeof renderContacts!=="function")return;
 
 const baseDrawSky=drawSky;
+const baseShowObject=typeof showObject==="function"?showObject:null;
 let renderTimer=null;
 let lastRenderSignature=null;
 
@@ -61,6 +62,147 @@ function renderCurrentView(){
 function queueRender(){
   if(renderTimer!==null)return;
   renderTimer=setTimeout(()=>{renderTimer=null;renderCurrentView()},60);
+}
+
+function finiteNumber(value){
+  const number=Number(value);
+  return Number.isFinite(number)?number:null;
+}
+
+function formatNumber(value,digits=0){
+  const number=finiteNumber(value);
+  if(number===null)return null;
+  return number.toLocaleString(undefined,{minimumFractionDigits:digits,maximumFractionDigits:digits});
+}
+
+function formatDegrees(value,digits=1){
+  const number=formatNumber(value,digits);
+  return number===null?null:`${number}°`;
+}
+
+function formatAltitude(value){
+  const metres=finiteNumber(value);
+  if(metres===null)return null;
+  const feet=metres*3.280839895;
+  return `${formatNumber(feet,0)} ft (${formatNumber(metres,0)} m)`;
+}
+
+function formatGroundSpeed(value){
+  const mps=finiteNumber(value);
+  if(mps===null)return null;
+  const knots=mps/0.514444;
+  const kmh=mps*3.6;
+  return `${formatNumber(knots,0)} kt (${formatNumber(kmh,0)} km/h)`;
+}
+
+function formatVerticalRate(value){
+  const mps=finiteNumber(value);
+  if(mps===null)return null;
+  const fpm=mps/0.00508;
+  const sign=fpm>0?"+":"";
+  return `${sign}${formatNumber(fpm,0)} ft/min (${mps>0?"+":""}${formatNumber(mps,1)} m/s)`;
+}
+
+function formatAge(value){
+  const seconds=finiteNumber(value);
+  return seconds===null?null:`${formatNumber(seconds,1)} s`;
+}
+
+function displayCode(airport){
+  if(!airport)return null;
+  return airport.display_code||airport.iata||airport.icao||null;
+}
+
+function formatAirport(airport){
+  if(!airport)return null;
+  const code=displayCode(airport);
+  const name=airport.name||null;
+  if(name&&code)return `${name} (${code})`;
+  return name||code;
+}
+
+function makeDetailRow(label,value){
+  if(value===null||value===undefined||value==="")return null;
+  const row=document.createElement("div");
+  const key=document.createElement("span");
+  const val=document.createElement("strong");
+  key.textContent=label;
+  val.textContent=String(value);
+  row.append(key,val);
+  return row;
+}
+
+function makeSection(title,rows){
+  const content=rows.filter(Boolean);
+  if(!content.length)return null;
+  const section=document.createElement("section");
+  const heading=document.createElement("p");
+  heading.className="eyebrow";
+  heading.textContent=title;
+  section.append(heading,...content);
+  return section;
+}
+
+function renderAircraftInspector(raw){
+  const inspector=document.querySelector("#object-inspector");
+  const details=document.querySelector("#inspector-details");
+  if(!inspector||!details)return;
+
+  setText("#inspector-type","AIRCRAFT");
+  setText("#inspector-name",raw.callsign||raw.registration||raw.icao24||"Aircraft");
+
+  const display=raw.display||{};
+  const route=raw.route||{};
+  const sections=[
+    makeSection("AIRCRAFT",[
+      makeDetailRow("Aircraft type / model",display.make_model||raw.type_description||raw.type_code),
+      makeDetailRow("Capacity",display.capacity),
+      makeDetailRow("ICAO aircraft type",raw.type_code),
+      makeDetailRow("Registration",raw.registration),
+      makeDetailRow("Callsign",raw.callsign),
+      makeDetailRow("ICAO24 / Hex",raw.icao24?String(raw.icao24).toUpperCase():null),
+      makeDetailRow("Operator",raw.operator),
+      makeDetailRow("Role",display.role),
+      makeDetailRow("Military",raw.military==null?null:(raw.military?"Yes":"No"))
+    ]),
+    makeSection("FLIGHT",[
+      makeDetailRow("Departure",formatAirport(route.departure)),
+      makeDetailRow("Arrival",formatAirport(route.arrival))
+    ]),
+    makeSection("POSITION",[
+      makeDetailRow("Azimuth",formatDegrees(raw.azimuth_deg,2)),
+      makeDetailRow("Elevation",formatDegrees(raw.elevation_deg,2)),
+      makeDetailRow("Position state",raw.position_state),
+      makeDetailRow("Position age",formatAge(raw.position_age_seconds))
+    ]),
+    makeSection("ALTITUDE & SPEED",[
+      makeDetailRow("Altitude",formatAltitude(raw.altitude_m)),
+      makeDetailRow("Ground speed",formatGroundSpeed(raw.ground_speed_mps)),
+      makeDetailRow("Track",formatDegrees(raw.track_deg,1)),
+      makeDetailRow("Vertical rate",formatVerticalRate(raw.vertical_rate_mps))
+    ]),
+    makeSection("TRANSPONDER",[
+      makeDetailRow("Squawk / meaning",display.squawk||raw.squawk),
+      display.squawk&&raw.squawk&&String(display.squawk)!==String(raw.squawk)?makeDetailRow("Squawk",raw.squawk):null
+    ]),
+    makeSection("ADS-B / TRACKING",[
+      makeDetailRow("Data source",raw.source_label),
+      makeDetailRow("Source ID",raw.source_id)
+    ])
+  ].filter(Boolean);
+
+  details.replaceChildren(...sections);
+  inspector.hidden=false;
+}
+
+if(baseShowObject){
+  window.showObject=function(target){
+    if(target?.kind==="aircraft"){
+      renderAircraftInspector(target.item||{});
+      return;
+    }
+    baseShowObject(target);
+  };
 }
 
 // Keep the contact list tied to the actual viewport, not the wider aircraft
