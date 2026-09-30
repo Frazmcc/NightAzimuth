@@ -35,13 +35,7 @@ _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 def shared_adsb_http_client() -> httpx.Client:
-    """Return the process-wide adsb.lol client used by the hosted API.
-
-    httpx.Client maintains a connection pool, so keeping one client alive avoids
-    rebuilding TLS/HTTP connection state for every live-aircraft refresh. The
-    lock only protects creation/replacement; request I/O is not serialized.
-    """
-
+    """Return the process-wide adsb.lol client used by the hosted API."""
     global _SHARED_CLIENT
     with _SHARED_CLIENT_LOCK:
         if _SHARED_CLIENT is None or _SHARED_CLIENT.is_closed:
@@ -54,14 +48,10 @@ def shared_adsb_http_client() -> httpx.Client:
 
 
 def prewarm_shared_adsb_http_client() -> None:
-    """Create the default connection pool without making an upstream request."""
-
     shared_adsb_http_client()
 
 
 def close_shared_adsb_http_client() -> None:
-    """Close and discard the process-wide adsb.lol connection pool."""
-
     global _SHARED_CLIENT
     with _SHARED_CLIENT_LOCK:
         client = _SHARED_CLIENT
@@ -71,8 +61,6 @@ def close_shared_adsb_http_client() -> None:
 
 
 def _wait_for_provider_start_slot() -> float:
-    """Space process-wide provider request starts to avoid bursty regional traffic."""
-
     global _PROVIDER_NEXT_REQUEST_AT
     with _PROVIDER_SCHEDULE_LOCK:
         now = monotonic()
@@ -95,13 +83,7 @@ class AdsbLolProvider:
     label = "adsb.lol"
     source_kind = AircraftSourceKind.INTERNET
 
-    def __init__(
-        self,
-        *,
-        client: httpx.Client | None = None,
-        timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
-        user_agent: str = _DEFAULT_USER_AGENT,
-    ) -> None:
+    def __init__(self, *, client: httpx.Client | None = None, timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS, user_agent: str = _DEFAULT_USER_AGENT) -> None:
         self._client = client
         self._timeout_seconds = timeout_seconds
         self._user_agent = user_agent
@@ -110,38 +92,18 @@ class AdsbLolProvider:
     def _client_for_request(self) -> tuple[httpx.Client, bool]:
         if self._client is not None:
             return self._client, False
-        if (
-            self._timeout_seconds == _DEFAULT_TIMEOUT_SECONDS
-            and self._user_agent == _DEFAULT_USER_AGENT
-        ):
+        if self._timeout_seconds == _DEFAULT_TIMEOUT_SECONDS and self._user_agent == _DEFAULT_USER_AGENT:
             return shared_adsb_http_client(), False
-        return (
-            httpx.Client(
-                timeout=self._timeout_seconds,
-                headers={"User-Agent": self._user_agent, "Accept": "application/json"},
-                follow_redirects=True,
-            ),
-            True,
-        )
+        return httpx.Client(timeout=self._timeout_seconds, headers={"User-Agent": self._user_agent, "Accept": "application/json"}, follow_redirects=True), True
 
     def fetch_snapshot(self, observer: AircraftObserver, radius_km: float) -> AircraftSnapshot:
         if not isfinite(radius_km) or radius_km <= 0:
             raise ValueError("radius_km must be a positive finite number")
 
         total_started = perf_counter()
-        self.last_timings = {
-            "provider_throttle_ms": 0.0,
-            "provider_retry_wait_ms": 0.0,
-            "provider_retry_count": 0.0,
-        }
+        self.last_timings = {"provider_throttle_ms": 0.0, "provider_retry_wait_ms": 0.0, "provider_retry_count": 0.0}
         radius_nm = max(1, min(250, round(radius_km / 1.852)))
-        # /v2/point is the provider's documented point-radius endpoint.  The older
-        # /v2/lat/.../lon/.../dist/... alias is still documented, but using the
-        # canonical endpoint keeps NightAzimuth aligned with the current schema.
-        url = (
-            "https://api.adsb.lol/v2/point/"
-            f"{observer.latitude_deg:.6f}/{observer.longitude_deg:.6f}/{radius_nm}"
-        )
+        url = f"https://api.adsb.lol/v2/point/{observer.latitude_deg:.6f}/{observer.longitude_deg:.6f}/{radius_nm}"
         fetched_at = datetime.now(timezone.utc)
 
         client_started = perf_counter()
@@ -150,10 +112,6 @@ class AdsbLolProvider:
         failure: Exception | None = None
         payload: dict[str, Any] | None = None
 
-        # Regional sharing dramatically reduces duplicate requests, but geographically
-        # separate cold regions can still arrive together. Serialize outbound provider
-        # I/O, space fast request starts, and retry one transient failure with backoff.
-        # This makes upstream pressure depend on the broker rather than user concurrency.
         wait_started = perf_counter()
         _PROVIDER_REQUEST_GATE.acquire()
         self.last_timings["provider_wait_ms"] = (perf_counter() - wait_started) * 1000.0
@@ -175,9 +133,7 @@ class AdsbLolProvider:
                         break
                     retry_started = perf_counter()
                     sleep(_PROVIDER_RETRY_DELAY_SECONDS)
-                    self.last_timings["provider_retry_wait_ms"] += (
-                        perf_counter() - retry_started
-                    ) * 1000.0
+                    self.last_timings["provider_retry_wait_ms"] += (perf_counter() - retry_started) * 1000.0
                     self.last_timings["provider_retry_count"] += 1.0
         finally:
             self.last_timings["provider_request_ms"] = request_elapsed_ms
@@ -187,14 +143,10 @@ class AdsbLolProvider:
             decode_started = perf_counter()
             try:
                 payload = response.json()
-                self.last_timings["provider_decode_ms"] = (
-                    perf_counter() - decode_started
-                ) * 1000.0
+                self.last_timings["provider_decode_ms"] = (perf_counter() - decode_started) * 1000.0
             except ValueError as exc:
                 failure = exc
-                self.last_timings["provider_decode_ms"] = (
-                    perf_counter() - decode_started
-                ) * 1000.0
+                self.last_timings["provider_decode_ms"] = (perf_counter() - decode_started) * 1000.0
         else:
             self.last_timings["provider_decode_ms"] = 0.0
 
@@ -205,46 +157,17 @@ class AdsbLolProvider:
 
         if failure is not None:
             self.last_timings["provider_normalize_ms"] = 0.0
-            self.last_timings["provider_total_ms"] = (
-                perf_counter() - total_started
-            ) * 1000.0
-            return AircraftSnapshot(
-                observations=(),
-                source_id=self.provider_id,
-                source_label=self.label,
-                fetched_at=fetched_at,
-                source_observed_at=None,
-                coverage_description=f"bounded observer area, {radius_nm} NM radius",
-                state=AircraftSnapshotState.UNAVAILABLE,
-                error=f"adsb.lol unavailable: {failure}",
-            )
+            self.last_timings["provider_total_ms"] = (perf_counter() - total_started) * 1000.0
+            return AircraftSnapshot(observations=(), source_id=self.provider_id, source_label=self.label, fetched_at=fetched_at, source_observed_at=None, coverage_description=f"bounded observer area, {radius_nm} NM radius", state=AircraftSnapshotState.UNAVAILABLE, error=f"adsb.lol unavailable: {failure}")
 
         assert payload is not None
         normalize_started = perf_counter()
         source_time = _payload_time(payload, fallback=fetched_at)
-        observations = tuple(
-            observation
-            for record in payload.get("ac", [])
-            if isinstance(record, dict)
-            if (observation := _normalise_record(record, source_time)) is not None
-        )
-        self.last_timings["provider_normalize_ms"] = (
-            perf_counter() - normalize_started
-        ) * 1000.0
+        observations = tuple(observation for record in payload.get("ac", []) if isinstance(record, dict) if (observation := _normalise_record(record, source_time)) is not None)
+        self.last_timings["provider_normalize_ms"] = (perf_counter() - normalize_started) * 1000.0
         age_seconds = max(0.0, (fetched_at - source_time).total_seconds())
-        snapshot = AircraftSnapshot(
-            observations=observations,
-            source_id=self.provider_id,
-            source_label=self.label,
-            fetched_at=fetched_at,
-            source_observed_at=source_time,
-            coverage_description=f"bounded observer area, {radius_nm} NM radius",
-            state=classify_snapshot_age(age_seconds),
-            error=None,
-        )
-        self.last_timings["provider_total_ms"] = (
-            perf_counter() - total_started
-        ) * 1000.0
+        snapshot = AircraftSnapshot(observations=observations, source_id=self.provider_id, source_label=self.label, fetched_at=fetched_at, source_observed_at=source_time, coverage_description=f"bounded observer area, {radius_nm} NM radius", state=classify_snapshot_age(age_seconds), error=None)
+        self.last_timings["provider_total_ms"] = (perf_counter() - total_started) * 1000.0
         return snapshot
 
 
@@ -256,10 +179,6 @@ def _normalise_record(record: dict[str, Any], snapshot_time: datetime) -> Aircra
     lat = _finite(record.get("lat"))
     lon = _finite(record.get("lon"))
     seen_pos = _nonnegative(record.get("seen_pos"))
-
-    # The current adsb.lol V2 schema can supply a recent `lastPosition` object
-    # when the aircraft record has no top-level lat/lon.  Those contacts are
-    # useful for identification and were previously discarded completely.
     last_position = record.get("lastPosition")
     if (lat is None or lon is None) and isinstance(last_position, dict):
         fallback_lat = _finite(last_position.get("lat"))
@@ -271,11 +190,8 @@ def _normalise_record(record: dict[str, Any], snapshot_time: datetime) -> Aircra
             if fallback_seen_pos is not None:
                 seen_pos = fallback_seen_pos
 
-    if lat is None or lon is None:
+    if lat is None or lon is None or not -90.0 <= lat <= 90.0 or not -180.0 <= lon <= 180.0:
         return None
-    if not -90.0 <= lat <= 90.0 or not -180.0 <= lon <= 180.0:
-        return None
-
     if seen_pos is None:
         seen_pos = _nonnegative(record.get("seen")) or 0.0
     seen = _nonnegative(record.get("seen"))
@@ -330,6 +246,9 @@ def _normalise_record(record: dict[str, Any], snapshot_time: datetime) -> Aircra
             type_description=str(record.get("desc") or "").strip() or None,
             operator=str(record.get("ownOp") or "").strip() or None,
             military=bool(db_flags & 1),
+            category=str(record.get("category") or "").strip() or None,
+            pia=bool(db_flags & 4),
+            ladd=bool(db_flags & 8),
         )
     except ValueError:
         return None
