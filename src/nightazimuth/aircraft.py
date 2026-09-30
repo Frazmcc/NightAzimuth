@@ -57,6 +57,9 @@ class AircraftObservation:
     type_description: str | None = None
     operator: str | None = None
     military: bool = False
+    category: str | None = None
+    pia: bool = False
+    ladd: bool = False
 
     def __post_init__(self) -> None:
         icao = self.icao24.strip().lower()
@@ -76,9 +79,11 @@ class AircraftObservation:
                 raise ValueError(f"{name} must be finite when supplied")
         if self.track_deg is not None:
             object.__setattr__(self, "track_deg", self.track_deg % 360.0)
-        for name in ("callsign", "squawk", "registration", "type_code", "type_description", "operator"):
+        for name in ("callsign", "squawk", "registration", "type_code", "type_description", "operator", "category"):
             value = (getattr(self, name) or "").strip() or None
             object.__setattr__(self, name, value)
+        if self.category is not None:
+            object.__setattr__(self, "category", self.category.upper())
 
     @property
     def preferred_altitude_m(self) -> float | None:
