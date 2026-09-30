@@ -53,6 +53,20 @@ def _snapshot(*observations: AircraftObservation) -> AircraftSnapshot:
     )
 
 
+def _unavailable_snapshot() -> AircraftSnapshot:
+    now = datetime.now(UTC)
+    return AircraftSnapshot(
+        observations=(),
+        source_id="adsb-lol",
+        source_label="adsb.lol",
+        fetched_at=now,
+        source_observed_at=None,
+        coverage_description="bounded observer area, 216 NM radius",
+        state=AircraftSnapshotState.UNAVAILABLE,
+        error="temporary upstream failure",
+    )
+
+
 def test_snapshot_cache_single_flights_concurrent_callers() -> None:
     cache = AircraftSnapshotCache(ttl_seconds=1.0, max_entries=2)
     snapshot = _snapshot(_observation("abc001", 0.1, 0.1))
@@ -91,6 +105,44 @@ def test_snapshot_cache_single_flights_concurrent_callers() -> None:
     assert sum(result.cache_hit for result in results) == 1
     assert sum(bool(result.provider_timings) for result in results) == 1
     assert max(result.shared_wait_ms for result in results) > 0.0
+
+
+def test_snapshot_cache_uses_recent_good_snapshot_for_transient_failure() -> None:
+    cache = AircraftSnapshotCache(
+        ttl_seconds=0.01,
+        max_entries=2,
+        fallback_max_age_seconds=1.0,
+    )
+    good = _snapshot(_observation("abc006", 0.1, 0.1))
+
+    first = cache.get_or_fetch(("fallback",), lambda: (good, {"provider_request_ms": 5.0}))
+    sleep(0.02)
+    second = cache.get_or_fetch(
+        ("fallback",),
+        lambda: (_unavailable_snapshot(), {"provider_request_ms": 8000.0}),
+    )
+
+    assert first.fallback_used is False
+    assert second.fallback_used is True
+    assert [item.icao24 for item in second.snapshot.observations] == ["abc006"]
+    assert second.snapshot.state != AircraftSnapshotState.UNAVAILABLE
+    assert second.snapshot.error == "temporary upstream failure"
+    assert second.provider_timings["provider_request_ms"] == 8000.0
+
+
+def test_snapshot_cache_without_recent_good_snapshot_preserves_unavailable_state() -> None:
+    cache = AircraftSnapshotCache(
+        ttl_seconds=0.01,
+        max_entries=2,
+        fallback_max_age_seconds=0.02,
+    )
+    result = cache.get_or_fetch(
+        ("no-fallback",),
+        lambda: (_unavailable_snapshot(), {"provider_request_ms": 8000.0}),
+    )
+
+    assert result.fallback_used is False
+    assert result.snapshot.state == AircraftSnapshotState.UNAVAILABLE
 
 
 def test_slice_snapshot_radius_preserves_requested_provider_boundary() -> None:
@@ -141,6 +193,7 @@ def test_live_sky_200_and_400_km_views_share_one_provider_snapshot(monkeypatch) 
     assert radar.json()["source_observation_count"] == 2
     assert primary.json()["source_observation_count"] == 1
     assert primary.json()["source"]["coverage"] == "bounded observer area, 108 NM radius"
+    assert primary.json()["source"]["fallback_used"] is False
     assert "provider_request;dur=25.0" in radar.headers["Server-Timing"]
     assert "provider_request;dur=0.0" in primary.headers["Server-Timing"]
     assert "shared_wait;dur=" in primary.headers["Server-Timing"]
