@@ -275,6 +275,8 @@ def satellites(
             f"catalogue_load;dur={timings.get('catalogue_load_ms', 0.0):.1f}, "
             f"catalogue_merge;dur={timings.get('catalogue_merge_ms', 0.0):.1f}, "
             f"tracker_init;dur={timings.get('tracker_init_ms', 0.0):.1f}, "
+            f"tracker_timescale;dur={timings.get('tracker_timescale_ms', 0.0):.1f}, "
+            f"tracker_observer;dur={timings.get('tracker_observer_ms', 0.0):.1f}, "
             f"prepare;dur={timings.get('prepare_ms', 0.0):.1f}, "
             f"propagate;dur={timings.get('propagation_ms', 0.0):.1f}, "
             f"track_build;dur={timings.get('track_build_ms', 0.0):.1f}, "
@@ -283,14 +285,17 @@ def satellites(
         )
     logger.info(
         "satellite_request total_ms=%.1f lock_wait_ms=%.1f catalogue_load_ms=%.1f "
-        "catalogue_merge_ms=%.1f tracker_init_ms=%.1f prepare_ms=%.1f "
-        "propagation_ms=%.1f track_build_ms=%.1f payload_build_ms=%.1f "
-        "catalogue_hot_hits=%d merge_cache_hit=%d catalog_count=%d returned_count=%d",
+        "catalogue_merge_ms=%.1f tracker_init_ms=%.1f tracker_timescale_ms=%.1f "
+        "tracker_observer_ms=%.1f prepare_ms=%.1f propagation_ms=%.1f "
+        "track_build_ms=%.1f payload_build_ms=%.1f catalogue_hot_hits=%d "
+        "merge_cache_hit=%d catalog_count=%d returned_count=%d",
         total_ms,
         timings.get("lock_wait_ms", 0.0),
         timings.get("catalogue_load_ms", 0.0),
         timings.get("catalogue_merge_ms", 0.0),
         timings.get("tracker_init_ms", 0.0),
+        timings.get("tracker_timescale_ms", 0.0),
+        timings.get("tracker_observer_ms", 0.0),
         timings.get("prepare_ms", 0.0),
         timings.get("propagation_ms", 0.0),
         timings.get("track_build_ms", 0.0),
@@ -407,6 +412,7 @@ def _build_satellite_snapshot(
     tracker = SatelliteTracker(observer)
     if timings is not None:
         timings["tracker_init_ms"] = (perf_counter() - tracker_init_started) * 1000.0
+        timings.update(getattr(tracker, "init_timings", {}))
 
     if catalogue_cache_key is None:
         positions = tracker.positions_above_horizon(
