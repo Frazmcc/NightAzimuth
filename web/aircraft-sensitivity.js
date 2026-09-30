@@ -12,6 +12,8 @@ const aircraftContinuity=new Map();
 
 function contactKey(contact){return String(contact?.icao24||"").trim().toLowerCase()}
 function observerKey(params){return `${Number(params?.latitude).toFixed(6)},${Number(params?.longitude).toFixed(6)}`}
+function preferredDistanceUnit(){return localStorage.getItem("nightazimuth.distanceUnit")==="km"?"km":"miles"}
+function webRadiusLabel(){return preferredDistanceUnit()==="km"?`${Math.round(AIRCRAFT_RADIUS_KM)} km`:`${AIRCRAFT_RADIUS_MILES} mi`}
 function withinWebRadius(contact){
   const range=Number(contact?.range_km);
   return !Number.isFinite(range)||range<=AIRCRAFT_RADIUS_KM;
@@ -89,7 +91,7 @@ async function refreshAircraftFast(){
     const coasting=Number(data.continuity_coasting_count??0);
     const continuity=coasting?` · ${coasting} coasting`:"";
     setText("#aircraft-count",String(skyAircraft.length));
-    setText("#aircraft-detail",`${data.source?.label||"Live aircraft"} · ${skyAircraft.length} above horizon · ${nearby} within 50 mi · ${sourceCount} source positions${continuity}`);
+    setText("#aircraft-detail",`${data.source?.label||"Live aircraft"} · ${skyAircraft.length} above horizon · ${nearby} within ${webRadiusLabel()} · ${sourceCount} source positions${continuity}`);
     setText("#updated",data.observed_at||"Loaded");
     renderContacts(data.geojson||{features:[]});
     drawSky();
@@ -103,4 +105,5 @@ async function refreshAircraftFast(){
 refreshAircraftFast();
 setInterval(refreshAircraftFast,AIRCRAFT_REFRESH_MS);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshAircraftFast()});
+window.addEventListener("nightazimuth:distance-unit",()=>refreshAircraftFast());
 })();
