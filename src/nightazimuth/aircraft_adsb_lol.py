@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from math import isfinite
 from threading import BoundedSemaphore, Lock
 from time import monotonic, perf_counter, sleep
-from typing import Any
+from typing import Any, Iterable
 
 import httpx
 
@@ -26,7 +26,7 @@ _SHARED_CLIENT_LOCK = Lock()
 _SHARED_CLIENT: httpx.Client | None = None
 _PROVIDER_REQUEST_CONCURRENCY = 1
 _PROVIDER_REQUEST_GATE = BoundedSemaphore(_PROVIDER_REQUEST_CONCURRENCY)
-_PROVIDER_MIN_START_INTERVAL_SECONDS = 0.75
+_PROVIDER_MIN_START_INTERVAL_SECONDS = 1.0
 _PROVIDER_RETRY_DELAY_SECONDS = 0.75
 _PROVIDER_MAX_ATTEMPTS = 3
 _PROVIDER_SCHEDULE_LOCK = Lock()
@@ -35,7 +35,7 @@ _RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 def shared_adsb_http_client() -> httpx.Client:
-    """Return the process-wide adsb.lol client used by the hosted API."""
+    """Return the process-wide HTTP client used by hosted aircraft providers."""
 
     global _SHARED_CLIENT
     with _SHARED_CLIENT_LOCK:
@@ -55,7 +55,7 @@ def prewarm_shared_adsb_http_client() -> None:
 
 
 def close_shared_adsb_http_client() -> None:
-    """Close and discard the process-wide adsb.lol connection pool."""
+    """Close and discard the process-wide aircraft-provider connection pool."""
 
     global _SHARED_CLIENT
     with _SHARED_CLIENT_LOCK:
@@ -89,6 +89,7 @@ class AdsbLolProvider:
     provider_id = "adsb-lol"
     label = "adsb.lol"
     source_kind = AircraftSourceKind.INTERNET
+    max_attempts = _PROVIDER_MAX_ATTEMPTS
 
     def __init__(
         self,
@@ -119,6 +120,18 @@ class AdsbLolProvider:
             True,
         )
 
+    def _request_url(self, observer: AircraftObserver, radius_nm: int) -> str:
+        return (
+            "https://api.adsb.lol/v2/point/"
+            f"{observer.latitude_deg:.6f}/{observer.longitude_deg:.6f}/{radius_nm}"
+        )
+
+    def _payload_records(self, payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
+        records = payload.get("ac", [])
+        if not isinstance(records, list):
+            return ()
+        return (record for record in records if isinstance(record, dict))
+
     def fetch_snapshot(self, observer: AircraftObserver, radius_km: float) -> AircraftSnapshot:
         if not isfinite(radius_km) or radius_km <= 0:
             raise ValueError("radius_km must be a positive finite number")
@@ -130,10 +143,7 @@ class AdsbLolProvider:
             "provider_retry_count": 0.0,
         }
         radius_nm = max(1, min(250, round(radius_km / 1.852)))
-        url = (
-            "https://api.adsb.lol/v2/point/"
-            f"{observer.latitude_deg:.6f}/{observer.longitude_deg:.6f}/{radius_nm}"
-        )
+        url = self._request_url(observer, radius_nm)
         fetched_at = datetime.now(timezone.utc)
 
         client_started = perf_counter()
@@ -142,16 +152,15 @@ class AdsbLolProvider:
         failure: Exception | None = None
         payload: dict[str, Any] | None = None
 
-        # Production measurements showed that a cold region can intermittently fail
-        # while the same region succeeds seconds later. Keep one global outbound gate,
-        # space request starts, and allow two progressively spaced retries. This makes
-        # cold-region resilience bounded and evidence-driven without creating a burst.
+        # One global outbound gate covers both the primary and failover provider.
+        # adsb.lol receives bounded retries; the failover provider overrides
+        # max_attempts to one so provider redundancy cannot turn into a retry storm.
         wait_started = perf_counter()
         _PROVIDER_REQUEST_GATE.acquire()
         self.last_timings["provider_wait_ms"] = (perf_counter() - wait_started) * 1000.0
         request_elapsed_ms = 0.0
         try:
-            for attempt in range(_PROVIDER_MAX_ATTEMPTS):
+            for attempt in range(self.max_attempts):
                 self.last_timings["provider_throttle_ms"] += _wait_for_provider_start_slot()
                 request_started = perf_counter()
                 try:
@@ -163,7 +172,7 @@ class AdsbLolProvider:
                 except httpx.HTTPError as exc:
                     request_elapsed_ms += (perf_counter() - request_started) * 1000.0
                     failure = exc
-                    if attempt + 1 >= _PROVIDER_MAX_ATTEMPTS or not _retryable_provider_error(exc):
+                    if attempt + 1 >= self.max_attempts or not _retryable_provider_error(exc):
                         break
                     retry_delay = _PROVIDER_RETRY_DELAY_SECONDS * (attempt + 1)
                     retry_started = perf_counter()
@@ -179,7 +188,10 @@ class AdsbLolProvider:
         if failure is None:
             decode_started = perf_counter()
             try:
-                payload = response.json()
+                decoded = response.json()
+                if not isinstance(decoded, dict):
+                    raise ValueError("provider payload is not a JSON object")
+                payload = decoded
                 self.last_timings["provider_decode_ms"] = (
                     perf_counter() - decode_started
                 ) * 1000.0
@@ -209,7 +221,7 @@ class AdsbLolProvider:
                 source_observed_at=None,
                 coverage_description=f"bounded observer area, {radius_nm} NM radius",
                 state=AircraftSnapshotState.UNAVAILABLE,
-                error=f"adsb.lol unavailable: {failure}",
+                error=f"{self.label} unavailable: {failure}",
             )
 
         assert payload is not None
@@ -217,8 +229,7 @@ class AdsbLolProvider:
         source_time = _payload_time(payload, fallback=fetched_at)
         observations = tuple(
             observation
-            for record in payload.get("ac", [])
-            if isinstance(record, dict)
+            for record in self._payload_records(payload)
             if (
                 observation := _normalise_record(
                     record,
@@ -249,46 +260,33 @@ class AdsbLolProvider:
         return snapshot
 
 
-class AirplanesLiveProvider:
-    """Compatibility shim retained while API failover references are removed.
+class AirplanesLiveProvider(AdsbLolProvider):
+    """Compatibility name for the bounded adsb.fi failover provider.
 
-    Production diagnostics showed anonymous server-to-server requests from the
-    deployment environment receive HTTP 403 from Airplanes.live. Keep the class
-    temporarily so the API layer remains import-compatible, but perform no network
-    request and report the provider as unavailable immediately.
+    The API layer still imports this historical class name so this change can stay
+    deliberately small. The actual failover is adsb.fi, called only after adsb.lol
+    has exhausted its bounded retries. The public adsb.fi endpoint is limited to
+    one request per second, so all hosted-provider starts share the same 1s gate.
     """
 
-    provider_id = "airplanes-live"
-    label = "airplanes.live"
+    provider_id = "adsb-fi"
+    label = "adsb.fi (https://adsb.fi/)"
     source_kind = AircraftSourceKind.INTERNET
+    max_attempts = 1
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        self.last_timings = {
-            "provider_client_ms": 0.0,
-            "provider_wait_ms": 0.0,
-            "provider_throttle_ms": 0.0,
-            "provider_retry_wait_ms": 0.0,
-            "provider_retry_count": 0.0,
-            "provider_request_ms": 0.0,
-            "provider_decode_ms": 0.0,
-            "provider_close_ms": 0.0,
-            "provider_normalize_ms": 0.0,
-            "provider_total_ms": 0.0,
-        }
-
-    def fetch_snapshot(self, observer: AircraftObserver, radius_km: float) -> AircraftSnapshot:
-        radius_nm = max(1, min(250, round(radius_km / 1.852)))
-        fetched_at = datetime.now(timezone.utc)
-        return AircraftSnapshot(
-            observations=(),
-            source_id=self.provider_id,
-            source_label=self.label,
-            fetched_at=fetched_at,
-            source_observed_at=None,
-            coverage_description=f"bounded observer area, {radius_nm} NM radius",
-            state=AircraftSnapshotState.UNAVAILABLE,
-            error="airplanes.live fallback disabled after production 403 responses",
+    def _request_url(self, observer: AircraftObserver, radius_nm: int) -> str:
+        return (
+            "https://opendata.adsb.fi/api/v3/lat/"
+            f"{observer.latitude_deg:.6f}/lon/{observer.longitude_deg:.6f}/dist/{radius_nm}"
         )
+
+    def _payload_records(self, payload: dict[str, Any]) -> Iterable[dict[str, Any]]:
+        records = payload.get("aircraft")
+        if not isinstance(records, list):
+            records = payload.get("ac", [])
+        if not isinstance(records, list):
+            return ()
+        return (record for record in records if isinstance(record, dict))
 
 
 def _normalise_record(
