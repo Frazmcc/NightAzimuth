@@ -4,6 +4,7 @@ import csv
 from dataclasses import dataclass
 import io
 import math
+from pathlib import Path
 from threading import Lock
 
 import httpx
@@ -33,11 +34,26 @@ class ResilientAirportLandmarkProvider:
     PRIMARY_URL = "https://davidmegginson.github.io/ourairports-data/airports.csv"
     FALLBACK_URL = "https://vrs-standing-data.adsb.lol/airports.csv"
 
-    def __init__(self, *, client: httpx.Client | None = None, timeout_seconds: float = 20.0) -> None:
+    def __init__(
+        self,
+        *,
+        client: httpx.Client | None = None,
+        timeout_seconds: float = 20.0,
+        cache_directory: Path | None = None,
+    ) -> None:
         self._client = client
         self._timeout_seconds = timeout_seconds
         self._records: tuple[_Airport, ...] = ()
         self._lock = Lock()
+        self._cache_path = (
+            Path(cache_directory) / "airports" / "ourairports.csv"
+            if cache_directory is not None
+            else None
+        )
+
+    def preload(self) -> int:
+        """Load the global catalogue once and return the retained record count."""
+        return len(self._load_records())
 
     def nearby(
         self,
@@ -86,12 +102,34 @@ class ResilientAirportLandmarkProvider:
             if self._records:
                 return self._records
 
-            records = self._fetch_ourairports()
+            records = self._load_cached_ourairports()
+            if not records:
+                records = self._fetch_ourairports()
             if not records:
                 records = self._fetch_adsb_lol()
             if records:
                 self._records = records
             return self._records
+
+    def _load_cached_ourairports(self) -> tuple[_Airport, ...]:
+        if self._cache_path is None or not self._cache_path.exists():
+            return ()
+        try:
+            text = self._cache_path.read_text(encoding="utf-8-sig")
+        except OSError:
+            return ()
+        return self._parse_ourairports(text)
+
+    def _write_cached_ourairports(self, text: str) -> None:
+        if self._cache_path is None:
+            return
+        try:
+            self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+            self._cache_path.write_text(text, encoding="utf-8")
+        except OSError:
+            # The catalogue has already been downloaded and parsed successfully;
+            # a cache write problem must not remove airport landmarks.
+            pass
 
     def _get_text(self, url: str) -> str | None:
         owns_client = self._client is None
@@ -114,35 +152,46 @@ class ResilientAirportLandmarkProvider:
         text = self._get_text(self.PRIMARY_URL)
         if not text:
             return ()
+        records = self._parse_ourairports(text)
+        if records:
+            self._write_cached_ourairports(text)
+        return records
+
+    @staticmethod
+    def _parse_ourairports(text: str) -> tuple[_Airport, ...]:
         records: list[_Airport] = []
-        for row in csv.DictReader(io.StringIO(text)):
-            iata = (row.get("iata_code") or "").strip().upper()
-            icao = (row.get("ident") or row.get("gps_code") or "").strip().upper()
-            name = (row.get("name") or "").strip()
-            airport_type = (row.get("type") or "").strip().lower()
-            scheduled = (row.get("scheduled_service") or "").strip().lower() == "yes"
-            if len(iata) != 3 or len(icao) != 4 or not name:
-                continue
-            if airport_type not in {"large_airport", "medium_airport"}:
-                continue
-            if airport_type == "medium_airport" and not scheduled:
-                continue
-            try:
-                latitude = float(row.get("latitude_deg") or "")
-                longitude = float(row.get("longitude_deg") or "")
-            except ValueError:
-                continue
-            records.append(
-                _Airport(
-                    iata=iata,
-                    icao=icao,
-                    name=name,
-                    latitude_deg=latitude,
-                    longitude_deg=longitude,
-                    airport_type=airport_type,
-                    scheduled_service=scheduled,
+        try:
+            rows = csv.DictReader(io.StringIO(text))
+            for row in rows:
+                iata = (row.get("iata_code") or "").strip().upper()
+                icao = (row.get("ident") or row.get("gps_code") or "").strip().upper()
+                name = (row.get("name") or "").strip()
+                airport_type = (row.get("type") or "").strip().lower()
+                scheduled = (row.get("scheduled_service") or "").strip().lower() == "yes"
+                if len(iata) != 3 or len(icao) != 4 or not name:
+                    continue
+                if airport_type not in {"large_airport", "medium_airport"}:
+                    continue
+                if airport_type == "medium_airport" and not scheduled:
+                    continue
+                try:
+                    latitude = float(row.get("latitude_deg") or "")
+                    longitude = float(row.get("longitude_deg") or "")
+                except ValueError:
+                    continue
+                records.append(
+                    _Airport(
+                        iata=iata,
+                        icao=icao,
+                        name=name,
+                        latitude_deg=latitude,
+                        longitude_deg=longitude,
+                        airport_type=airport_type,
+                        scheduled_service=scheduled,
+                    )
                 )
-            )
+        except (csv.Error, AttributeError):
+            return ()
         return tuple(records)
 
     def _fetch_adsb_lol(self) -> tuple[_Airport, ...]:
