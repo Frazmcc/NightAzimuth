@@ -24,7 +24,7 @@ _DEFAULT_TIMEOUT_SECONDS = 8.0
 _DEFAULT_USER_AGENT = "NightAzimuth/1.0 (+https://github.com/Frazmcc/NightAzimuth)"
 _SHARED_CLIENT_LOCK = Lock()
 _SHARED_CLIENT: httpx.Client | None = None
-_PROVIDER_REQUEST_CONCURRENCY = 2
+_PROVIDER_REQUEST_CONCURRENCY = 1
 _PROVIDER_REQUEST_GATE = BoundedSemaphore(_PROVIDER_REQUEST_CONCURRENCY)
 
 
@@ -120,10 +120,10 @@ class AdsbLolProvider:
         failure: Exception | None = None
         payload: dict[str, Any] | None = None
 
-        # Capacity testing showed that four observer-specific outbound requests
-        # arriving together can make adsb.lol reject one request even while the
-        # NightAzimuth process remains healthy. Keep at most two provider calls in
-        # flight and expose queue time separately from upstream request latency.
+        # Production capacity testing showed that overlapping observer-specific
+        # point-radius calls from this hosted backend are unreliable even when the
+        # NightAzimuth process itself remains healthy. Serialize only the outbound
+        # provider I/O and expose queue time separately from upstream latency.
         wait_started = perf_counter()
         _PROVIDER_REQUEST_GATE.acquire()
         self.last_timings["provider_wait_ms"] = (perf_counter() - wait_started) * 1000.0
