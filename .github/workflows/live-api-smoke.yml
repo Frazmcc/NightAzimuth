@@ -7,6 +7,8 @@ on:
       - ".github/workflows/live-api-smoke.yml"
       - "render.yaml"
       - "src/nightazimuth/api.py"
+      - "src/nightazimuth/api_aircraft.py"
+      - "src/nightazimuth/aircraft_adsb_lol.py"
       - "src/nightazimuth/api_sky.py"
       - "src/nightazimuth/api_satellites.py"
       - "src/nightazimuth/celestrak.py"
@@ -207,10 +209,19 @@ jobs:
             fi
           done
 
+          aircraft_primary_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/aircraft_primary.headers)"
+          aircraft_radar_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/aircraft_radar.headers)"
           sky_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/sky.headers)"
           satellite_timing="$(awk 'BEGIN{IGNORECASE=1} /^server-timing:/ {sub(/\r$/, ""); sub(/^[^:]+:[[:space:]]*/, ""); print; exit}' /tmp/satellites.headers)"
+          echo "Aircraft primary Server-Timing: ${aircraft_primary_timing:-missing}"
+          echo "Aircraft radar Server-Timing: ${aircraft_radar_timing:-missing}"
           echo "Concurrent Sky Server-Timing: ${sky_timing:-missing}"
           echo "Concurrent Satellite Server-Timing: ${satellite_timing:-missing}"
+
+          if [[ "$aircraft_primary_timing" != *"provider_request;dur="* || "$aircraft_radar_timing" != *"provider_request;dur="* ]]; then
+            echo "Aircraft performance instrumentation is missing from production response." >&2
+            exit 1
+          fi
 
           if [[ "$satellite_timing" != *"propagate;dur="* || "$satellite_timing" != *"track_build;dur="* ]]; then
             echo "Satellite performance instrumentation is missing from production response." >&2
@@ -234,6 +245,10 @@ jobs:
             while read -r name status dns connect ttfb total size; do
               echo "| $name | $status | ${dns}s | ${connect}s | ${ttfb}s | ${total}s | $size |"
             done < /tmp/burst-summary.txt
+            echo ""
+            echo "Aircraft primary Server-Timing: \`$aircraft_primary_timing\`"
+            echo ""
+            echo "Aircraft radar Server-Timing: \`$aircraft_radar_timing\`"
             echo ""
             echo "Concurrent Sky Server-Timing: \`$sky_timing\`"
             echo ""

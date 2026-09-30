@@ -57,6 +57,13 @@ def test_aircraft_response_contract(monkeypatch) -> None:
     )
 
     class FakeProvider:
+        last_timings = {
+            "provider_request_ms": 11.0,
+            "provider_decode_ms": 2.0,
+            "provider_normalize_ms": 3.0,
+            "provider_total_ms": 17.0,
+        }
+
         def fetch_snapshot(self, observer, radius_km):
             assert observer.latitude_deg == 55.86
             assert observer.longitude_deg == -4.25
@@ -70,6 +77,22 @@ def test_aircraft_response_contract(monkeypatch) -> None:
     )
 
     assert response.status_code == 200
+    timing = response.headers["Server-Timing"]
+    for stage in (
+        "provider_request",
+        "provider_decode",
+        "provider_normalize",
+        "provider_total",
+        "projection",
+        "payload",
+        "total",
+    ):
+        assert f"{stage};dur=" in timing
+    assert "provider_request;dur=11.0" in timing
+    assert "provider_decode;dur=2.0" in timing
+    assert "provider_normalize;dur=3.0" in timing
+    assert "provider_total;dur=17.0" in timing
+
     payload = response.json()
     assert payload["source"]["id"] == "adsb-lol"
     assert payload["source"]["state"] == "live"
@@ -163,6 +186,13 @@ def test_aircraft_unavailable_returns_503(monkeypatch) -> None:
     )
 
     class FakeProvider:
+        last_timings = {
+            "provider_request_ms": 25.0,
+            "provider_decode_ms": 0.0,
+            "provider_normalize_ms": 0.0,
+            "provider_total_ms": 25.0,
+        }
+
         def fetch_snapshot(self, observer, radius_km):
             return snapshot
 
@@ -174,3 +204,7 @@ def test_aircraft_unavailable_returns_503(monkeypatch) -> None:
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Aircraft data is temporarily unavailable"
+    timing = response.headers["Server-Timing"]
+    assert "provider_request;dur=25.0" in timing
+    assert "provider_total;dur=25.0" in timing
+    assert "total;dur=" in timing
