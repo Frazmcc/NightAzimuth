@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from threading import Event, Lock, Thread
 
 import httpx
 
@@ -75,3 +76,55 @@ def test_provider_start_spacing_is_observable(monkeypatch):
 
     assert first.last_timings["provider_throttle_ms"] >= 0.0
     assert second.last_timings["provider_throttle_ms"] >= 10.0
+
+
+def test_retry_backoff_releases_gate_for_other_region(monkeypatch):
+    first_failure_seen = Event()
+    sequence: list[str] = []
+    sequence_lock = Lock()
+    first_region_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal first_region_calls
+        path = request.url.path
+        with sequence_lock:
+            sequence.append(path)
+        if "/51.500000/" in path:
+            first_region_calls += 1
+            if first_region_calls == 1:
+                first_failure_seen.set()
+                return httpx.Response(503, text="temporary")
+        return httpx.Response(200, json=_live_payload())
+
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_MIN_START_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_RETRY_DELAY_SECONDS", 0.05)
+    monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_NEXT_REQUEST_AT", 0.0)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = AdsbLolProvider(client=client)
+    second = AdsbLolProvider(client=client)
+    snapshots: dict[str, object] = {}
+
+    first_thread = Thread(
+        target=lambda: snapshots.setdefault(
+            "first", first.fetch_snapshot(AircraftObserver(51.5, -0.1), 100.0)
+        )
+    )
+    second_thread = Thread(
+        target=lambda: snapshots.setdefault(
+            "second", second.fetch_snapshot(AircraftObserver(52.0, -0.2), 100.0)
+        )
+    )
+
+    first_thread.start()
+    assert first_failure_seen.wait(timeout=1.0)
+    second_thread.start()
+    first_thread.join(timeout=2.0)
+    second_thread.join(timeout=2.0)
+    client.close()
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert ["/51.500000/" in path for path in sequence] == [True, False, True]
+    assert snapshots["first"].state == AircraftSnapshotState.LIVE
+    assert snapshots["second"].state == AircraftSnapshotState.LIVE
