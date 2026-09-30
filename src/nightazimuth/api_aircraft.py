@@ -26,7 +26,7 @@ _REGIONAL_CACHE_TTL_SECONDS = 10.0
 _AIRCRAFT_SNAPSHOT_CACHE = AircraftSnapshotCache(
     ttl_seconds=_REGIONAL_CACHE_TTL_SECONDS,
     max_entries=64,
-    fallback_max_age_seconds=30.0,
+    fallback_max_age_seconds=_MAX_RECENT_POSITION_AGE_SECONDS,
 )
 
 
