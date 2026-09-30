@@ -54,6 +54,15 @@ def _region_center_coordinate(value: float) -> float:
     )
 
 
+def _bounded_region_center(value: float, *, minimum: float, maximum: float) -> float:
+    """Return a regional cell centre that remains inside a coordinate's legal range."""
+    half_cell = _REGIONAL_CELL_DEGREES / 2.0
+    return min(
+        maximum - half_cell,
+        max(minimum + half_cell, _region_center_coordinate(value)),
+    )
+
+
 def _provider_request_scope(
     observer: AircraftObserver,
     radius_km: float,
@@ -72,8 +81,16 @@ def _provider_request_scope(
     if radius_km <= _LIVE_SKY_SHARED_RADIUS_KM:
         return (
             AircraftObserver(
-                _region_center_coordinate(observer.latitude_deg),
-                _region_center_coordinate(observer.longitude_deg),
+                _bounded_region_center(
+                    observer.latitude_deg,
+                    minimum=-90.0,
+                    maximum=90.0,
+                ),
+                _bounded_region_center(
+                    observer.longitude_deg,
+                    minimum=-180.0,
+                    maximum=180.0,
+                ),
                 0.0,
             ),
             _REGIONAL_PROVIDER_RADIUS_KM,
