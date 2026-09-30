@@ -46,6 +46,22 @@ function enhanceAircraftResponse(data,params){
   return{...data,aircraft:visible,count:visible.length,nearby_count:all.length,continuity_coasting_count:coastingCount};
 }
 
+// app.js can begin its initial request before this enhancer loads. Guard the actual
+// aircraft renderer as well as the data request so an older, wider response can
+// never paint an aircraft outside the 50-mile web limit, even briefly.
+const baseDrawContacts=typeof drawContacts==="function"?drawContacts:null;
+if(baseDrawContacts){
+  drawContacts=function(w,h){
+    const original=skyAircraft;
+    try{
+      skyAircraft=Array.isArray(original)?original.filter(withinWebRadius):[];
+      return baseDrawContacts(w,h);
+    }finally{
+      skyAircraft=original;
+    }
+  };
+}
+
 // Keep all browser aircraft data within 50 miles of the saved observer. The local
 // radar draws from the same bounded acquisition set and can apply a smaller radius.
 // Below-horizon contacts are retained only for the optional local radar; Live Sky
@@ -82,8 +98,8 @@ async function refreshAircraftFast(){
   }finally{aircraftRefreshInFlight=false}
 }
 
-// app.js can start its first request before this enhancer is loaded. Run one
-// bounded acquisition immediately so the browser settles on the 50-mile dataset.
+// Run one bounded acquisition immediately so the browser settles on the 50-mile
+// dataset even if the initial app.js request was already in flight.
 refreshAircraftFast();
 setInterval(refreshAircraftFast,AIRCRAFT_REFRESH_MS);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)refreshAircraftFast()});
