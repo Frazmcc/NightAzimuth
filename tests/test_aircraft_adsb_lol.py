@@ -40,7 +40,8 @@ def test_adsb_lol_normalises_units_ages_and_identity_metadata():
         return httpx.Response(200, json=payload)
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    snapshot = AdsbLolProvider(client=client).fetch_snapshot(
+    provider = AdsbLolProvider(client=client)
+    snapshot = provider.fetch_snapshot(
         AircraftObserver(51.5, -0.1),
         100.0,
     )
@@ -60,6 +61,16 @@ def test_adsb_lol_normalises_units_ages_and_identity_metadata():
     assert aircraft.type_description == "BOEING RC-135W RIVET JOINT"
     assert aircraft.operator == "ROYAL AIR FORCE"
     assert aircraft.military is True
+    for stage in (
+        "provider_request_ms",
+        "provider_decode_ms",
+        "provider_normalize_ms",
+        "provider_total_ms",
+    ):
+        assert provider.last_timings[stage] >= 0.0
+    assert provider.last_timings["provider_total_ms"] >= provider.last_timings[
+        "provider_request_ms"
+    ]
 
 
 def test_adsb_lol_ground_contact_does_not_fabricate_barometric_altitude():
@@ -95,7 +106,8 @@ def test_adsb_lol_http_failure_returns_unavailable_snapshot():
     client = httpx.Client(
         transport=httpx.MockTransport(lambda request: httpx.Response(503, text="unavailable"))
     )
-    snapshot = AdsbLolProvider(client=client).fetch_snapshot(
+    provider = AdsbLolProvider(client=client)
+    snapshot = provider.fetch_snapshot(
         AircraftObserver(51.5, -0.1),
         50.0,
     )
@@ -104,3 +116,7 @@ def test_adsb_lol_http_failure_returns_unavailable_snapshot():
     assert snapshot.state == AircraftSnapshotState.UNAVAILABLE
     assert snapshot.observations == ()
     assert snapshot.error is not None
+    assert provider.last_timings["provider_request_ms"] >= 0.0
+    assert provider.last_timings["provider_decode_ms"] == 0.0
+    assert provider.last_timings["provider_normalize_ms"] == 0.0
+    assert provider.last_timings["provider_total_ms"] >= 0.0
