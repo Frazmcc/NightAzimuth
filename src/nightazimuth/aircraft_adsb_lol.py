@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from math import isfinite
+from threading import Lock
 from time import perf_counter
 from typing import Any
 
@@ -19,6 +20,46 @@ from .aircraft import (
 KNOT_TO_MPS = 0.514444
 FOOT_TO_M = 0.3048
 FPM_TO_MPS = 0.00508
+_DEFAULT_TIMEOUT_SECONDS = 8.0
+_DEFAULT_USER_AGENT = "NightAzimuth/1.0 (+https://github.com/Frazmcc/NightAzimuth)"
+_SHARED_CLIENT_LOCK = Lock()
+_SHARED_CLIENT: httpx.Client | None = None
+
+
+def shared_adsb_http_client() -> httpx.Client:
+    """Return the process-wide adsb.lol client used by the hosted API.
+
+    httpx.Client maintains a connection pool, so keeping one client alive avoids
+    rebuilding TLS/HTTP connection state for every live-aircraft refresh. The
+    lock only protects creation/replacement; request I/O is not serialized.
+    """
+
+    global _SHARED_CLIENT
+    with _SHARED_CLIENT_LOCK:
+        if _SHARED_CLIENT is None or _SHARED_CLIENT.is_closed:
+            _SHARED_CLIENT = httpx.Client(
+                timeout=_DEFAULT_TIMEOUT_SECONDS,
+                headers={"User-Agent": _DEFAULT_USER_AGENT, "Accept": "application/json"},
+                follow_redirects=True,
+            )
+        return _SHARED_CLIENT
+
+
+def prewarm_shared_adsb_http_client() -> None:
+    """Create the default connection pool without making an upstream request."""
+
+    shared_adsb_http_client()
+
+
+def close_shared_adsb_http_client() -> None:
+    """Close and discard the process-wide adsb.lol connection pool."""
+
+    global _SHARED_CLIENT
+    with _SHARED_CLIENT_LOCK:
+        client = _SHARED_CLIENT
+        _SHARED_CLIENT = None
+    if client is not None and not client.is_closed:
+        client.close()
 
 
 class AdsbLolProvider:
@@ -30,13 +71,30 @@ class AdsbLolProvider:
         self,
         *,
         client: httpx.Client | None = None,
-        timeout_seconds: float = 8.0,
-        user_agent: str = "NightAzimuth/1.0 (+https://github.com/Frazmcc/NightAzimuth)",
+        timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+        user_agent: str = _DEFAULT_USER_AGENT,
     ) -> None:
         self._client = client
         self._timeout_seconds = timeout_seconds
         self._user_agent = user_agent
         self.last_timings: dict[str, float] = {}
+
+    def _client_for_request(self) -> tuple[httpx.Client, bool]:
+        if self._client is not None:
+            return self._client, False
+        if (
+            self._timeout_seconds == _DEFAULT_TIMEOUT_SECONDS
+            and self._user_agent == _DEFAULT_USER_AGENT
+        ):
+            return shared_adsb_http_client(), False
+        return (
+            httpx.Client(
+                timeout=self._timeout_seconds,
+                headers={"User-Agent": self._user_agent, "Accept": "application/json"},
+                follow_redirects=True,
+            ),
+            True,
+        )
 
     def fetch_snapshot(self, observer: AircraftObserver, radius_km: float) -> AircraftSnapshot:
         if not isfinite(radius_km) or radius_km <= 0:
@@ -53,14 +111,14 @@ class AdsbLolProvider:
             f"{observer.latitude_deg:.6f}/{observer.longitude_deg:.6f}/{radius_nm}"
         )
         fetched_at = datetime.now(timezone.utc)
-        owns_client = self._client is None
-        client = self._client or httpx.Client(
-            timeout=self._timeout_seconds,
-            headers={"User-Agent": self._user_agent, "Accept": "application/json"},
-            follow_redirects=True,
-        )
+
+        client_started = perf_counter()
+        client, owns_client = self._client_for_request()
+        self.last_timings["provider_client_ms"] = (perf_counter() - client_started) * 1000.0
+        failure: Exception | None = None
+        payload: dict[str, Any] | None = None
+        request_started = perf_counter()
         try:
-            request_started = perf_counter()
             response = client.get(url)
             response.raise_for_status()
             self.last_timings["provider_request_ms"] = (
@@ -73,10 +131,18 @@ class AdsbLolProvider:
                 perf_counter() - decode_started
             ) * 1000.0
         except (httpx.HTTPError, ValueError) as exc:
+            failure = exc
             self.last_timings.setdefault(
                 "provider_request_ms", (perf_counter() - request_started) * 1000.0
             )
             self.last_timings.setdefault("provider_decode_ms", 0.0)
+        finally:
+            close_started = perf_counter()
+            if owns_client:
+                client.close()
+            self.last_timings["provider_close_ms"] = (perf_counter() - close_started) * 1000.0
+
+        if failure is not None:
             self.last_timings["provider_normalize_ms"] = 0.0
             self.last_timings["provider_total_ms"] = (
                 perf_counter() - total_started
@@ -89,12 +155,10 @@ class AdsbLolProvider:
                 source_observed_at=None,
                 coverage_description=f"bounded observer area, {radius_nm} NM radius",
                 state=AircraftSnapshotState.UNAVAILABLE,
-                error=f"adsb.lol unavailable: {exc}",
+                error=f"adsb.lol unavailable: {failure}",
             )
-        finally:
-            if owns_client:
-                client.close()
 
+        assert payload is not None
         normalize_started = perf_counter()
         source_time = _payload_time(payload, fallback=fetched_at)
         observations = tuple(

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 
 from . import __version__
+from .aircraft_adsb_lol import close_shared_adsb_http_client, prewarm_shared_adsb_http_client
 from .api_aircraft import router as aircraft_router
 from .api_airports import router as airports_router
 from .api_geojson import router as geojson_router
@@ -41,13 +42,28 @@ def _prewarm_sky_runtime() -> None:
     )
 
 
+def _prewarm_aircraft_http() -> None:
+    """Create the reusable ADS-B HTTP connection pool before live traffic arrives."""
+
+    started = perf_counter()
+    prewarm_shared_adsb_http_client()
+    _LOGGER.info(
+        "aircraft_http_prewarm total_ms=%.1f",
+        (perf_counter() - started) * 1000.0,
+    )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    """Warm production-only astronomy resources before accepting requests."""
+    """Warm production-only resources before accepting requests."""
 
     if os.environ.get("NIGHTAZIMUTH_PREWARM_SKY") == "1":
         _prewarm_sky_runtime()
-    yield
+        _prewarm_aircraft_http()
+    try:
+        yield
+    finally:
+        close_shared_adsb_http_client()
 
 
 app = FastAPI(

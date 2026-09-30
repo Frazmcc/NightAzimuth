@@ -4,7 +4,12 @@ import httpx
 import pytest
 
 from nightazimuth.aircraft import AircraftObserver, AircraftSnapshotState
-from nightazimuth.aircraft_adsb_lol import AdsbLolProvider, FOOT_TO_M, KNOT_TO_MPS
+from nightazimuth.aircraft_adsb_lol import (
+    AdsbLolProvider,
+    FOOT_TO_M,
+    KNOT_TO_MPS,
+    close_shared_adsb_http_client,
+)
 
 
 def test_adsb_lol_normalises_units_ages_and_identity_metadata():
@@ -62,8 +67,10 @@ def test_adsb_lol_normalises_units_ages_and_identity_metadata():
     assert aircraft.operator == "ROYAL AIR FORCE"
     assert aircraft.military is True
     for stage in (
+        "provider_client_ms",
         "provider_request_ms",
         "provider_decode_ms",
+        "provider_close_ms",
         "provider_normalize_ms",
         "provider_total_ms",
     ):
@@ -71,6 +78,53 @@ def test_adsb_lol_normalises_units_ages_and_identity_metadata():
     assert provider.last_timings["provider_total_ms"] >= provider.last_timings[
         "provider_request_ms"
     ]
+
+
+def test_default_providers_reuse_one_process_http_client(monkeypatch):
+    from nightazimuth import aircraft_adsb_lol
+
+    close_shared_adsb_http_client()
+    created = []
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return {"now": datetime.now(timezone.utc).timestamp(), "ac": []}
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.is_closed = False
+            self.urls = []
+            created.append(self)
+
+        def get(self, url):
+            self.urls.append(url)
+            return FakeResponse()
+
+        def close(self):
+            self.is_closed = True
+
+    monkeypatch.setattr(aircraft_adsb_lol.httpx, "Client", FakeClient)
+    try:
+        first = AdsbLolProvider()
+        second = AdsbLolProvider()
+        first.fetch_snapshot(AircraftObserver(51.5, -0.1), 100.0)
+        second.fetch_snapshot(AircraftObserver(51.5, -0.1), 100.0)
+
+        assert len(created) == 1
+        assert len(created[0].urls) == 2
+        assert created[0].is_closed is False
+        assert first.last_timings["provider_client_ms"] >= 0.0
+        assert second.last_timings["provider_client_ms"] >= 0.0
+        assert first.last_timings["provider_close_ms"] >= 0.0
+        assert second.last_timings["provider_close_ms"] >= 0.0
+    finally:
+        close_shared_adsb_http_client()
+
+    assert created[0].is_closed is True
 
 
 def test_adsb_lol_ground_contact_does_not_fabricate_barometric_altitude():
@@ -116,7 +170,9 @@ def test_adsb_lol_http_failure_returns_unavailable_snapshot():
     assert snapshot.state == AircraftSnapshotState.UNAVAILABLE
     assert snapshot.observations == ()
     assert snapshot.error is not None
+    assert provider.last_timings["provider_client_ms"] >= 0.0
     assert provider.last_timings["provider_request_ms"] >= 0.0
     assert provider.last_timings["provider_decode_ms"] == 0.0
+    assert provider.last_timings["provider_close_ms"] >= 0.0
     assert provider.last_timings["provider_normalize_ms"] == 0.0
     assert provider.last_timings["provider_total_ms"] >= 0.0
