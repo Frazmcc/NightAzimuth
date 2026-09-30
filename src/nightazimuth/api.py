@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 import logging
 import os
@@ -31,6 +32,12 @@ API_VERSION = "v1"
 MAX_QUERY_STRING_BYTES = 2048
 _SKY_LIMITING_MAGNITUDE = 5.5
 _LOGGER = logging.getLogger("uvicorn.error")
+# Render's free API service has very limited CPU. Capacity testing showed that
+# overlapping observer-specific sky and satellite calculations can exhaust the
+# whole service. Admit one heavy astronomy request at a time so bursts queue
+# instead of turning into process/edge-level 502/503 failures.
+_ASTRONOMY_REQUEST_GATE = asyncio.Semaphore(1)
+_ASTRONOMY_PATHS = frozenset(("/api/v1/sky", "/api/v1/satellites"))
 
 
 def _prewarm_sky_runtime() -> None:
@@ -165,10 +172,31 @@ app.include_router(sky_router)
 
 @app.middleware("http")
 async def reject_oversized_query_strings(request: Request, call_next):
-    """Bound unauthenticated public query input before endpoint parsing."""
+    """Bound public input and prevent heavy astronomy work from overlapping."""
     if len(request.scope.get("query_string", b"")) > MAX_QUERY_STRING_BYTES:
         return JSONResponse(status_code=414, content={"detail": "Query string too long"})
-    response = await call_next(request)
+
+    admission_wait_ms = 0.0
+    if request.url.path in _ASTRONOMY_PATHS:
+        wait_started = perf_counter()
+        async with _ASTRONOMY_REQUEST_GATE:
+            admission_wait_ms = (perf_counter() - wait_started) * 1000.0
+            response = await call_next(request)
+    else:
+        response = await call_next(request)
+
+    if request.url.path in _ASTRONOMY_PATHS:
+        existing_timing = response.headers.get("Server-Timing")
+        admission_timing = f"admission_wait;dur={admission_wait_ms:.1f}"
+        response.headers["Server-Timing"] = (
+            f"{admission_timing}, {existing_timing}" if existing_timing else admission_timing
+        )
+        _LOGGER.info(
+            "astronomy_admission path=%s wait_ms=%.1f",
+            request.url.path,
+            admission_wait_ms,
+        )
+
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Frame-Options"] = "DENY"
