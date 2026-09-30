@@ -19,7 +19,11 @@ logger = logging.getLogger(__name__)
 
 _MAX_RECENT_POSITION_AGE_SECONDS = 45.0
 _LIVE_SKY_SHARED_RADIUS_KM = 400.0
-_AIRCRAFT_SNAPSHOT_CACHE = AircraftSnapshotCache(ttl_seconds=1.0, max_entries=4)
+_AIRCRAFT_SNAPSHOT_CACHE = AircraftSnapshotCache(
+    ttl_seconds=1.0,
+    max_entries=4,
+    fallback_max_age_seconds=30.0,
+)
 
 
 def _server_timing(timings: dict[str, float], total_ms: float) -> str:
@@ -160,6 +164,7 @@ def aircraft(
             "id": snapshot.source_id,
             "label": snapshot.source_label,
             "state": snapshot.state.value,
+            "fallback_used": shared.fallback_used,
             "source_observed_at": (
                 snapshot.source_observed_at.isoformat()
                 if snapshot.source_observed_at is not None
@@ -186,13 +191,14 @@ def aircraft(
     response.headers["Server-Timing"] = _server_timing(timings, total_ms)
     logger.info(
         "aircraft_request radius_km=%.1f upstream_radius_km=%.1f shared_cache_hit=%s "
-        "shared_wait_ms=%.1f total_ms=%.1f provider_client_ms=%.1f provider_request_ms=%.1f "
-        "provider_decode_ms=%.1f provider_close_ms=%.1f provider_normalize_ms=%.1f "
-        "provider_total_ms=%.1f projection_ms=%.1f payload_ms=%.1f "
-        "source_count=%d returned_count=%d",
+        "fallback_used=%s shared_wait_ms=%.1f total_ms=%.1f provider_client_ms=%.1f "
+        "provider_request_ms=%.1f provider_decode_ms=%.1f provider_close_ms=%.1f "
+        "provider_normalize_ms=%.1f provider_total_ms=%.1f projection_ms=%.1f "
+        "payload_ms=%.1f source_count=%d returned_count=%d",
         radius_km,
         upstream_radius_km,
         shared.cache_hit,
+        shared.fallback_used,
         shared.shared_wait_ms,
         total_ms,
         timings.get("provider_client_ms", 0.0),
