@@ -1,22 +1,68 @@
 # NightAzimuth hosted web frontend
 
-Stage 21.7 is a static, provider-independent browser client for the NightAzimuth HTTP API.
+This directory contains the **primary production NightAzimuth client** deployed at:
 
-Set `apiBaseUrl` in `config.js` to the deployed API origin. Do not put provider credentials or secrets in this file: static-site contents are public.
+**https://nightazimuth.co.uk**
 
-It consumes `/api/v1/aircraft` for both observer-relative sky contacts and the embedded GeoJSON contact collection from the same provider snapshot, plus `/api/v1/satellites`, `/api/v1/weather`, and `/api/v1/observing`. Satellite positions remain observer-relative azimuth/elevation data and are rendered only in Live Sky; no geographic satellite coordinates are fabricated. It contains no upstream-provider logic. A static host such as GitHub Pages can serve this directory after the API host and CORS policy are selected in later Stage 21 increments.
+The browser talks to the public API at:
 
-## Stage 21.9 domain layout
+**https://api.nightazimuth.co.uk**
 
-The intended public domain layout is:
+## Purpose
 
-- `nightazimuth.co.uk` — static browser frontend, served with HTTPS.
-- `api.nightazimuth.co.uk` — Render-hosted FastAPI service, served with HTTPS.
+The frontend is intentionally static and provider-independent. It contains no upstream API credentials and no direct ADS-B/orbital/weather provider logic.
 
-The browser configuration points only to the public API hostname. DNS must not be changed until the corresponding hosted service has been created and its platform hostname is known.
+Hosted data is obtained through the NightAzimuth API, which performs provider access, observer-specific calculations, caching, resilience and request sharing.
 
-For the API, add `api.nightazimuth.co.uk` as a custom domain on the Render web service first, then create the DNS record Render requests and verify it in Render. Render automatically provisions and renews TLS and redirects HTTP to HTTPS.
+## Current startup model
 
-For a GitHub Pages frontend, configure `nightazimuth.co.uk` as the repository Pages custom domain before creating its DNS CNAME. The CNAME should point directly to the account's GitHub Pages hostname, not to a repository path. Enforce HTTPS after GitHub confirms the certificate is available.
+The browser does not launch all heavy requests at once.
 
-Do not use wildcard DNS records. Keep the frontend and API records explicit so ownership and routing remain unambiguous.
+Current startup behaviour is deliberately progressive:
+
+- lightweight data requests start immediately
+- aircraft acquisition uses the current configured radar distance rather than the older 200/400 km dual-startup pattern
+- sky work is slightly spread between clients
+- satellite loading follows sky instead of competing with it immediately
+
+This scheduling is part of the production scalability design and should be preserved unless a replacement is measured to be better.
+
+## Main hosted data
+
+The frontend consumes versioned `/api/v1` endpoints for data such as:
+
+- aircraft
+- airports
+- weather
+- observing guidance
+- sky/stars/planets/galaxies
+- satellites
+
+Observer-relative positions remain observer-relative. The frontend must not invent geographic positions for data the API does not provide.
+
+## Domain layout
+
+- `nightazimuth.co.uk` — static browser frontend over HTTPS
+- `api.nightazimuth.co.uk` — hosted FastAPI service over HTTPS
+
+`config.js` contains the public API origin only. Never add secrets to `web/`; everything deployed here is public.
+
+## Deployment
+
+The repository Pages workflow publishes the static frontend. `web/CNAME` contains the production custom domain.
+
+The API is deployed separately through `render.yaml`.
+
+## Development rules
+
+- keep provider credentials out of the browser
+- keep observer-specific source requests behind the API where sharing/resilience matters
+- preserve layer toggles, panning, zoom and object-selection usability
+- do not reintroduce below-horizon blank sky
+- do not reintroduce the old simultaneous heavy-startup burst without measured evidence
+- keep `config.js` limited to non-secret public configuration
+
+For current architecture and capacity information see:
+
+- `../docs/CURRENT_ARCHITECTURE.md`
+- `../docs/PROJECT_STATUS.md`
