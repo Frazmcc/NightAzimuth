@@ -4,6 +4,7 @@ if(!root||typeof skyXY!=="function"||typeof drawSky!=="function"||typeof renderC
 
 const baseDrawSky=drawSky;
 const baseShowObject=typeof showObject==="function"?showObject:null;
+const routeCache=new Map();
 let renderTimer=null;
 let lastRenderSignature=null;
 
@@ -85,19 +86,30 @@ function routeLabel(route){
   return departure&&arrival?`${departure} → ${arrival}`:null;
 }
 
+async function lookupRoute(callsign){
+  const key=String(callsign||"").trim().toUpperCase();
+  if(!key)return null;
+  if(routeCache.has(key))return routeCache.get(key);
+  const request=getJson(`/api/v1/aircraft/route/${encodeURIComponent(key)}`,{},{timeoutMs:6000,retries:0})
+    .catch(()=>null);
+  routeCache.set(key,request);
+  const route=await request;
+  routeCache.set(key,route);
+  return route;
+}
+
 function registrationCountry(registration){
   const reg=String(registration||"").trim().toUpperCase();
   if(!reg)return null;
   const prefixes=[
     ["PH-","Netherlands"],["G-","United Kingdom"],["EI-","Ireland"],["D-","Germany"],
     ["F-","France"],["OO-","Belgium"],["HB-","Switzerland"],["OE-","Austria"],
-    ["EC-","Spain"],["I-","Italy"],["CS-","Portugal"],["PH-","Netherlands"],
-    ["SE-","Sweden"],["LN-","Norway"],["OY-","Denmark"],["OH-","Finland"],
-    ["SP-","Poland"],["OK-","Czech Republic"],["OM-","Slovakia"],["HA-","Hungary"],
-    ["SX-","Greece"],["TC-","Turkey"],["9H-","Malta"],["LX-","Luxembourg"],
-    ["A6-","United Arab Emirates"],["A7-","Qatar"],["HZ-","Saudi Arabia"],
-    ["JA","Japan"],["HL","South Korea"],["VH-","Australia"],["ZK-","New Zealand"],
-    ["C-","Canada"],["N","United States"]
+    ["EC-","Spain"],["I-","Italy"],["CS-","Portugal"],["SE-","Sweden"],
+    ["LN-","Norway"],["OY-","Denmark"],["OH-","Finland"],["SP-","Poland"],
+    ["OK-","Czech Republic"],["OM-","Slovakia"],["HA-","Hungary"],["SX-","Greece"],
+    ["TC-","Turkey"],["9H-","Malta"],["LX-","Luxembourg"],["A6-","United Arab Emirates"],
+    ["A7-","Qatar"],["HZ-","Saudi Arabia"],["JA","Japan"],["HL","South Korea"],
+    ["VH-","Australia"],["ZK-","New Zealand"],["C-","Canada"],["N","United States"]
   ];
   const match=prefixes.find(([prefix])=>reg.startsWith(prefix));
   return match?match[1]:null;
@@ -150,7 +162,7 @@ function makeSection(title,rows){
 
 function yesNo(value){return value===null||value===undefined?null:(value?"Yes":"No")}
 
-function renderAircraftInspector(raw){
+function renderAircraftInspector(raw,routeOverride=null){
   const inspector=document.querySelector("#object-inspector");
   const details=document.querySelector("#inspector-details");
   if(!inspector||!details)return;
@@ -159,7 +171,7 @@ function renderAircraftInspector(raw){
   setText("#inspector-name",raw.callsign||raw.registration||raw.icao24||"Aircraft");
 
   const display=raw.display||{};
-  const route=raw.route||{};
+  const route=routeOverride||raw.route||{};
   const sections=[
     makeSection("AIRCRAFT",[
       makeDetailRow("Aircraft type / model",display.make_model||raw.type_description||raw.type_code),
@@ -188,7 +200,16 @@ function renderAircraftInspector(raw){
 if(baseShowObject){
   window.showObject=function(target){
     if(target?.kind==="aircraft"){
-      renderAircraftInspector(target.item||{});
+      const aircraft=target.item||{};
+      renderAircraftInspector(aircraft);
+      if(!aircraft.route&&aircraft.callsign){
+        lookupRoute(aircraft.callsign).then(route=>{
+          if(!route)return;
+          const stillSelected=typeof trackedObject==="undefined"||
+            (trackedObject?.kind==="aircraft"&&trackedObject?.key===aircraft.icao24);
+          if(stillSelected)renderAircraftInspector(aircraft,route);
+        });
+      }
       return;
     }
     baseShowObject(target);
