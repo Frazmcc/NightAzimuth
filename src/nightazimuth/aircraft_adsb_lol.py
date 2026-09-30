@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from math import isfinite
+from time import perf_counter
 from typing import Any
 
 import httpx
@@ -35,11 +36,14 @@ class AdsbLolProvider:
         self._client = client
         self._timeout_seconds = timeout_seconds
         self._user_agent = user_agent
+        self.last_timings: dict[str, float] = {}
 
     def fetch_snapshot(self, observer: AircraftObserver, radius_km: float) -> AircraftSnapshot:
         if not isfinite(radius_km) or radius_km <= 0:
             raise ValueError("radius_km must be a positive finite number")
 
+        total_started = perf_counter()
+        self.last_timings = {}
         radius_nm = max(1, min(250, round(radius_km / 1.852)))
         # /v2/point is the provider's documented point-radius endpoint.  The older
         # /v2/lat/.../lon/.../dist/... alias is still documented, but using the
@@ -56,10 +60,27 @@ class AdsbLolProvider:
             follow_redirects=True,
         )
         try:
+            request_started = perf_counter()
             response = client.get(url)
             response.raise_for_status()
+            self.last_timings["provider_request_ms"] = (
+                perf_counter() - request_started
+            ) * 1000.0
+
+            decode_started = perf_counter()
             payload = response.json()
+            self.last_timings["provider_decode_ms"] = (
+                perf_counter() - decode_started
+            ) * 1000.0
         except (httpx.HTTPError, ValueError) as exc:
+            self.last_timings.setdefault(
+                "provider_request_ms", (perf_counter() - request_started) * 1000.0
+            )
+            self.last_timings.setdefault("provider_decode_ms", 0.0)
+            self.last_timings["provider_normalize_ms"] = 0.0
+            self.last_timings["provider_total_ms"] = (
+                perf_counter() - total_started
+            ) * 1000.0
             return AircraftSnapshot(
                 observations=(),
                 source_id=self.provider_id,
@@ -74,6 +95,7 @@ class AdsbLolProvider:
             if owns_client:
                 client.close()
 
+        normalize_started = perf_counter()
         source_time = _payload_time(payload, fallback=fetched_at)
         observations = tuple(
             observation
@@ -81,8 +103,11 @@ class AdsbLolProvider:
             if isinstance(record, dict)
             if (observation := _normalise_record(record, source_time)) is not None
         )
+        self.last_timings["provider_normalize_ms"] = (
+            perf_counter() - normalize_started
+        ) * 1000.0
         age_seconds = max(0.0, (fetched_at - source_time).total_seconds())
-        return AircraftSnapshot(
+        snapshot = AircraftSnapshot(
             observations=observations,
             source_id=self.provider_id,
             source_label=self.label,
@@ -92,6 +117,10 @@ class AdsbLolProvider:
             state=classify_snapshot_age(age_seconds),
             error=None,
         )
+        self.last_timings["provider_total_ms"] = (
+            perf_counter() - total_started
+        ) * 1000.0
+        return snapshot
 
 
 def _normalise_record(record: dict[str, Any], snapshot_time: datetime) -> AircraftObservation | None:
