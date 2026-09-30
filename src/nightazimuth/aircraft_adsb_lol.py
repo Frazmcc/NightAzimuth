@@ -157,7 +157,9 @@ class AdsbLolProvider:
                 request_started = perf_counter()
                 try:
                     response = client.get(url)
-                    self.last_timings["provider_status_code"] = float(response.status_code)
+                    self.last_timings["provider_status_code"] = float(
+                        getattr(response, "status_code", 200)
+                    )
                     response.raise_for_status()
                     request_elapsed_ms += (perf_counter() - request_started) * 1000.0
                     failure = None
