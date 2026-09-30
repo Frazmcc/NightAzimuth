@@ -37,8 +37,7 @@ def test_adsb_fi_failover_uses_documented_point_endpoint_and_preserves_source(mo
 
     assert snapshot.state == AircraftSnapshotState.LIVE
     assert snapshot.source_id == "adsb-fi"
-    assert "adsb.fi" in snapshot.source_label
-    assert "https://adsb.fi/" in snapshot.source_label
+    assert snapshot.source_label == "adsb.fi (https://adsb.fi/)"
     assert len(snapshot.observations) == 1
     assert snapshot.observations[0].source_id == "adsb-fi"
     assert snapshot.observations[0].source_label == snapshot.source_label
