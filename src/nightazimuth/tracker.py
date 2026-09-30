@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 import hashlib
 import json
 from math import cos, radians, sin, sqrt
@@ -206,13 +207,26 @@ def _clear_prepared_catalogue_cache() -> None:
         _PREPARED_CATALOGUE = None
 
 
+@lru_cache(maxsize=1)
+def _shared_timescale() -> Any:
+    """Return the process-wide Skyfield timescale used by satellite trackers."""
+
+    return load.timescale()
+
+
+def _clear_timescale_cache() -> None:
+    """Clear the shared Skyfield timescale (primarily for deterministic tests)."""
+
+    _shared_timescale.cache_clear()
+
+
 class SatelliteTracker:
     def __init__(self, observer: ObserverConfig) -> None:
         init_started = perf_counter()
         self.observer = observer
 
         timescale_started = perf_counter()
-        self._timescale = load.timescale()
+        self._timescale = _shared_timescale()
         timescale_ms = (perf_counter() - timescale_started) * 1000.0
 
         observer_started = perf_counter()
