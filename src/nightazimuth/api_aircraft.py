@@ -9,7 +9,7 @@ from time import perf_counter
 from fastapi import APIRouter, HTTPException, Query, Response
 
 from .aircraft import AircraftObserver, AircraftSnapshotState
-from .aircraft_adsb_lol import AdsbLolProvider
+from .aircraft_adsb_lol import AdsbLolProvider, AirplanesLiveProvider
 from .aircraft_live import build_sky_aircraft
 from .aircraft_display import aircraft_display_identity, squawk_display
 from .aircraft_motion import AircraftMotionHistory, AircraftPositionState
@@ -43,6 +43,10 @@ def _server_timing(timings: dict[str, float], total_ms: float) -> str:
         f"provider_close;dur={timings.get('provider_close_ms', 0.0):.1f}, "
         f"provider_normalize;dur={timings.get('provider_normalize_ms', 0.0):.1f}, "
         f"provider_total;dur={timings.get('provider_total_ms', 0.0):.1f}, "
+        f"provider_failover_wait;dur={timings.get('provider_failover_wait_ms', 0.0):.1f}, "
+        f"provider_failover_throttle;dur={timings.get('provider_failover_throttle_ms', 0.0):.1f}, "
+        f"provider_failover_request;dur={timings.get('provider_failover_request_ms', 0.0):.1f}, "
+        f"provider_failover_total;dur={timings.get('provider_failover_total_ms', 0.0):.1f}, "
         f"projection;dur={timings.get('projection_ms', 0.0):.1f}, "
         f"payload;dur={timings.get('payload_ms', 0.0):.1f}, "
         f"total;dur={total_ms:.1f}"
@@ -102,17 +106,24 @@ def _provider_request_scope(
 
 
 def _snapshot_cache_key(observer: AircraftObserver, upstream_radius_km: float) -> tuple[object, ...]:
-    # Provider URLs are rounded to six decimal places. Regional Live Sky callers
-    # deliberately share the same provider observer here, so nearby users collapse
-    # onto one single-flight cache entry instead of triggering separate upstream
-    # requests. Include the provider factory object so test monkeypatches and future
-    # provider changes cannot reuse an incompatible entry.
+    # Include both provider factory objects so test monkeypatches or future provider
+    # changes cannot reuse an incompatible cached entry.
     return (
         AdsbLolProvider,
+        AirplanesLiveProvider,
         round(observer.latitude_deg, 6),
         round(observer.longitude_deg, 6),
         round(upstream_radius_km, 3),
     )
+
+
+def _failover_timings(timings: dict[str, float]) -> dict[str, float]:
+    """Namespace secondary-provider metrics without replacing primary timings."""
+    mapped: dict[str, float] = {}
+    for name, value in timings.items():
+        suffix = name.removeprefix("provider_")
+        mapped[f"provider_failover_{suffix}"] = value
+    return mapped
 
 
 @router.get("")
@@ -143,9 +154,21 @@ def aircraft(
     )
 
     def fetch_snapshot():
-        provider = AdsbLolProvider()
-        provider_snapshot = provider.fetch_snapshot(provider_observer, upstream_radius_km)
-        return provider_snapshot, getattr(provider, "last_timings", {})
+        primary = AdsbLolProvider()
+        primary_snapshot = primary.fetch_snapshot(provider_observer, upstream_radius_km)
+        fetch_timings = dict(getattr(primary, "last_timings", {}))
+        if primary_snapshot.state != AircraftSnapshotState.UNAVAILABLE:
+            return primary_snapshot, fetch_timings
+
+        # A secondary provider is queried only after the primary has exhausted its
+        # bounded retry. It shares the same process-wide request gate/start scheduler,
+        # so provider redundancy cannot create an additional outbound burst.
+        secondary = AirplanesLiveProvider()
+        secondary_snapshot = secondary.fetch_snapshot(provider_observer, upstream_radius_km)
+        fetch_timings.update(_failover_timings(getattr(secondary, "last_timings", {})))
+        if secondary_snapshot.state != AircraftSnapshotState.UNAVAILABLE:
+            return secondary_snapshot, fetch_timings
+        return primary_snapshot, fetch_timings
 
     shared = _AIRCRAFT_SNAPSHOT_CACHE.get_or_fetch(
         _snapshot_cache_key(provider_observer, upstream_radius_km),
@@ -161,6 +184,8 @@ def aircraft(
         snapshot = shared.snapshot
     timings["radius_slice_ms"] = (perf_counter() - slice_started) * 1000.0
 
+    provider_failover_used = snapshot.source_id == AirplanesLiveProvider.provider_id
+
     if snapshot.state == AircraftSnapshotState.UNAVAILABLE:
         total_ms = (perf_counter() - request_started) * 1000.0
         timing_header = _server_timing(timings, total_ms)
@@ -168,8 +193,9 @@ def aircraft(
             "aircraft_provider_unavailable radius_km=%.1f upstream_radius_km=%.1f "
             "regional_shared=%s shared_cache_hit=%s shared_wait_ms=%.1f total_ms=%.1f "
             "provider_client_ms=%.1f provider_wait_ms=%.1f provider_throttle_ms=%.1f "
-            "provider_retry_wait_ms=%.1f provider_request_ms=%.1f provider_decode_ms=%.1f "
-            "provider_close_ms=%.1f provider_total_ms=%.1f error=%s",
+            "provider_retry_wait_ms=%.1f provider_request_ms=%.1f provider_total_ms=%.1f "
+            "provider_failover_wait_ms=%.1f provider_failover_throttle_ms=%.1f "
+            "provider_failover_request_ms=%.1f provider_failover_total_ms=%.1f error=%s",
             radius_km,
             upstream_radius_km,
             regional_shared,
@@ -181,9 +207,11 @@ def aircraft(
             timings.get("provider_throttle_ms", 0.0),
             timings.get("provider_retry_wait_ms", 0.0),
             timings.get("provider_request_ms", 0.0),
-            timings.get("provider_decode_ms", 0.0),
-            timings.get("provider_close_ms", 0.0),
             timings.get("provider_total_ms", 0.0),
+            timings.get("provider_failover_wait_ms", 0.0),
+            timings.get("provider_failover_throttle_ms", 0.0),
+            timings.get("provider_failover_request_ms", 0.0),
+            timings.get("provider_failover_total_ms", 0.0),
             snapshot.error or "unknown provider error",
         )
         raise HTTPException(
@@ -225,6 +253,7 @@ def aircraft(
             "label": snapshot.source_label,
             "state": snapshot.state.value,
             "fallback_used": shared.fallback_used,
+            "provider_failover_used": provider_failover_used,
             "regional_shared": regional_shared,
             "source_observed_at": (
                 snapshot.source_observed_at.isoformat()
@@ -252,27 +281,30 @@ def aircraft(
     response.headers["Server-Timing"] = _server_timing(timings, total_ms)
     logger.info(
         "aircraft_request radius_km=%.1f upstream_radius_km=%.1f regional_shared=%s "
-        "shared_cache_hit=%s fallback_used=%s shared_wait_ms=%.1f total_ms=%.1f "
-        "provider_client_ms=%.1f provider_wait_ms=%.1f provider_throttle_ms=%.1f "
-        "provider_retry_wait_ms=%.1f provider_request_ms=%.1f provider_decode_ms=%.1f "
-        "provider_close_ms=%.1f provider_normalize_ms=%.1f provider_total_ms=%.1f "
+        "provider_failover_used=%s source_id=%s shared_cache_hit=%s fallback_used=%s "
+        "shared_wait_ms=%.1f total_ms=%.1f provider_wait_ms=%.1f provider_throttle_ms=%.1f "
+        "provider_retry_wait_ms=%.1f provider_request_ms=%.1f provider_total_ms=%.1f "
+        "provider_failover_wait_ms=%.1f provider_failover_throttle_ms=%.1f "
+        "provider_failover_request_ms=%.1f provider_failover_total_ms=%.1f "
         "projection_ms=%.1f payload_ms=%.1f source_count=%d returned_count=%d",
         radius_km,
         upstream_radius_km,
         regional_shared,
+        provider_failover_used,
+        snapshot.source_id,
         shared.cache_hit,
         shared.fallback_used,
         shared.shared_wait_ms,
         total_ms,
-        timings.get("provider_client_ms", 0.0),
         timings.get("provider_wait_ms", 0.0),
         timings.get("provider_throttle_ms", 0.0),
         timings.get("provider_retry_wait_ms", 0.0),
         timings.get("provider_request_ms", 0.0),
-        timings.get("provider_decode_ms", 0.0),
-        timings.get("provider_close_ms", 0.0),
-        timings.get("provider_normalize_ms", 0.0),
         timings.get("provider_total_ms", 0.0),
+        timings.get("provider_failover_wait_ms", 0.0),
+        timings.get("provider_failover_throttle_ms", 0.0),
+        timings.get("provider_failover_request_ms", 0.0),
+        timings.get("provider_failover_total_ms", 0.0),
         timings.get("projection_ms", 0.0),
         timings.get("payload_ms", 0.0),
         len(snapshot.observations),

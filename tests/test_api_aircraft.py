@@ -96,6 +96,7 @@ def test_aircraft_response_contract(monkeypatch) -> None:
     payload = response.json()
     assert payload["source"]["id"] == "adsb-lol"
     assert payload["source"]["state"] == "live"
+    assert payload["source"]["provider_failover_used"] is False
     assert payload["source"]["regional_shared"] is True
     assert payload["source_observation_count"] == 1
     assert payload["fresh_contact_count"] == 1
@@ -197,7 +198,11 @@ def test_aircraft_unavailable_returns_503(monkeypatch) -> None:
         def fetch_snapshot(self, observer, radius_km):
             return snapshot
 
+    class FakeSecondaryProvider(FakeProvider):
+        provider_id = "airplanes-live"
+
     monkeypatch.setattr("nightazimuth.api_aircraft.AdsbLolProvider", FakeProvider)
+    monkeypatch.setattr("nightazimuth.api_aircraft.AirplanesLiveProvider", FakeSecondaryProvider)
 
     response = TestClient(app).get(
         "/api/v1/aircraft?latitude=55.86&longitude=-4.25"
@@ -208,4 +213,5 @@ def test_aircraft_unavailable_returns_503(monkeypatch) -> None:
     timing = response.headers["Server-Timing"]
     assert "provider_request;dur=25.0" in timing
     assert "provider_total;dur=25.0" in timing
+    assert "provider_failover_request;dur=25.0" in timing
     assert "total;dur=" in timing
