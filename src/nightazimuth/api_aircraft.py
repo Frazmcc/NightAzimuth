@@ -31,9 +31,11 @@ _AIRCRAFT_SNAPSHOT_CACHE = AircraftSnapshotCache(
 
 
 def _server_timing(timings: dict[str, float], total_ms: float) -> str:
+    provider_status = int(timings.get("provider_status_code", 0.0))
     return (
         f"shared_wait;dur={timings.get('shared_wait_ms', 0.0):.1f}, "
         f"radius_slice;dur={timings.get('radius_slice_ms', 0.0):.1f}, "
+        f"provider_status;desc=\"{provider_status}\", "
         f"provider_client;dur={timings.get('provider_client_ms', 0.0):.1f}, "
         f"provider_wait;dur={timings.get('provider_wait_ms', 0.0):.1f}, "
         f"provider_throttle;dur={timings.get('provider_throttle_ms', 0.0):.1f}, "
@@ -192,16 +194,18 @@ def aircraft(
         logger.warning(
             "aircraft_provider_unavailable radius_km=%.1f upstream_radius_km=%.1f "
             "regional_shared=%s shared_cache_hit=%s shared_wait_ms=%.1f total_ms=%.1f "
-            "provider_client_ms=%.1f provider_wait_ms=%.1f provider_throttle_ms=%.1f "
-            "provider_retry_wait_ms=%.1f provider_request_ms=%.1f provider_total_ms=%.1f "
-            "provider_failover_wait_ms=%.1f provider_failover_throttle_ms=%.1f "
-            "provider_failover_request_ms=%.1f provider_failover_total_ms=%.1f error=%s",
+            "provider_status=%d provider_client_ms=%.1f provider_wait_ms=%.1f "
+            "provider_throttle_ms=%.1f provider_retry_wait_ms=%.1f provider_request_ms=%.1f "
+            "provider_total_ms=%.1f provider_failover_wait_ms=%.1f "
+            "provider_failover_throttle_ms=%.1f provider_failover_request_ms=%.1f "
+            "provider_failover_total_ms=%.1f error=%s",
             radius_km,
             upstream_radius_km,
             regional_shared,
             shared.cache_hit,
             shared.shared_wait_ms,
             total_ms,
+            int(timings.get("provider_status_code", 0.0)),
             timings.get("provider_client_ms", 0.0),
             timings.get("provider_wait_ms", 0.0),
             timings.get("provider_throttle_ms", 0.0),
