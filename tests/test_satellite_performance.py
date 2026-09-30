@@ -4,6 +4,8 @@ from fastapi.testclient import TestClient
 
 from nightazimuth.api import app
 import nightazimuth.api_satellites as satellites_module
+from nightazimuth.config import ObserverConfig
+from nightazimuth.tracker import SatelliteTracker
 
 
 def test_satellite_endpoint_exposes_internal_stage_timings(monkeypatch) -> None:
@@ -16,6 +18,10 @@ def test_satellite_endpoint_exposes_internal_stage_timings(monkeypatch) -> None:
 
     class FakeTracker:
         def __init__(self, _observer) -> None:
+            self.init_timings = {
+                "tracker_timescale_ms": 4.0,
+                "tracker_observer_ms": 5.0,
+            }
             self.last_timings = {}
 
         def positions_above_horizon(self, elements, *, minimum_elevation_deg, at):
@@ -43,6 +49,8 @@ def test_satellite_endpoint_exposes_internal_stage_timings(monkeypatch) -> None:
         "catalogue_load",
         "catalogue_merge",
         "tracker_init",
+        "tracker_timescale",
+        "tracker_observer",
         "prepare",
         "propagate",
         "track_build",
@@ -50,9 +58,27 @@ def test_satellite_endpoint_exposes_internal_stage_timings(monkeypatch) -> None:
         "total",
     ):
         assert f"{stage};dur=" in timing
+    assert "tracker_timescale;dur=4.0" in timing
+    assert "tracker_observer;dur=5.0" in timing
     assert "prepare;dur=1.0" in timing
     assert "propagate;dur=2.0" in timing
     assert "track_build;dur=3.0" in timing
+
+
+def test_real_tracker_records_init_timing_breakdown() -> None:
+    tracker = SatelliteTracker(
+        ObserverConfig(latitude=55.86, longitude=-4.25, altitude_m=50.0)
+    )
+
+    assert tracker.init_timings["tracker_timescale_ms"] >= 0.0
+    assert tracker.init_timings["tracker_observer_ms"] >= 0.0
+    assert tracker.init_timings["tracker_init_internal_ms"] >= 0.0
+    assert tracker.init_timings["tracker_init_internal_ms"] >= tracker.init_timings[
+        "tracker_timescale_ms"
+    ]
+    assert tracker.init_timings["tracker_init_internal_ms"] >= tracker.init_timings[
+        "tracker_observer_ms"
+    ]
 
 
 def test_repeat_hosted_group_uses_hot_catalogue_reference(monkeypatch) -> None:

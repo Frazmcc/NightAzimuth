@@ -208,8 +208,14 @@ def _clear_prepared_catalogue_cache() -> None:
 
 class SatelliteTracker:
     def __init__(self, observer: ObserverConfig) -> None:
+        init_started = perf_counter()
         self.observer = observer
+
+        timescale_started = perf_counter()
         self._timescale = load.timescale()
+        timescale_ms = (perf_counter() - timescale_started) * 1000.0
+
+        observer_started = perf_counter()
         self._observer_itrf_km = self._observer_ecef_km(observer)
         latitude = radians(observer.latitude)
         longitude = radians(observer.longitude)
@@ -217,7 +223,14 @@ class SatelliteTracker:
         self._cos_lat = cos(latitude)
         self._sin_lon = sin(longitude)
         self._cos_lon = cos(longitude)
-        self.last_timings: dict[str, float] = {}
+        observer_ms = (perf_counter() - observer_started) * 1000.0
+
+        self.init_timings: dict[str, float] = {
+            "tracker_timescale_ms": timescale_ms,
+            "tracker_observer_ms": observer_ms,
+            "tracker_init_internal_ms": (perf_counter() - init_started) * 1000.0,
+        }
+        self.last_timings: dict[str, float] = dict(self.init_timings)
 
     def positions_above_horizon(
         self,
@@ -244,7 +257,7 @@ class SatelliteTracker:
         if moment.tzinfo is None:
             raise ValueError("Tracking time must be timezone-aware")
 
-        self.last_timings = {}
+        self.last_timings = dict(self.init_timings)
         prepare_started = perf_counter()
         element_list = list(elements)
         prepared, cache_hit = _prepared_catalogue_for(
