@@ -196,11 +196,12 @@ def test_live_sky_200_and_400_km_views_share_one_provider_snapshot(monkeypatch) 
 
     assert radar.status_code == 200
     assert primary.status_code == 200
-    assert requested_radii == [400.0]
+    assert requested_radii == [463.0]
     assert radar.json()["source_observation_count"] == 2
     assert primary.json()["source_observation_count"] == 1
     assert primary.json()["source"]["coverage"] == "bounded observer area, 108 NM radius"
     assert primary.json()["source"]["fallback_used"] is False
+    assert primary.json()["source"]["regional_shared"] is True
     assert "provider_request;dur=25.0" in radar.headers["Server-Timing"]
     assert "provider_request;dur=0.0" in primary.headers["Server-Timing"]
     assert "shared_wait;dur=" in primary.headers["Server-Timing"]
