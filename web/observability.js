@@ -57,6 +57,22 @@
       freshCount: Number(payload.fresh_contact_count || 0),
       returnedCount: Number(payload.count || 0),
       observedAt: payload.observed_at || null,
+      errorStatus: null,
+    };
+    render();
+  }
+
+  function markAircraftUnavailable(status) {
+    const previous = state.aircraftTelemetry || {};
+    state.aircraftTelemetry = {
+      ...previous,
+      state: "unavailable",
+      sourceObservedAt: null,
+      freshCount: 0,
+      returnedCount: 0,
+      fallbackUsed: false,
+      failoverUsed: false,
+      errorStatus: status || 0,
     };
     render();
   }
@@ -96,12 +112,14 @@
       const response = await nativeFetch(input, init);
       record.status = response.status;
       record.ok = response.ok;
-      if (response.ok && endpoint.startsWith("/api/v1/aircraft")) {
-        response.clone().json().then(captureAircraftTelemetry).catch(() => {});
+      if (endpoint.startsWith("/api/v1/aircraft")) {
+        if (response.ok) response.clone().json().then(captureAircraftTelemetry).catch(() => {});
+        else markAircraftUnavailable(response.status);
       }
       return response;
     } catch (error) {
       record.error = error?.message || String(error);
+      if (endpoint.startsWith("/api/v1/aircraft")) markAircraftUnavailable(0);
       throw error;
     } finally {
       record.durationMs = Math.max(0, performance.now() - started);
@@ -175,7 +193,7 @@
 
   function topEndpoints() {
     const serverRows = state.backendTelemetry?.api?.top_endpoints;
-    if (Array.isArray(serverRows) && serverRows.length) {
+    if (Array.isArray(serverRows)) {
       return serverRows.slice(0, 5).map((row) => ({
         endpoint: row.path,
         count: row.requests,
@@ -227,6 +245,7 @@
   }
 
   function sourceFreshnessText() {
+    if (state.aircraftTelemetry?.state === "unavailable") return "Unavailable";
     const value = state.aircraftTelemetry?.sourceObservedAt || state.aircraftTelemetry?.observedAt;
     if (!value) return "Waiting";
     const parsed = Date.parse(value);
@@ -243,6 +262,31 @@
     if (!el) return;
     el.classList.remove("obs-good", "obs-warn", "obs-bad", "obs-blue");
     if (cls) el.classList.add(cls);
+  }
+
+  function setCardSubtitle(title, text) {
+    for (const heading of document.querySelectorAll(".obs-card-head h2")) {
+      if (heading.textContent !== title) continue;
+      const subtitle = heading.parentElement?.querySelector(".obs-subtle") || heading.closest(".obs-card-head")?.querySelector(".obs-subtle");
+      if (subtitle) subtitle.textContent = text;
+      break;
+    }
+  }
+
+  function updatePopulationLabels(usingBackend) {
+    const p95Foot = document.getElementById("obs-api-p95")?.closest(".obs-card")?.querySelector(".obs-kpi-foot");
+    if (p95Foot) p95Foot.textContent = usingBackend ? "Server · rolling 5 minutes" : "Browser session";
+    setCardSubtitle("API performance", usingBackend ? "Server · rolling 5 minutes" : "Browser session");
+    setCardSubtitle("Top API endpoints", usingBackend ? "Server · rolling 5 minutes" : "Browser session");
+  }
+
+  function removeStaticDataSourcePlaceholder() {
+    const apiCell = document.getElementById("obs-hosted-api");
+    const list = apiCell?.closest(".obs-list");
+    if (!list) return;
+    for (const row of list.querySelectorAll(".obs-row")) {
+      if (row.querySelector("strong")?.textContent === "Data source detail") row.remove();
+    }
   }
 
   function sparkPath(values, width = 420, height = 120) {
@@ -281,7 +325,7 @@
     if (!body) return;
     const rows = topEndpoints();
     body.innerHTML = rows.length ? rows.map((row) => `
-      <tr><td title="${escapeHtml(row.endpoint)}">${escapeHtml(row.endpoint)}</td><td class="num">${row.count}</td><td class="num">${row.p95.toFixed(0)} ms</td><td class="num ${row.errorRate > 5 ? "obs-bad" : row.errorRate > 0 ? "obs-warn" : "obs-good"}">${row.errorRate.toFixed(1)}%</td></tr>`).join("") : '<tr><td colspan="4" class="obs-subtle">Waiting for API activity…</td></tr>';
+      <tr><td title="${escapeHtml(row.endpoint)}">${escapeHtml(row.endpoint)}</td><td class="num">${row.count}</td><td class="num">${row.p95.toFixed(0)} ms</td><td class="num ${row.errorRate > 5 ? "obs-bad" : row.errorRate > 0 ? "obs-warn" : "obs-good"}">${row.errorRate.toFixed(1)}%</td></tr>`).join("") : '<tr><td colspan="4" class="obs-subtle">No API activity in the selected telemetry window.</td></tr>';
   }
 
   function renderErrors() {
@@ -293,6 +337,7 @@
   }
 
   function renderHostedService() {
+    removeStaticDataSourcePlaceholder();
     const apiCell = document.getElementById("obs-hosted-api");
     if (!apiCell) return;
     const list = apiCell.closest(".obs-list");
@@ -305,12 +350,13 @@
       ["ADS-B source", aircraft?.label || "Waiting for aircraft data"],
       ["ADS-B source state", aircraft?.state || "Unknown"],
       ["ADS-B source freshness", sourceFreshnessText()],
-      ["Aircraft source / returned", aircraft ? `${aircraft.sourceCount} / ${aircraft.returnedCount}` : "—"],
-      ["Fresh contacts", aircraft ? String(aircraft.freshCount) : "—"],
+      ["Aircraft source / returned", aircraft ? `${aircraft.sourceCount || 0} / ${aircraft.returnedCount || 0}` : "—"],
+      ["Fresh contacts", aircraft ? String(aircraft.freshCount || 0) : "—"],
       ["Regional cache", aircraft ? (aircraft.regionalShared ? "Shared regional snapshot" : "Observer-specific") : "—"],
       ["Fallback cache", aircraft ? (aircraft.fallbackUsed ? "In use" : "Not in use") : "—"],
       ["Provider failover", aircraft ? (aircraft.failoverUsed ? "Active" : "Primary provider") : "—"],
     ];
+    if (aircraft?.state === "unavailable") rows.push(["Latest aircraft request", aircraft.errorStatus ? `HTTP ${aircraft.errorStatus}` : "Network failure"]);
     for (const [label, value] of rows) {
       const row = document.createElement("div");
       row.className = "obs-row";
@@ -328,6 +374,7 @@
     if (!document.getElementById("observability-screen")) return;
     const clientSummary = requestSummary();
     const serverSummary = state.backendTelemetry?.api;
+    const usingBackend = Boolean(serverSummary);
     const summary = serverSummary ? {
       rpm: Number(serverSummary.requests_last_minute || 0),
       successRate: Number(serverSummary.success_rate ?? 100),
@@ -340,6 +387,7 @@
     const memory = getMemoryMb();
     const longTaskP95 = percentile(state.longTasks.map((t) => t.durationMs), 95);
 
+    updatePopulationLabels(usingBackend);
     setText("obs-health", state.health ? (healthOk ? "Healthy" : "Degraded") : "Checking");
     setClass("obs-health", state.health ? (healthOk ? "obs-good" : "obs-bad") : "obs-warn");
     setText("obs-health-foot", state.health?.payload?.application_version ? `API ${state.health.payload.application_version}` : "Hosted API");
@@ -452,6 +500,7 @@
     window.addEventListener("online", render);
     window.addEventListener("offline", render);
     window.addEventListener("nightazimuth:observability-update", render);
+    removeStaticDataSourcePlaceholder();
     observeContacts();
     render();
     window.setInterval(render, 1_000);
