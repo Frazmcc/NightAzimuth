@@ -51,3 +51,6 @@ input{font-size:16px}
   .top-actions .settings-button{padding:.4rem .55rem;font-size:9px}
   .contacts-panel{top:76px}
 }
+
+/* Historical Roadster onboard media shown only in the selected deep-space card. */
+.roadster-status{color:#ff6a73!important}.roadster-contact-detail section{margin-top:14px}.roadster-media{margin:14px 0 10px;border:1px solid rgba(215,43,53,.35);border-radius:10px;overflow:hidden;background:#02050a}.roadster-media img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;transform:scale(1.02);animation:roadster-media-drift 12s ease-in-out infinite alternate}.roadster-media figcaption{padding:8px 9px;color:#7896a5;font:9px/1.4 ui-monospace,monospace}.roadster-media a{color:#9ee8ff}@keyframes roadster-media-drift{from{transform:scale(1.02) translateX(-1%)}to{transform:scale(1.08) translateX(1%)}}@media(prefers-reduced-motion:reduce){.roadster-media img{animation:none;transform:none}}
