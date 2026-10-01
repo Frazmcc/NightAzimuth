@@ -66,6 +66,13 @@ def test_population_labels_identify_server_vs_browser_data() -> None:
     assert 'Browser session' in JS
 
 
+def test_main_renderer_owns_slowest_endpoint_headline() -> None:
+    assert 'function renderLatencyHeadline(summary, usingBackend)' in JS
+    assert 'window.NIGHTAZIMUTH_OBSERVABILITY_LATENCY?.slowest' in JS
+    assert 'label.textContent = "Slowest API endpoint"' in JS
+    assert 'window.addEventListener("nightazimuth:latency-update", render)' in JS
+
+
 def test_static_data_source_placeholder_is_removed_before_dashboard_use() -> None:
     assert 'function removeStaticDataSourcePlaceholder()' in JS
     assert 'row.querySelector("strong")?.textContent === "Data source detail"' in JS
