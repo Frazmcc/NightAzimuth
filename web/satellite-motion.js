@@ -260,6 +260,7 @@
   function makeDetailRow(label,value){
     if(value===null||value===undefined||value==="")return null;
     const row=document.createElement("div"),key=document.createElement("span"),data=document.createElement("strong");
+    row.className="contact";
     key.textContent=label;data.textContent=String(value);row.append(key,data);return row;
   }
 
