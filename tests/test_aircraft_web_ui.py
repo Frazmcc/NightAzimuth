@@ -224,6 +224,11 @@ def test_aircraft_animation_uses_independent_transparent_overlay() -> None:
     assert "try{layers.aircraft=false;baseDrawContacts(w,h)}finally{layers.aircraft=previous}" in PERSPECTIVE_JS
 
 
+def test_perspective_renderer_clears_preexisting_legacy_aircraft_once() -> None:
+    assert "legacy silhouette already" in PERSPECTIVE_JS
+    assert 'requestAnimationFrame(()=>{if(typeof drawSky==="function")drawSky()})' in PERSPECTIVE_JS
+
+
 def test_aircraft_animation_does_not_repaint_the_whole_sky() -> None:
     animate_start = PERSPECTIVE_JS.index("function animate(){")
     animate_end = PERSPECTIVE_JS.index("skyCanvas.addEventListener", animate_start)
