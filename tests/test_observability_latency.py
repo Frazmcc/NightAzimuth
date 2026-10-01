@@ -22,16 +22,21 @@ def test_server_timing_headers_are_parsed() -> None:
     assert "shared_wait" in LATENCY
 
 
-def test_endpoint_specific_latency_health_is_rendered() -> None:
+def test_endpoint_specific_latency_health_is_rendered_and_published() -> None:
     assert "Endpoint latency health" in LATENCY
     assert "Excellent" in LATENCY
     assert "Elevated" in LATENCY
     assert "Very slow" in LATENCY
+    assert "function publishSlowest(slowest)" in LATENCY
+    assert "window.NIGHTAZIMUTH_OBSERVABILITY_LATENCY" in LATENCY
+    assert 'new CustomEvent("nightazimuth:latency-update")' in LATENCY
 
 
-def test_health_endpoint_is_not_selected_for_timing_breakdown() -> None:
+def test_health_and_observability_are_not_selected_as_application_slowest() -> None:
     assert 'row.path !== "/api/v1/health"' in LATENCY
     assert 'row.path !== "/api/v1/observability"' in LATENCY
+    assert "const slowest = applicationRows[0] || null;" in LATENCY
+    assert "|| rows[0]" not in LATENCY
 
 
 def test_timing_breakdown_tracks_latest_response_even_without_header() -> None:
