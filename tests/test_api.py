@@ -84,6 +84,16 @@ def test_cors_allows_hosted_frontend() -> None:
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "https://nightazimuth.co.uk"
 
+    actual_response = client.get(
+        "/api/v1/health",
+        headers={"Origin": "https://nightazimuth.co.uk"},
+    )
+    exposed = {
+        item.strip().lower()
+        for item in actual_response.headers["access-control-expose-headers"].split(",")
+    }
+    assert "server-timing" in exposed
+
 
 def test_cors_does_not_allow_unlisted_origin() -> None:
     client = TestClient(app)
