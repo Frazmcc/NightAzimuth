@@ -18,11 +18,19 @@ def test_observability_assets_load_before_application_requests_start() -> None:
     assert HTML.index('observability.js?v=22.0.0') < HTML.index('app.js?v=21.11.7')
 
 
-def test_dashboard_uses_real_health_endpoint_and_client_request_instrumentation() -> None:
-    assert '`${API_BASE}/health`' in JS
+def test_dashboard_uses_versioned_health_and_backend_telemetry_endpoints() -> None:
+    assert '`${API_BASE}/api/v1/health`' in JS
+    assert '`${API_BASE}/api/v1/observability`' in JS
     assert 'window.fetch = async function observedFetch' in JS
     assert 'PerformanceObserver' in JS
     assert 'unhandledrejection' in JS
+
+
+def test_dashboard_surfaces_aircraft_provider_metadata_from_real_responses() -> None:
+    assert 'source.provider_failover_used' in JS
+    assert 'source.fallback_used' in JS
+    assert 'source.source_observed_at' in JS
+    assert 'response.clone().json()' in JS
 
 
 def test_dashboard_does_not_invent_unavailable_server_metrics() -> None:
