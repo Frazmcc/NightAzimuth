@@ -133,6 +133,17 @@
     card.append(panel);
   }
 
+  function publishSlowest(slowest) {
+    window.NIGHTAZIMUTH_OBSERVABILITY_LATENCY = {
+      slowest: slowest ? {
+        path: slowest.path,
+        p95: slowest.p95,
+        state: latencyState(slowest.p95),
+      } : null,
+    };
+    window.dispatchEvent(new CustomEvent("nightazimuth:latency-update"));
+  }
+
   function render() {
     installPanel();
 
@@ -170,9 +181,18 @@
       rowsEl.append(item);
     }
 
-    const slowest = rows.find((row) => row.path !== "/api/v1/health" && row.path !== "/api/v1/observability") || rows[0];
+    const applicationRows = rows.filter((row) => row.path !== "/api/v1/health" && row.path !== "/api/v1/observability");
+    const slowest = applicationRows[0] || null;
+    publishSlowest(slowest);
+
     breakdownEl.replaceChildren();
-    if (!slowest) return;
+    if (!slowest) {
+      const empty = document.createElement("div");
+      empty.className = "obs-subtle";
+      empty.textContent = "Waiting for application endpoint activity.";
+      breakdownEl.append(empty);
+      return;
+    }
 
     const timings = timingSummary(slowest.stats);
     const title = document.createElement("div");
