@@ -167,8 +167,10 @@ function aircraftBasis(headingDeg,flightPathDeg,rollDeg){
   const right0=unit(cross(forward,worldUp));
   const up0=unit(cross(right0,forward));
   const roll=rollDeg*DEG;
-  const right=add(scale(right0,Math.cos(roll)),scale(up0,Math.sin(roll)));
-  const up=add(scale(up0,Math.cos(roll)),scale(right0,-Math.sin(roll)));
+  // readsb/adsb.lol define negative roll as a left bank. Therefore positive
+  // roll is right-wing-down: the aircraft right axis rotates toward -up.
+  const right=add(scale(right0,Math.cos(roll)),scale(up0,-Math.sin(roll)));
+  const up=add(scale(up0,Math.cos(roll)),scale(right0,Math.sin(roll)));
   return{forward,right:unit(right),up:unit(up)};
 }
 
