@@ -152,12 +152,6 @@ class AdsbLolProvider:
         failure: Exception | None = None
         payload: dict[str, Any] | None = None
 
-        # The one-at-a-time gate is acquired for each individual upstream attempt,
-        # not for the whole retry sequence. A transiently failing region therefore
-        # releases the provider while it backs off, allowing another cold region to
-        # make progress instead of sitting behind several retries. Request starts
-        # remain globally paced, and the failover provider uses the same admission
-        # path with one attempt, so this improves fairness without creating a burst.
         request_elapsed_ms = 0.0
         self.last_timings["provider_wait_ms"] = 0.0
         for attempt in range(self.max_attempts):
@@ -269,13 +263,7 @@ class AdsbLolProvider:
 
 
 class AirplanesLiveProvider(AdsbLolProvider):
-    """Compatibility name for the bounded adsb.fi failover provider.
-
-    The API layer still imports this historical class name so this change can stay
-    deliberately small. The actual failover is adsb.fi, called only after adsb.lol
-    has exhausted its bounded retries. The public adsb.fi endpoint is limited to
-    one request per second, so all hosted-provider starts share the same 1s gate.
-    """
+    """Compatibility name for the bounded adsb.fi failover provider."""
 
     provider_id = "adsb-fi"
     label = "adsb.fi (https://adsb.fi/)"
@@ -358,6 +346,11 @@ def _normalise_record(
     if vertical_fpm is not None:
         vertical_rate_mps = vertical_fpm * FPM_TO_MPS
 
+    selected_altitude_ft = _finite(record.get("nav_altitude_mcp"))
+    if selected_altitude_ft is None:
+        selected_altitude_ft = _finite(record.get("nav_altitude_fms"))
+    selected_heading_deg = _finite(record.get("nav_heading"))
+
     db_flags = int(_finite(record.get("dbFlags")) or 0)
     try:
         return AircraftObservation(
@@ -385,6 +378,8 @@ def _normalise_record(
             category=str(record.get("category") or "").strip() or None,
             pia=bool(db_flags & 4),
             ladd=bool(db_flags & 8),
+            selected_altitude_ft=selected_altitude_ft,
+            selected_heading_deg=selected_heading_deg,
         )
     except ValueError:
         return None

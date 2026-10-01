@@ -60,6 +60,8 @@ class AircraftObservation:
     category: str | None = None
     pia: bool = False
     ladd: bool = False
+    selected_altitude_ft: float | None = None
+    selected_heading_deg: float | None = None
 
     def __post_init__(self) -> None:
         icao = self.icao24.strip().lower()
@@ -73,13 +75,31 @@ class AircraftObservation:
         _require_utc(self.position_observed_at, "position_observed_at")
         if self.contact_observed_at is not None:
             _require_utc(self.contact_observed_at, "contact_observed_at")
-        for name in ("barometric_altitude_m", "geometric_altitude_m", "ground_speed_mps", "track_deg", "vertical_rate_mps"):
+        for name in (
+            "barometric_altitude_m",
+            "geometric_altitude_m",
+            "ground_speed_mps",
+            "track_deg",
+            "vertical_rate_mps",
+            "selected_altitude_ft",
+            "selected_heading_deg",
+        ):
             value = getattr(self, name)
             if value is not None and not isfinite(value):
                 raise ValueError(f"{name} must be finite when supplied")
         if self.track_deg is not None:
             object.__setattr__(self, "track_deg", self.track_deg % 360.0)
-        for name in ("callsign", "squawk", "registration", "type_code", "type_description", "operator", "category"):
+        if self.selected_heading_deg is not None:
+            object.__setattr__(self, "selected_heading_deg", self.selected_heading_deg % 360.0)
+        for name in (
+            "callsign",
+            "squawk",
+            "registration",
+            "type_code",
+            "type_description",
+            "operator",
+            "category",
+        ):
             value = (getattr(self, name) or "").strip() or None
             object.__setattr__(self, name, value)
         if self.category is not None:
