@@ -121,10 +121,25 @@
     const panel = document.createElement("div");
     panel.id = "obs-endpoint-health";
     panel.className = "obs-endpoint-health";
-    panel.innerHTML = `
-      <div class="obs-latency-head"><strong>Endpoint latency health</strong><span class="obs-subtle">Browser-observed · Server-Timing where exposed</span></div>
-      <div id="obs-latency-rows" class="obs-latency-rows"></div>
-      <div id="obs-timing-breakdown" class="obs-timing-breakdown"></div>`;
+
+    const head = document.createElement("div");
+    head.className = "obs-latency-head";
+    const title = document.createElement("strong");
+    title.textContent = "Endpoint latency health";
+    const subtitle = document.createElement("span");
+    subtitle.className = "obs-subtle";
+    subtitle.textContent = "Browser-observed · Server-Timing where exposed";
+    head.append(title, subtitle);
+
+    const rows = document.createElement("div");
+    rows.id = "obs-latency-rows";
+    rows.className = "obs-latency-rows";
+
+    const breakdown = document.createElement("div");
+    breakdown.id = "obs-timing-breakdown";
+    breakdown.className = "obs-timing-breakdown";
+
+    panel.append(head, rows, breakdown);
     card.append(panel);
   }
 
@@ -191,7 +206,12 @@
     const timings = timingSummary(slowest.stats);
     const title = document.createElement("div");
     title.className = "obs-latency-head";
-    title.innerHTML = `<strong>${slowest.path.replace("/api/v1/", "")} timing breakdown</strong><span class="obs-subtle">Latest response</span>`;
+    const titleLabel = document.createElement("strong");
+    titleLabel.textContent = `${slowest.path.replace("/api/v1/", "")} timing breakdown`;
+    const titleMeta = document.createElement("span");
+    titleMeta.className = "obs-subtle";
+    titleMeta.textContent = "Latest response";
+    title.append(titleLabel, titleMeta);
     breakdownEl.append(title);
 
     if (!timings.length) {
