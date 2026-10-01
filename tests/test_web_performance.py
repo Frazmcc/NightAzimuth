@@ -1,6 +1,7 @@
 from pathlib import Path
 
 
+APP_JS = Path("web/app.js").read_text(encoding="utf-8")
 SATELLITE_JS = Path("web/satellite-motion.js").read_text(encoding="utf-8")
 LAYOUT_JS = Path("web/live-sky-layout.js").read_text(encoding="utf-8")
 CONTACTS_JS = Path("web/live-contacts-view.js").read_text(encoding="utf-8")
@@ -69,7 +70,7 @@ def test_heavy_astronomy_requests_are_progressively_scheduled() -> None:
     assert "let astronomyTail=Promise.resolve()" in LAYOUT_JS
     assert 'path==="/api/v1/satellites"?250:0' in LAYOUT_JS
     assert "observerSpreadMs(params)" in LAYOUT_JS
-    assert "scheduleRequest(path,params" in LAYOUT_JS
+    assert "scheduleRequest(path,requestParams" in LAYOUT_JS
 
 
 def test_location_change_invalidates_an_inflight_refresh() -> None:
@@ -99,6 +100,33 @@ def test_aircraft_distance_units_can_be_changed_in_settings() -> None:
     assert 'localStorage.setItem("nightazimuth.distanceUnit",unit)' in RADAR_JS
     assert 'unit==="km"?rangeValue:rangeValue*KM_PER_MILE' in RADAR_JS
     assert "aircraft-radar.js?v=21.11.13" in HTML
+
+
+def test_airports_share_distance_units_and_are_limited_to_50_miles() -> None:
+    airport_params = _function_body(
+        LAYOUT_JS,
+        ':path==="/api/v1/airports"?{',
+        "}:params;",
+    )
+
+    assert 'getJson("/api/v1/airports",{...pos,radius_km:80.4672,limit:12}' in APP_JS
+    assert "const AIRPORT_RADIUS_MILES=50" in LAYOUT_JS
+    assert "const AIRPORT_RADIUS_KM=AIRPORT_RADIUS_MILES*KM_PER_MILE" in LAYOUT_JS
+    assert 'localStorage.getItem("nightazimuth.distanceUnit")==="km"?"km":"miles"' in LAYOUT_JS
+    assert "radius_km:LOCAL_RADIUS_KM" in airport_params
+    assert "distanceKm>AIRPORT_RADIUS_KM" in LAYOUT_JS
+    assert "Math.round(km/KM_PER_MILE)" in LAYOUT_JS
+    assert 'window.addEventListener("nightazimuth:distance-unit"' in LAYOUT_JS
+    assert "app.js?v=21.11.23" in HTML
+    assert "live-sky-layout.js?v=21.11.24" in HTML
+
+
+def test_airport_inspector_uses_selected_distance_units() -> None:
+    assert "const updateAirportInspectorDistance=target=>" in LAYOUT_JS
+    assert 'label?.textContent!=="Distance (km)"' in LAYOUT_JS
+    assert 'label.textContent="Distance"' in LAYOUT_JS
+    assert "value.textContent=formatAirportDistance(target.item.distance_km)" in LAYOUT_JS
+    assert "if(openAirportTarget&&!inspector?.hidden)showObject(openAirportTarget)" in LAYOUT_JS
 
 
 def test_changed_camera_runtime_is_cache_busted() -> None:
