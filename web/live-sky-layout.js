@@ -77,16 +77,20 @@
     const responseCache=new Map();
     const inFlight=new Map();
     const MAX_RESPONSE_CACHE=48;
-    const AIRCRAFT_RADIUS_KM=50*1.609344;
+    const LOCAL_RADIUS_MILES=50;
+    const LOCAL_RADIUS_KM=LOCAL_RADIUS_MILES*1.609344;
     const ttlForPath=path=>path==="/api/v1/airports"?60*60*1000:
       path==="/api/v1/weather"||path==="/api/v1/observing"?5*60*1000:
       path==="/api/v1/sky"?30*1000:
       path==="/api/v1/aircraft"?14*1000:0;
     const effectiveParams=(path,params)=>path==="/api/v1/aircraft"?{
       ...params,
-      radius_km:AIRCRAFT_RADIUS_KM,
+      radius_km:LOCAL_RADIUS_KM,
       minimum_elevation_deg:-90,
       include_ground:false
+    }:path==="/api/v1/airports"?{
+      ...params,
+      radius_km:LOCAL_RADIUS_KM
     }:params;
     const requestKey=(path,params)=>{
       const entries=Object.entries(params||{}).sort(([a],[b])=>a.localeCompare(b));
@@ -126,17 +130,16 @@
     };
 
     getJson=async function(path,params={},options={}){
-      // aircraft-sensitivity.js normalises every browser aircraft request to the
-      // 50-mile / -90° acquisition. Use that effective request in the cache key
-      // so the general refresh and 15-second aircraft refresh share the same
-      // in-flight response instead of downloading it twice.
-      const key=requestKey(path,effectiveParams(path,params));
+      // Aircraft and airport requests share the same 50-mile local-area limit.
+      // Use the effective request for both the cache key and the actual request.
+      const requestParams=effectiveParams(path,params);
+      const key=requestKey(path,requestParams);
       const now=Date.now();
       const ttl=ttlForPath(path);
       const cached=responseCache.get(key);
       if(ttl>0&&cached&&now-cached.storedAt<ttl)return cached.data;
       if(inFlight.has(key))return inFlight.get(key);
-      const request=scheduleRequest(path,params,()=>Promise.resolve(baseGetJson(path,params,options))).then(data=>{
+      const request=scheduleRequest(path,requestParams,()=>Promise.resolve(baseGetJson(path,requestParams,options))).then(data=>{
         if(ttl>0)storeResponse(key,data);
         return data;
       }).finally(()=>inFlight.delete(key));
@@ -144,6 +147,44 @@
       return request;
     };
   }
+
+  // Airport distances use the same user setting as the local aircraft radar.
+  // Miles are the default, and airport rendering is bounded to the same 50-mile
+  // local area as aircraft even if cached/provider data contains a farther item.
+  const AIRPORT_RADIUS_MILES=50;
+  const KM_PER_MILE=1.609344;
+  const AIRPORT_RADIUS_KM=AIRPORT_RADIUS_MILES*KM_PER_MILE;
+  const airportDistanceUnit=()=>localStorage.getItem("nightazimuth.distanceUnit")==="km"?"km":"miles";
+  const formatAirportDistance=distanceKm=>{
+    const km=Number(distanceKm);
+    if(!Number.isFinite(km))return "";
+    return airportDistanceUnit()==="km"?`${Math.round(km)} km`:`${Math.round(km/KM_PER_MILE)} mi`;
+  };
+  drawAirports=function(w,h){
+    if(!layers.airports)return;
+    for(const airport of skyAirports){
+      const distanceKm=Number(airport.distance_km);
+      if(!Number.isFinite(distanceKm)||distanceKm>AIRPORT_RADIUS_KM)continue;
+      const off=angularDifference(Number(airport.bearing_deg),facing);
+      if(Math.abs(off)>fov/2)continue;
+      const horizon=skyXY(Number(airport.bearing_deg),0,w,h);
+      if(!horizon)continue;
+      const x=horizon[0],y=horizon[1];
+      ctx.save();
+      ctx.strokeStyle="rgba(112,255,191,.85)";
+      ctx.fillStyle="rgba(190,255,225,.95)";
+      ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y-16);ctx.stroke();
+      ctx.beginPath();ctx.arc(x,y-18,3,0,Math.PI*2);ctx.fill();
+      ctx.font="10px ui-monospace,monospace";ctx.textAlign="center";
+      if(labels.airports){
+        const code=airport.iata||airport.icao||"AIRPORT";
+        ctx.fillText(`${code} · ${formatAirportDistance(distanceKm)}`,x,y-25);
+      }
+      ctx.restore();
+      hit("airport",airport,[x,y-18],16);
+    }
+  };
+  window.addEventListener("nightazimuth:distance-unit",()=>drawSky());
 
   // Do not spend bandwidth/CPU refreshing the sky while the page is hidden.
   // Browsers already throttle background animation; this also prevents the
