@@ -34,7 +34,9 @@ def test_aircraft_response_state_drives_provider_freshness() -> None:
     assert 'function markAircraftUnavailable(status)' in JS
     assert 'state.aircraftCount = 0;' in JS
     assert 'sourceCount: 0' in JS
-    assert 'else markAircraftUnavailable(response.status);' in JS
+    assert 'function isAircraftFeedEndpoint(endpoint)' in JS
+    assert 'if (isAircraftFeedEndpoint(endpoint))' in JS
+    assert 'if (endpoint.startsWith("/api/v1/aircraft"))' not in JS
     assert 'state.lastContactChangeAt' not in JS
 
 
