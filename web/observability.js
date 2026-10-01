@@ -68,6 +68,7 @@
       ...previous,
       state: "unavailable",
       sourceObservedAt: null,
+      sourceCount: 0,
       freshCount: 0,
       returnedCount: 0,
       fallbackUsed: false,
