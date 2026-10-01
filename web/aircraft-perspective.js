@@ -210,13 +210,16 @@ function aircraftBasis(headingDeg,flightPathDeg,rollDeg){
   return{forward,right:unit(right),up:unit(up)};
 }
 
+// Distance already controls the whole marker size. Applying a second per-vertex
+// perspective factor exaggerated noses, tails and wing tips and made side views
+// look like wedges. Orthographic projection of the real 3D attitude keeps the
+// orientation cue while preserving a stable, recognisable aircraft silhouette.
 function projectLocal(local,basis,camera,size,originX,originY){
   const world=add(add(scale(basis.forward,local[0]),scale(basis.right,local[1])),scale(basis.up,local[2]));
   const sx=dot(world,camera.right);
   const sy=-dot(world,camera.up);
   const depth=dot(world,camera.los);
-  const perspective=clamp(1/(1+depth*.12),.72,1.38);
-  return[originX+sx*size*perspective,originY+sy*size*perspective,depth];
+  return[originX+sx*size,originY+sy*size,depth];
 }
 
 function pathFromLocal(points,basis,camera,size,x,y){
@@ -228,41 +231,72 @@ function pathFromLocal(points,basis,camera,size,x,y){
   return projected;
 }
 
+function drawSurface(points,basis,camera,size,x,y,stroke,fill,lineWidth){
+  pathFromLocal(points,basis,camera,size,x,y);
+  aircraftCtx.fillStyle=fill;
+  aircraftCtx.strokeStyle=stroke;
+  aircraftCtx.lineWidth=lineWidth;
+  aircraftCtx.fill();
+  aircraftCtx.stroke();
+}
+
 function drawFixedWingModel(kind,basis,camera,size,x,y,stroke,glow,selected){
   const wing=kind==="glider"?1.18:kind==="light"?.72:.98;
-  const bodyWidth=kind==="light"?.13:.105;
-  const mainWing=[
-    [.22,0,0],[-.08,wing,0],[-.30,wing*.82,0],[-.12,0,0],
-    [-.30,-wing*.82,0],[-.08,-wing,0]
-  ];
-  const tailWing=[[-.62,0,0],[-.82,.42,0],[-.96,.36,0],[-.83,0,0],[-.96,-.36,0],[-.82,-.42,0]];
-  const fuselage=[[1.22,0,0],[.38,bodyWidth,0],[-.93,bodyWidth*.62,0],[-1.08,0,0],[-.93,-bodyWidth*.62,0],[.38,-bodyWidth,0]];
-  const fin=[[-.68,0,0],[-.92,0,.48],[-1.03,0,.08]];
+  const bodyLength=kind==="light"?1.82:2.15;
+  const noseX=bodyLength*.55;
+  const tailX=-bodyLength*.45;
+  const mainRootFront=.18,mainRootBack=-.24;
+  const wingTipX=kind==="glider"?-.06:-.18;
+  const tailRootFront=tailX+.26,tailRootBack=tailX+.02;
+  const tailSpan=kind==="light"?.34:.42;
+
+  const rightWing=[[mainRootFront,0,0],[wingTipX,wing,0],[mainRootBack,wing*.84,0],[mainRootBack,0,0]];
+  const leftWing=[[mainRootFront,0,0],[wingTipX,-wing,0],[mainRootBack,-wing*.84,0],[mainRootBack,0,0]];
+  const rightTail=[[tailRootFront,0,0],[tailRootBack,tailSpan,0],[tailX-.08,tailSpan*.82,0],[tailRootBack,0,0]];
+  const leftTail=[[tailRootFront,0,0],[tailRootBack,-tailSpan,0],[tailX-.08,-tailSpan*.82,0],[tailRootBack,0,0]];
+  const fin=[[tailX+.18,0,.02],[tailX-.02,0,.48],[tailX-.18,0,.06]];
 
   aircraftCtx.save();
-  aircraftCtx.shadowColor=glow;aircraftCtx.shadowBlur=selected?18:8;
-  aircraftCtx.lineJoin="round";aircraftCtx.lineCap="round";
+  aircraftCtx.shadowColor=glow;
+  aircraftCtx.shadowBlur=selected?12:5;
+  aircraftCtx.lineJoin="round";
+  aircraftCtx.lineCap="round";
 
-  pathFromLocal(mainWing,basis,camera,size,x,y);
-  aircraftCtx.fillStyle="rgba(105,216,239,.16)";aircraftCtx.strokeStyle=stroke;aircraftCtx.lineWidth=selected?1.9:1.15;aircraftCtx.fill();aircraftCtx.stroke();
+  const surfaceWidth=selected?1.7:1.05;
+  const surfaceFill=selected?"rgba(225,249,255,.20)":"rgba(105,216,239,.11)";
+  drawSurface(leftWing,basis,camera,size,x,y,stroke,surfaceFill,surfaceWidth);
+  drawSurface(rightWing,basis,camera,size,x,y,stroke,surfaceFill,surfaceWidth);
+  drawSurface(leftTail,basis,camera,size,x,y,stroke,"rgba(105,216,239,.09)",surfaceWidth);
+  drawSurface(rightTail,basis,camera,size,x,y,stroke,"rgba(105,216,239,.09)",surfaceWidth);
+  drawSurface(fin,basis,camera,size,x,y,stroke,"rgba(160,235,250,.15)",surfaceWidth);
 
-  pathFromLocal(tailWing,basis,camera,size,x,y);
-  aircraftCtx.fillStyle="rgba(105,216,239,.12)";aircraftCtx.fill();aircraftCtx.stroke();
+  // A rounded fuselage spine stays legible when the aircraft is side-on or
+  // almost nose-on, where a zero-thickness polygon would naturally collapse.
+  const nose=projectLocal([noseX,0,0],basis,camera,size,x,y);
+  const tail=projectLocal([tailX,0,0],basis,camera,size,x,y);
+  aircraftCtx.beginPath();
+  aircraftCtx.moveTo(tail[0],tail[1]);
+  aircraftCtx.lineTo(nose[0],nose[1]);
+  aircraftCtx.strokeStyle="rgba(3,14,22,.92)";
+  aircraftCtx.lineWidth=Math.max(selected?4.8:4.0,size*(kind==="light"?.18:.16));
+  aircraftCtx.stroke();
+  aircraftCtx.beginPath();
+  aircraftCtx.moveTo(tail[0],tail[1]);
+  aircraftCtx.lineTo(nose[0],nose[1]);
+  aircraftCtx.strokeStyle=stroke;
+  aircraftCtx.lineWidth=Math.max(selected?2.4:1.8,size*.075);
+  aircraftCtx.stroke();
 
-  pathFromLocal(fin,basis,camera,size,x,y);
-  aircraftCtx.fillStyle="rgba(160,235,250,.22)";aircraftCtx.fill();aircraftCtx.stroke();
-
-  pathFromLocal(fuselage,basis,camera,size,x,y);
-  aircraftCtx.fillStyle=selected?"rgba(235,252,255,.33)":"rgba(8,26,36,.82)";
-  aircraftCtx.lineWidth=selected?2.2:1.45;aircraftCtx.fill();aircraftCtx.stroke();
-
-  const nose=projectLocal([1.24,0,0],basis,camera,size,x,y);
-  aircraftCtx.fillStyle=stroke;aircraftCtx.beginPath();aircraftCtx.arc(nose[0],nose[1],selected?1.8:1.2,0,Math.PI*2);aircraftCtx.fill();
+  const centre=projectLocal([0,0,0],basis,camera,size,x,y);
+  aircraftCtx.fillStyle=selected?"rgba(240,253,255,.95)":stroke;
+  aircraftCtx.beginPath();aircraftCtx.arc(nose[0],nose[1],selected?1.7:1.25,0,Math.PI*2);aircraftCtx.fill();
+  aircraftCtx.globalAlpha=.65;
+  aircraftCtx.beginPath();aircraftCtx.arc(centre[0],centre[1],Math.max(1,size*.055),0,Math.PI*2);aircraftCtx.fill();
   aircraftCtx.restore();
 }
 
 function drawHelicopterModel(basis,camera,size,x,y,stroke,glow,selected){
-  aircraftCtx.save();aircraftCtx.strokeStyle=stroke;aircraftCtx.fillStyle="rgba(8,26,36,.82)";aircraftCtx.shadowColor=glow;aircraftCtx.shadowBlur=selected?18:8;aircraftCtx.lineWidth=selected?2:1.35;
+  aircraftCtx.save();aircraftCtx.strokeStyle=stroke;aircraftCtx.fillStyle="rgba(8,26,36,.82)";aircraftCtx.shadowColor=glow;aircraftCtx.shadowBlur=selected?12:5;aircraftCtx.lineWidth=selected?2:1.35;
   const body=[[.48,.16,0],[.62,0,0],[.30,-.18,0],[-.36,-.14,0],[-.54,0,0],[-.36,.14,0]];
   pathFromLocal(body,basis,camera,size,x,y);aircraftCtx.fill();aircraftCtx.stroke();
   const tailA=projectLocal([-.45,0,0],basis,camera,size,x,y),tailB=projectLocal([-1.05,0,0],basis,camera,size,x,y);
@@ -273,7 +307,7 @@ function drawHelicopterModel(basis,camera,size,x,y,stroke,glow,selected){
 }
 
 function drawDroneModel(basis,camera,size,x,y,stroke,glow,selected){
-  aircraftCtx.save();aircraftCtx.strokeStyle=stroke;aircraftCtx.fillStyle="rgba(8,26,36,.82)";aircraftCtx.shadowColor=glow;aircraftCtx.shadowBlur=selected?18:8;aircraftCtx.lineWidth=selected?2:1.3;
+  aircraftCtx.save();aircraftCtx.strokeStyle=stroke;aircraftCtx.fillStyle="rgba(8,26,36,.82)";aircraftCtx.shadowColor=glow;aircraftCtx.shadowBlur=selected?12:5;aircraftCtx.lineWidth=selected?2:1.3;
   const centre=projectLocal([0,0,0],basis,camera,size,x,y);
   for(const point of [[.55,.55,0],[.55,-.55,0],[-.55,.55,0],[-.55,-.55,0]]){
     const tip=projectLocal(point,basis,camera,size,x,y);aircraftCtx.beginPath();aircraftCtx.moveTo(centre[0],centre[1]);aircraftCtx.lineTo(tip[0],tip[1]);aircraftCtx.stroke();aircraftCtx.beginPath();aircraftCtx.arc(tip[0],tip[1],Math.max(1.5,size*.12),0,Math.PI*2);aircraftCtx.stroke();
@@ -355,9 +389,6 @@ drawContacts=function(w,h){
     return baseDrawContacts(w,h);
   }
 
-  // The main sky retains satellites and every static layer. Aircraft are hidden
-  // from that canvas and rendered independently above it, so animation never
-  // clears or repaints the star field, horizon or depth atmosphere.
   const previous=layers.aircraft;
   try{layers.aircraft=false;baseDrawContacts(w,h)}finally{layers.aircraft=previous}
 };
@@ -381,8 +412,6 @@ function animate(){
   requestAnimationFrame(animate);
 }
 
-// The moving overlay is pointer-transparent. Handle its current hit locations on
-// the established sky canvas before the legacy click handler sees the event.
 skyCanvas.addEventListener("click",event=>{
   if(!perspectiveEnabled()||typeof layers==="undefined"||layers.aircraft===false)return;
   if(typeof dragMoved!=="undefined"&&dragMoved)return;
