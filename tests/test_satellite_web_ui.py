@@ -86,5 +86,4 @@ def test_satellite_orbit_detail_is_derived_from_existing_payload() -> None:
     assert "Math.cbrt" in SATELLITE_JS
     assert 'orbitClass="LEO"' in SATELLITE_JS
     assert 'orbitClass="MEO"' in SATELLITE_JS
-    assert 'orbitClass="GEO"' in SATELLITE_JS
-    assert 'orbitClass="GSO"' in SATELLITE_JS
+    assert '?"GEO":"GSO"' in SATELLITE_JS
