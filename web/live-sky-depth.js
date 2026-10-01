@@ -6,6 +6,7 @@ const MODE_KEY="nightazimuth.skyDepthMode";
 const FLAT_SKY_XY=skyXY;
 const baseDrawSky=drawSky;
 const DEG=Math.PI/180;
+let overlayFrame=null;
 
 function depthMode(){
   const value=localStorage.getItem(MODE_KEY);
@@ -59,6 +60,8 @@ function perceptualXY(az,el,w,h){
     const centreX=w*.5,centreY=usableHeight*.5;
     x=centreX+(x-centreX)*1.06;
     y=centreY+(y-centreY)*1.045;
+    x=Math.max(w*.035,Math.min(w*.965,x));
+    y=Math.max(usableHeight*.025,Math.min(usableHeight*.975,y));
   }
   return [x,y];
 }
@@ -121,9 +124,19 @@ function drawAtmosphericDepth(){
   ctx.restore();
 }
 
+function scheduleAtmosphericDepth(){
+  if(overlayFrame!==null)return;
+  overlayFrame=requestAnimationFrame(()=>{
+    overlayFrame=null;
+    drawAtmosphericDepth();
+  });
+}
+
 drawSky=function(){
+  // live-sky-layout batches the real sky paint into requestAnimationFrame. Queue
+  // the atmosphere after that callback so it cannot be erased by the base frame.
   baseDrawSky();
-  drawAtmosphericDepth();
+  scheduleAtmosphericDepth();
 };
 
 function installSetting(){
