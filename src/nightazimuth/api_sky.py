@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 
 from .burst_cache import BurstResultCache
 from .config import ObserverConfig
+from .roadster_ephemeris import RoadsterEphemerisProvider
 from .star_field import StarFieldEngine
 
 router = APIRouter(prefix="/api/v1/sky", tags=["sky"])
@@ -18,6 +19,7 @@ _BURST_CACHE: BurstResultCache[dict[str, object]] = BurstResultCache(
     ttl_seconds=2.0,
     max_entries=32,
 )
+_ROADSTER_PROVIDER = RoadsterEphemerisProvider()
 
 
 @router.get("")
@@ -61,6 +63,13 @@ def sky(
         )
         raise HTTPException(status_code=503, detail="Celestial sky is temporarily unavailable") from exc
 
+    # The Roadster is part of the sky payload but deliberately kept outside the
+    # Hipparcos star list so camera plate-solving and star-catalogue logic remain pure.
+    # The provider is cached and fail-soft; Horizons downtime must not break /sky.
+    roadster_started = perf_counter()
+    roadster = _ROADSTER_PROVIDER.lookup(observer, when=snapshot.calculated_at)
+    roadster_ms = (perf_counter() - roadster_started) * 1000.0
+
     serialization_started = perf_counter()
     payload = {
         "calculated_at": snapshot.calculated_at.isoformat(),
@@ -69,6 +78,7 @@ def sky(
         "planets": [asdict(item) for item in snapshot.planets],
         "galaxies": [asdict(item) for item in snapshot.galaxies],
         "constellation_lines": [asdict(item) for item in snapshot.constellation_lines],
+        "deep_space_objects": [asdict(roadster)] if roadster is not None else [],
     }
     serialization_ms = (perf_counter() - serialization_started) * 1000.0
     _BURST_CACHE.put(cache_key, payload)
@@ -78,20 +88,24 @@ def sky(
         'burst_cache;desc="miss";dur=0.0, '
         f"engine_init;dur={engine_init_ms:.1f}, "
         f"snapshot;dur={snapshot_ms:.1f}, "
+        f"roadster;dur={roadster_ms:.1f}, "
         f"serialize;dur={serialization_ms:.1f}, "
         f"total;dur={total_ms:.1f}"
     )
 
     _LOGGER.info(
         "sky_request burst_cache_hit=0 total_ms=%.1f engine_init_ms=%.1f snapshot_ms=%.1f "
-        "serialization_ms=%.1f stars=%d planets=%d galaxies=%d constellation_lines=%d",
+        "roadster_ms=%.1f serialization_ms=%.1f stars=%d planets=%d galaxies=%d "
+        "deep_space_objects=%d constellation_lines=%d",
         total_ms,
         engine_init_ms,
         snapshot_ms,
+        roadster_ms,
         serialization_ms,
         len(snapshot.stars),
         len(snapshot.planets),
         len(snapshot.galaxies),
+        1 if roadster is not None else 0,
         len(snapshot.constellation_lines),
     )
     return payload
