@@ -153,11 +153,23 @@ def test_perspective_aircraft_depth_is_bounded_zero_to_fifty_miles() -> None:
     assert ".sort((a,b)=>b.state.rangeKm-a.state.rangeKm)" in PERSPECTIVE_JS
 
 
+def test_aircraft_renderer_draws_one_contact_per_identity() -> None:
+    assert "if(window.__nightAzimuthAircraftPerspectiveLoaded)return;" in PERSPECTIVE_JS
+    assert "window.__nightAzimuthAircraftPerspectiveLoaded=true;" in PERSPECTIVE_JS
+    assert "function aircraftIdentity" in PERSPECTIVE_JS
+    assert "function uniqueAircraftContacts" in PERSPECTIVE_JS
+    assert "position_age_seconds" in PERSPECTIVE_JS
+    assert "contactAgeSeconds(aircraft)<contactAgeSeconds(existing.aircraft)" in PERSPECTIVE_JS
+    assert "uniqueAircraftContacts(Array.isArray(skyAircraft)?skyAircraft:[])" in PERSPECTIVE_JS
+    assert "skyAircraft=unique" in PERSPECTIVE_JS
+    assert "skyAircraft=originalSkyAircraft" in PERSPECTIVE_JS
+
+
 def test_perspective_aircraft_reuses_single_aircraft_payload() -> None:
     assert "getJson(" not in PERSPECTIVE_JS
     assert "fetch(" not in PERSPECTIVE_JS
-    assert 'perspective.src="./aircraft-perspective.js?v=22.3.3"' in LAYERS_JS
-    assert 'layer-defaults.js?v=21.11.19' in HTML
+    assert 'perspective.src="./aircraft-perspective.js?v=22.3.4"' in LAYERS_JS
+    assert 'layer-defaults.js?v=21.11.20' in HTML
 
 
 def test_perspective_geometry_does_not_double_apply_depth_distortion() -> None:
