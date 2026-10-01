@@ -380,6 +380,10 @@ def _normalise_record(
             ladd=bool(db_flags & 8),
             selected_altitude_ft=selected_altitude_ft,
             selected_heading_deg=selected_heading_deg,
+            true_heading_deg=_finite(record.get("true_heading")),
+            magnetic_heading_deg=_finite(record.get("mag_heading")),
+            track_rate_deg_s=_finite(record.get("track_rate")),
+            roll_deg=_finite(record.get("roll")),
         )
     except ValueError:
         return None
