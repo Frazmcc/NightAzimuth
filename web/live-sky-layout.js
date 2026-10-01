@@ -184,7 +184,37 @@
       hit("airport",airport,[x,y-18],16);
     }
   };
-  window.addEventListener("nightazimuth:distance-unit",()=>drawSky());
+
+  // Keep airport detail rows consistent with the same selected distance unit.
+  // The base inspector still owns all other object types and fields.
+  let openAirportTarget=null;
+  if(typeof showObject==="function"){
+    const baseShowObject=showObject;
+    const updateAirportInspectorDistance=target=>{
+      if(target?.kind!=="airport")return;
+      const details=document.querySelector("#inspector-details");
+      for(const row of details?.children||[]){
+        const label=row.querySelector("span");
+        if(label?.textContent!=="Distance (km)")continue;
+        label.textContent="Distance";
+        const value=row.querySelector("strong");
+        if(value)value.textContent=formatAirportDistance(target.item.distance_km);
+        break;
+      }
+    };
+    showObject=function(target){
+      baseShowObject(target);
+      openAirportTarget=target?.kind==="airport"?target:null;
+      updateAirportInspectorDistance(target);
+    };
+    window.addEventListener("nightazimuth:distance-unit",()=>{
+      drawSky();
+      const inspector=document.querySelector("#object-inspector");
+      if(openAirportTarget&&!inspector?.hidden)showObject(openAirportTarget);
+    });
+  }else{
+    window.addEventListener("nightazimuth:distance-unit",()=>drawSky());
+  }
 
   // Do not spend bandwidth/CPU refreshing the sky while the page is hidden.
   // Browsers already throttle background animation; this also prevents the
