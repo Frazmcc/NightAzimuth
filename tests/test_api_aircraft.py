@@ -111,7 +111,9 @@ def test_aircraft_response_contract(monkeypatch) -> None:
     feature = geojson["features"][0]
     assert feature["id"] == "abc123"
     assert feature["geometry"]["type"] == "Point"
-    assert feature["geometry"]["coordinates"] == pytest.approx([-4.20, 55.90], abs=1e-5)
+    # The API resolves a moving contact to request time, so a few metres of
+    # dead-reckoning from the source fix are expected and are not contract drift.
+    assert feature["geometry"]["coordinates"] == pytest.approx([-4.20, 55.90], abs=1e-4)
     assert feature["properties"]["icao24"] == "abc123"
     assert feature["properties"]["callsign"] == "TEST1"
     assert feature["properties"]["track_deg"] == 180.0
