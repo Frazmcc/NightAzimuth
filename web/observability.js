@@ -275,10 +275,32 @@
   }
 
   function updatePopulationLabels(usingBackend) {
-    const p95Foot = document.getElementById("obs-api-p95")?.closest(".obs-card")?.querySelector(".obs-kpi-foot");
-    if (p95Foot) p95Foot.textContent = usingBackend ? "Server · rolling 5 minutes" : "Browser session";
     setCardSubtitle("API performance", usingBackend ? "Server · rolling 5 minutes" : "Browser session");
     setCardSubtitle("Top API endpoints", usingBackend ? "Server · rolling 5 minutes" : "Browser session");
+  }
+
+  function renderLatencyHeadline(summary, usingBackend) {
+    const value = document.getElementById("obs-api-p95");
+    const card = value?.closest(".obs-card");
+    const label = card?.querySelector(".obs-kpi-label");
+    const foot = card?.querySelector(".obs-kpi-foot");
+    if (!value || !label || !foot) return;
+
+    const slowest = window.NIGHTAZIMUTH_OBSERVABILITY_LATENCY?.slowest;
+    if (slowest) {
+      label.textContent = "Slowest API endpoint";
+      value.textContent = `${Number(slowest.p95 || 0).toFixed(0)} ms`;
+      value.classList.remove("obs-good", "obs-warn", "obs-bad", "obs-blue");
+      value.classList.add(slowest.state?.cls || "obs-blue");
+      const name = String(slowest.path || "").replace("/api/v1/", "") || slowest.path;
+      foot.textContent = `${name} · browser p95`;
+      return;
+    }
+
+    label.textContent = "API latency p95";
+    value.textContent = `${summary.p95.toFixed(0)} ms`;
+    setClass("obs-api-p95", summary.p95 > 1000 ? "obs-bad" : summary.p95 > 400 ? "obs-warn" : "obs-blue");
+    foot.textContent = usingBackend ? "Server · rolling 5 minutes" : "Browser session";
   }
 
   function removeStaticDataSourcePlaceholder() {
@@ -394,8 +416,7 @@
     setText("obs-health-foot", state.health?.payload?.application_version ? `API ${state.health.payload.application_version}` : "Hosted API");
     setText("obs-aircraft", String(state.aircraftCount));
     setText("obs-aircraft-foot", state.aircraftTelemetry ? `Source ${sourceFreshnessText()}` : "Waiting for aircraft data");
-    setText("obs-api-p95", `${summary.p95.toFixed(0)} ms`);
-    setClass("obs-api-p95", summary.p95 > 1000 ? "obs-bad" : summary.p95 > 400 ? "obs-warn" : "obs-blue");
+    renderLatencyHeadline(summary, usingBackend);
     setText("obs-request-rate", `${summary.rpm}/min`);
     setText("obs-client-errors", String(state.totalErrors));
     setClass("obs-client-errors", state.totalErrors ? "obs-bad" : "obs-good");
@@ -501,6 +522,7 @@
     window.addEventListener("online", render);
     window.addEventListener("offline", render);
     window.addEventListener("nightazimuth:observability-update", render);
+    window.addEventListener("nightazimuth:latency-update", render);
     removeStaticDataSourcePlaceholder();
     observeContacts();
     render();
