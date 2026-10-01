@@ -13,8 +13,11 @@ permissions:
   pages: write
   id-token: write
 
+# Serialize NightAzimuth Pages deployments under a repo-specific key. Changing
+# away from the legacy generic `pages` key also clears any stale concurrency
+# reservation that can leave a deployment queued before a runner is assigned.
 concurrency:
-  group: pages
+  group: nightazimuth-pages-deploy
   cancel-in-progress: true
 
 jobs:
