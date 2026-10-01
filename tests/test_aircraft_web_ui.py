@@ -156,8 +156,8 @@ def test_perspective_aircraft_depth_is_bounded_zero_to_fifty_miles() -> None:
 def test_perspective_aircraft_reuses_single_aircraft_payload() -> None:
     assert "getJson(" not in PERSPECTIVE_JS
     assert "fetch(" not in PERSPECTIVE_JS
-    assert 'perspective.src="./aircraft-perspective.js?v=22.3.2"' in LAYERS_JS
-    assert 'layer-defaults.js?v=21.11.18' in HTML
+    assert 'perspective.src="./aircraft-perspective.js?v=22.3.3"' in LAYERS_JS
+    assert 'layer-defaults.js?v=21.11.19' in HTML
 
 
 def test_perspective_geometry_does_not_double_apply_depth_distortion() -> None:
@@ -166,8 +166,41 @@ def test_perspective_geometry_does_not_double_apply_depth_distortion() -> None:
     assert "function drawSurface" in PERSPECTIVE_JS
     assert "const rightWing=" in PERSPECTIVE_JS
     assert "const leftWing=" in PERSPECTIVE_JS
-    assert "const nose=projectLocal([noseX,0,0]" in PERSPECTIVE_JS
-    assert "const tail=projectLocal([tailX,0,0]" in PERSPECTIVE_JS
+    assert "const nose=projectLocal([geometry.noseX,0,0]" in PERSPECTIVE_JS
+    assert "tail=projectLocal([geometry.tailX,0,0]" in PERSPECTIVE_JS
+
+
+def test_edge_on_aircraft_keep_a_readable_projected_shape() -> None:
+    assert "const MIN_FORWARD_PROJECTION=.18" in PERSPECTIVE_JS
+    assert "const MIN_LATERAL_PROJECTION=.34" in PERSPECTIVE_JS
+    assert "const MIN_VERTICAL_PROJECTION=.16" in PERSPECTIVE_JS
+    assert "function readableAxis" in PERSPECTIVE_JS
+    assert "function projectionFrame" in PERSPECTIVE_JS
+    assert "readableAxis(lateral,lateralFallback,MIN_LATERAL_PROJECTION)" in PERSPECTIVE_JS
+
+
+def test_aircraft_visual_polish_is_type_aware_and_oriented() -> None:
+    assert "function aircraftProfile" in PERSPECTIVE_JS
+    for profile in ("widebody", "regional", "turboprop", "business", "narrowbody", "military"):
+        assert profile in PERSPECTIVE_JS
+    assert "function drawNavigationLights" in PERSPECTIVE_JS
+    assert 'fill:"#ff5b66"' in PERSPECTIVE_JS
+    assert 'fill:"#71ff9b"' in PERSPECTIVE_JS
+    assert 'fill:"#f7fbff"' in PERSPECTIVE_JS
+
+
+def test_aircraft_labels_follow_model_bounds_and_avoid_each_other() -> None:
+    assert "function projectedBounds" in PERSPECTIVE_JS
+    assert "function boxesOverlap" in PERSPECTIVE_JS
+    assert "function drawAircraftLabels" in PERSPECTIVE_JS
+    assert "label.bounds.maxX+8" in PERSPECTIVE_JS
+    assert "labelBoxes.some(existing=>boxesOverlap(box,existing))" in PERSPECTIVE_JS
+
+
+def test_coasting_aircraft_are_softened_without_stopping_animation() -> None:
+    assert 'aircraft?.position_state==="coasting"' in PERSPECTIVE_JS
+    assert 'aircraft?.continuity_state==="coasting"' in PERSPECTIVE_JS
+    assert "const alpha=selected?1:(coasting ? .62 : 1)" in PERSPECTIVE_JS
 
 
 def test_aircraft_animation_uses_independent_transparent_overlay() -> None:
@@ -183,7 +216,7 @@ def test_aircraft_animation_does_not_repaint_the_whole_sky() -> None:
     animate_start = PERSPECTIVE_JS.index("function animate(){")
     animate_end = PERSPECTIVE_JS.index("skyCanvas.addEventListener", animate_start)
     animate_body = PERSPECTIVE_JS[animate_start:animate_end]
-    assert "drawPerspectiveLayer();" in animate_body
+    assert "drawPerspectiveLayer()" in animate_body
     assert "drawSky();" not in animate_body
     assert "requestAnimationFrame(animate)" in animate_body
     assert "const MAX_PREDICTION_SECONDS=15" in PERSPECTIVE_JS
