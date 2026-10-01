@@ -8,6 +8,19 @@ from time import monotonic
 from typing import Any
 
 
+_KNOWN_PREFIXES = (
+    "/api/v1/aircraft",
+    "/api/v1/airports",
+    "/api/v1/geojson",
+    "/api/v1/health",
+    "/api/v1/observability",
+    "/api/v1/observing",
+    "/api/v1/satellites",
+    "/api/v1/sky",
+    "/api/v1/weather",
+)
+
+
 @dataclass(frozen=True, slots=True)
 class RequestSample:
     timestamp: float
@@ -16,16 +29,24 @@ class RequestSample:
     duration_ms: float
 
 
+def _normalise_path(path: str) -> str:
+    for prefix in _KNOWN_PREFIXES:
+        if path == prefix or path.startswith(prefix + "/"):
+            return prefix
+    if path.startswith("/api/"):
+        return "/api/other"
+    return "/other"
+
+
 class ObservabilityStore:
     def __init__(self, *, max_latency_samples: int = 600) -> None:
         self._lock = Lock()
         self._started_at = monotonic()
-        # Latency samples are bounded independently from request counters. Counts
-        # therefore stay accurate even when traffic exceeds the sample capacity.
         self._latency_samples: deque[RequestSample] = deque(maxlen=max_latency_samples)
         self._request_buckets: dict[int, dict[str, list[int]]] = {}
 
     def record_request(self, *, path: str, status_code: int, duration_ms: float) -> None:
+        path = _normalise_path(path)
         if path == "/api/v1/observability":
             return
         now = monotonic()
