@@ -101,6 +101,17 @@ def test_aircraft_distance_units_can_be_changed_in_settings() -> None:
     assert "aircraft-radar.js?v=21.11.13" in HTML
 
 
+def test_airports_share_distance_units_and_are_limited_to_50_miles() -> None:
+    assert "const AIRPORT_RADIUS_MILES=50" in LAYOUT_JS
+    assert "const AIRPORT_RADIUS_KM=AIRPORT_RADIUS_MILES*KM_PER_MILE" in LAYOUT_JS
+    assert 'localStorage.getItem("nightazimuth.distanceUnit")==="km"?"km":"miles"' in LAYOUT_JS
+    assert 'path==="/api/v1/airports"?' in LAYOUT_JS
+    assert "radius_km:LOCAL_RADIUS_KM" in LAYOUT_JS
+    assert "distanceKm>AIRPORT_RADIUS_KM" in LAYOUT_JS
+    assert "Math.round(km/KM_PER_MILE)" in LAYOUT_JS
+    assert 'window.addEventListener("nightazimuth:distance-unit",()=>drawSky())' in LAYOUT_JS
+
+
 def test_changed_camera_runtime_is_cache_busted() -> None:
     assert "camera-settings.js?v=21.11.19" in HTML
 
