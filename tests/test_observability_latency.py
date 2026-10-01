@@ -22,6 +22,11 @@ def test_server_timing_headers_are_parsed() -> None:
     assert "shared_wait" in LATENCY
 
 
+def test_aircraft_route_latency_is_normalized_by_endpoint_family() -> None:
+    assert 'path.startsWith("/api/v1/aircraft/route/")' in LATENCY
+    assert 'return "/api/v1/aircraft/route";' in LATENCY
+
+
 def test_endpoint_specific_latency_health_is_rendered_and_published() -> None:
     assert "Endpoint latency health" in LATENCY
     assert "Excellent" in LATENCY
