@@ -9,9 +9,13 @@
   function endpointPath(input) {
     try {
       const raw = typeof input === "string" ? input : input?.url || "";
-      return new URL(raw, location.href).pathname;
+      const path = new URL(raw, location.href).pathname;
+      if (path === "/api/v1/aircraft/route" || path.startsWith("/api/v1/aircraft/route/")) return "/api/v1/aircraft/route";
+      return path;
     } catch {
-      return String(input || "unknown").split("?")[0];
+      const path = String(input || "unknown").split("?")[0];
+      if (path === "/api/v1/aircraft/route" || path.startsWith("/api/v1/aircraft/route/")) return "/api/v1/aircraft/route";
+      return path;
     }
   }
 
