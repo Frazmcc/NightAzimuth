@@ -41,6 +41,8 @@ class SkyAircraft:
     category: str | None = None
     pia: bool = False
     ladd: bool = False
+    selected_altitude_ft: float | None = None
+    selected_heading_deg: float | None = None
     latitude_deg: float | None = None
     longitude_deg: float | None = None
     future_track: tuple[AircraftSkyTrackPoint, ...] = ()
@@ -123,6 +125,8 @@ def build_sky_aircraft(
                 category=observation.category,
                 pia=observation.pia,
                 ladd=observation.ladd,
+                selected_altitude_ft=observation.selected_altitude_ft,
+                selected_heading_deg=observation.selected_heading_deg,
                 latitude_deg=resolved.latitude_deg,
                 longitude_deg=resolved.longitude_deg,
                 future_track=tuple(track_points),
