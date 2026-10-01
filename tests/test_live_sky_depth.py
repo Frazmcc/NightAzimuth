@@ -3,6 +3,7 @@ from pathlib import Path
 
 DEPTH_JS = Path("web/live-sky-depth.js").read_text(encoding="utf-8")
 LAYERS_JS = Path("web/layer-defaults.js").read_text(encoding="utf-8")
+HTML = Path("web/index.html").read_text(encoding="utf-8")
 
 
 def test_depth_uses_observer_centred_stereographic_projection() -> None:
@@ -51,7 +52,8 @@ def test_depth_metrics_expose_horizon_eccentricity_and_range_cues() -> None:
     assert "window.NightAzimuthDepth" in DEPTH_JS
 
 
-def test_depth_module_loads_after_layout_with_a_versioned_asset() -> None:
+def test_depth_module_loads_after_layout_with_versioned_assets() -> None:
     assert 'typeof verticalFovFor!=="function"||typeof skyXY!=="function"' in LAYERS_JS
     assert 'depth.src="./live-sky-depth.js?v=22.2.0"' in LAYERS_JS
     assert 'depth.dataset.nightazimuthDepth="true"' in LAYERS_JS
+    assert 'layer-defaults.js?v=21.11.15' in HTML
