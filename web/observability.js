@@ -46,6 +46,27 @@
     return endpoint === "/api/v1/aircraft" || endpoint.startsWith("/api/v1/aircraft?");
   }
 
+  function normaliseBrowserEndpoint(endpoint) {
+    const path = String(endpoint || "").split("?")[0];
+    const knownPrefixes = [
+      "/api/v1/aircraft/route",
+      "/api/v1/aircraft",
+      "/api/v1/airports",
+      "/api/v1/geojson",
+      "/api/v1/health",
+      "/api/v1/observability",
+      "/api/v1/observing",
+      "/api/v1/satellites",
+      "/api/v1/sky",
+      "/api/v1/weather",
+    ];
+    for (const prefix of knownPrefixes) {
+      if (path === prefix || path.startsWith(`${prefix}/`)) return prefix;
+    }
+    if (path.startsWith("/api/")) return "/api/other";
+    return "/other";
+  }
+
   function captureAircraftTelemetry(payload) {
     const source = payload?.source;
     if (!source || typeof source !== "object") return;
@@ -92,10 +113,11 @@
     const bucketIndex = LATENCY_BUCKETS_MS.findIndex((limit) => record.durationMs <= limit);
     totals.latencyHistogram[bucketIndex < 0 ? totals.latencyHistogram.length - 1 : bucketIndex] += 1;
 
-    let endpoint = totals.endpoints.get(record.endpoint);
+    const endpointKey = normaliseBrowserEndpoint(record.endpoint);
+    let endpoint = totals.endpoints.get(endpointKey);
     if (!endpoint) {
       endpoint = { count: 0, errors: 0, durations: [] };
-      totals.endpoints.set(record.endpoint, endpoint);
+      totals.endpoints.set(endpointKey, endpoint);
     }
     endpoint.count += 1;
     if (!record.ok) endpoint.errors += 1;
