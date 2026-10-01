@@ -40,6 +40,15 @@ def test_aircraft_response_state_drives_provider_freshness() -> None:
     assert 'state.lastContactChangeAt' not in JS
 
 
+def test_browser_endpoint_aggregation_is_bounded_and_normalized() -> None:
+    assert 'function normaliseBrowserEndpoint(endpoint)' in JS
+    assert '"/api/v1/aircraft/route"' in JS
+    assert 'return "/api/other";' in JS
+    assert 'const endpointKey = normaliseBrowserEndpoint(record.endpoint);' in JS
+    assert 'totals.endpoints.get(endpointKey)' in JS
+    assert 'totals.endpoints.set(endpointKey, endpoint)' in JS
+
+
 def test_cumulative_counts_are_separate_from_bounded_detail_buffers() -> None:
     assert 'totalErrors: 0' in JS
     assert 'totalLongTasks: 0' in JS
