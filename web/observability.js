@@ -64,6 +64,7 @@
 
   function markAircraftUnavailable(status) {
     const previous = state.aircraftTelemetry || {};
+    state.aircraftCount = 0;
     state.aircraftTelemetry = {
       ...previous,
       state: "unavailable",
