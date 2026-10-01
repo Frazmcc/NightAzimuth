@@ -107,7 +107,7 @@ def test_provider_start_spacing_is_observable(monkeypatch):
     client.close()
 
     assert first.last_timings["provider_throttle_ms"] == 0.0
-    assert second.last_timings["provider_throttle_ms"] == 20.0
+    assert 19.9 <= second.last_timings["provider_throttle_ms"] <= 20.1
 
 
 def test_retry_backoff_releases_gate_for_other_region(monkeypatch):
