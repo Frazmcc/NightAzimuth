@@ -13,6 +13,9 @@ permissions:
   pages: write
   id-token: write
 
+# Keep all Pages deployments in the same concurrency group. A newly-triggered
+# deployment supersedes any stale pending run in this group, while
+# cancel-in-progress prevents an older active deployment from racing a newer one.
 concurrency:
   group: pages
   cancel-in-progress: true
