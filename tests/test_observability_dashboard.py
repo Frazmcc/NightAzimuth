@@ -32,6 +32,7 @@ def test_aircraft_response_state_drives_provider_freshness() -> None:
     assert 'source.fallback_used' in JS
     assert 'source.source_observed_at' in JS
     assert 'function markAircraftUnavailable(status)' in JS
+    assert 'state.aircraftCount = 0;' in JS
     assert 'sourceCount: 0' in JS
     assert 'else markAircraftUnavailable(response.status);' in JS
     assert 'state.lastContactChangeAt' not in JS
