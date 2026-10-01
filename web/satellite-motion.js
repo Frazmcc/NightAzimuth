@@ -189,7 +189,7 @@
     satelliteCtx.fillStyle=status.color;
     satelliteCtx.shadowColor=status.color;
     satelliteCtx.shadowBlur=selected?8:3;
-    satelliteCtx.globalAlpha=selected?.24:.13;
+    satelliteCtx.globalAlpha=selected ? .24 : .13;
     satelliteCtx.beginPath();satelliteCtx.arc(x,y,halo,0,Math.PI*2);satelliteCtx.fill();
     satelliteCtx.globalAlpha=1;
     satelliteCtx.shadowBlur=selected?5:2;
@@ -298,6 +298,7 @@
     if(contactsRoot)contactsRoot.hidden=true;
     if(aircraftDetail)aircraftDetail.hidden=true;
     satelliteDetail.hidden=false;
+    const genericInspector=document.querySelector("#object-inspector");if(genericInspector)genericInspector.hidden=true;
 
     const statusLine=document.createElement("p");statusLine.className="muted";statusLine.style.color=status.color;statusLine.textContent=`● ${status.label.toUpperCase()}`;
     const sections=[
