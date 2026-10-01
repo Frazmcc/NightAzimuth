@@ -31,6 +31,34 @@ def test_dashboard_surfaces_aircraft_provider_metadata_from_real_responses() -> 
     assert 'source.fallback_used' in JS
     assert 'source.source_observed_at' in JS
     assert 'response.clone().json()' in JS
+    assert 'state.lastContactChangeAt' not in JS
+    assert 'sourceFreshnessText()' in JS
+
+
+def test_dashboard_tracks_cumulative_session_counts_while_bounding_detail_buffers() -> None:
+    assert 'totalErrors: 0' in JS
+    assert 'totalLongTasks: 0' in JS
+    assert 'requestTotals:' in JS
+    assert 'state.totalErrors += 1' in JS
+    assert 'state.totalLongTasks += 1' in JS
+    assert 'latencyHistogram' in JS
+    assert 'if (state.errors.length > MAX_ERRORS)' in JS
+    assert 'if (state.longTasks.length > MAX_LONG_TASKS)' in JS
+
+
+def test_dashboard_visibility_status_is_live() -> None:
+    assert 'setText("obs-page-visibility", document.hidden ? "Background" : "Active")' in JS
+    assert 'document.addEventListener("visibilitychange", handleVisibilityChange)' in JS
+
+
+def test_health_polling_only_runs_while_dashboard_is_visible() -> None:
+    assert 'if (!API_BASE || document.hidden || !dashboardIsOpen()) return;' in JS
+    assert 'function startRefreshTimer()' in JS
+    assert 'function stopRefreshTimer()' in JS
+    assert 'if (!dashboardIsOpen() || document.hidden) return;' in JS
+    assert 'refreshHealth();\n      startRefreshTimer();' in JS
+    assert 'observeContacts();\n    render();' in JS
+    assert 'init.refreshTimer = window.setInterval(refreshHealth, 60_000)' not in JS
 
 
 def test_dashboard_does_not_invent_unavailable_server_metrics() -> None:
