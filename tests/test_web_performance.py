@@ -116,9 +116,17 @@ def test_airports_share_distance_units_and_are_limited_to_50_miles() -> None:
     assert "radius_km:LOCAL_RADIUS_KM" in airport_params
     assert "distanceKm>AIRPORT_RADIUS_KM" in LAYOUT_JS
     assert "Math.round(km/KM_PER_MILE)" in LAYOUT_JS
-    assert 'window.addEventListener("nightazimuth:distance-unit",()=>drawSky())' in LAYOUT_JS
+    assert 'window.addEventListener("nightazimuth:distance-unit"' in LAYOUT_JS
     assert "app.js?v=21.11.23" in HTML
-    assert "live-sky-layout.js?v=21.11.22" in HTML
+    assert "live-sky-layout.js?v=21.11.24" in HTML
+
+
+def test_airport_inspector_uses_selected_distance_units() -> None:
+    assert "const updateAirportInspectorDistance=target=>" in LAYOUT_JS
+    assert 'label?.textContent!=="Distance (km)"' in LAYOUT_JS
+    assert 'label.textContent="Distance"' in LAYOUT_JS
+    assert "value.textContent=formatAirportDistance(target.item.distance_km)" in LAYOUT_JS
+    assert "if(openAirportTarget&&!inspector?.hidden)showObject(openAirportTarget)" in LAYOUT_JS
 
 
 def test_changed_camera_runtime_is_cache_busted() -> None:
