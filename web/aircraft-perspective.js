@@ -462,5 +462,8 @@ if(markerSelect){
 }
 
 window.NightAzimuthAircraftPerspective={active:true,modelSize,interpolateTrack,cameraBasis,aircraftBasis,aircraftProfile,projectionFrame,blendState,uniqueAircraftContacts,aircraftIdentity,drawPerspectiveLayer};
+// Repaint the base sky once after taking ownership so a legacy silhouette already
+// painted on the main canvas cannot remain behind the animated overlay.
+requestAnimationFrame(()=>{if(typeof drawSky==="function")drawSky()});
 requestAnimationFrame(animate);
 })();
