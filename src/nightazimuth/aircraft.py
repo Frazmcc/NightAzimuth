@@ -62,6 +62,10 @@ class AircraftObservation:
     ladd: bool = False
     selected_altitude_ft: float | None = None
     selected_heading_deg: float | None = None
+    true_heading_deg: float | None = None
+    magnetic_heading_deg: float | None = None
+    track_rate_deg_s: float | None = None
+    roll_deg: float | None = None
 
     def __post_init__(self) -> None:
         icao = self.icao24.strip().lower()
@@ -83,14 +87,18 @@ class AircraftObservation:
             "vertical_rate_mps",
             "selected_altitude_ft",
             "selected_heading_deg",
+            "true_heading_deg",
+            "magnetic_heading_deg",
+            "track_rate_deg_s",
+            "roll_deg",
         ):
             value = getattr(self, name)
             if value is not None and not isfinite(value):
                 raise ValueError(f"{name} must be finite when supplied")
-        if self.track_deg is not None:
-            object.__setattr__(self, "track_deg", self.track_deg % 360.0)
-        if self.selected_heading_deg is not None:
-            object.__setattr__(self, "selected_heading_deg", self.selected_heading_deg % 360.0)
+        for name in ("track_deg", "selected_heading_deg", "true_heading_deg", "magnetic_heading_deg"):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, value % 360.0)
         for name in (
             "callsign",
             "squawk",
