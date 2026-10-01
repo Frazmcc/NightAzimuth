@@ -2,178 +2,134 @@
 
 **Created by Logic Lurker © 2026**
 
-Location-based live satellite tracking with directional sky identification and observing guidance.
+NightAzimuth is a live, observer-centred sky application for identifying satellites, aircraft, stars, planets, galaxies, airports and observing conditions from a chosen location.
 
-## Current release
+## Use NightAzimuth
 
-**v1.0.0 — first stable release**
+**Web app:** https://nightazimuth.co.uk  
+**Public API:** https://api.nightazimuth.co.uk
 
-NightAzimuth 1.0 combines live satellite tracking, practical sky-finder guidance, terrain, twilight, point weather, spatial cloud imagery, observed rain-radar history, forecast planning, adaptive constellation contrast, dark mode and source-labelled brightness estimates in one local Windows application.
+The hosted web application is the primary and recommended NightAzimuth experience. It receives new features, performance work and production validation first.
 
-The application has progressed through approved Stage 18. Saved observing locations and downloaded caches remain local to the user's PC. External providers receive only the requests required for orbital, weather, imagery, map or terrain data; NightAzimuth does not upload the saved profile file or profile name.
+> The older Windows executable is retained only as a historical/legacy build. It is not feature-equivalent to the current web application and is no longer the recommended way to use NightAzimuth. See [`docs/LEGACY_DESKTOP.md`](docs/LEGACY_DESKTOP.md).
 
-Camera overlays, aircraft matching, meteor detection and unidentified-event classification remain future work and are not claimed by this release.
+## Current status
 
-See [`RELEASE_NOTES_v1.0.0.md`](RELEASE_NOTES_v1.0.0.md) for release details.
+NightAzimuth is actively developed and deployed as a static browser frontend backed by a versioned FastAPI service.
 
-## Initial goal
+The production architecture has completed the Task 5 performance programme and Task 6 free-tier scalability programme. The current production-style capacity gate has validated **50 simultaneous Live Sky users** with **300/300 successful API requests, zero server errors and production health remaining HTTP 200** after the test.
 
-NightAzimuth is a local application that uses an observer's location and current time to determine which satellites are above the horizon, where they are in the sky, and which are realistically likely to be visible.
+The project remains intentionally cost-conscious. The current architecture is designed to operate at **£0 infrastructure cost** using free hosting/provider tiers where practical. No paid scaling service or Redis dependency is required by the current design.
 
-NightAzimuth keeps orbital geometry, solar illumination, astronomical darkness, weather/cloud context and source-labelled brightness estimates distinct so the user can see what each result does—and does not—establish.
+## What the web app provides
+
+- observer latitude/longitude settings
+- wide-field Live Sky with configurable field of view
+- click-and-drag sky navigation and zoom
+- horizon-limited view with no below-horizon sky area
+- independent layer controls for stars, constellations, planets, satellites, aircraft and airports
+- selectable stars, planets, satellites and aircraft with object information
+- live satellite positions and short projected tracks
+- aircraft contacts with callsign/type/telemetry/squawk information where available
+- special-aircraft awareness for military, air ambulance, police and coastguard/search-and-rescue signals where supported by source data
+- airport horizon references derived from the observer location
+- point weather and observing guidance
+- responsive desktop/mobile browser layout
+
+NightAzimuth deliberately separates geometry, source data and inference. Missing route, schedule, brightness or classification information is shown as unavailable rather than invented.
+
+## Architecture
+
+```text
+Browser
+  |
+  | HTTPS
+  v
+nightazimuth.co.uk
+  |
+  v
+api.nightazimuth.co.uk
+  |
+  +-- sky / stars / planets / galaxies
+  +-- satellites / orbital data
+  +-- aircraft / ADS-B
+  +-- airports
+  +-- weather
+  +-- observing guidance
+```
+
+Important scaling behaviour includes:
+
+- progressive browser startup rather than launching all heavy astronomy work at once
+- bounded server-side astronomy admission control
+- short exact-request burst sharing for near-simultaneous sky/satellite requests
+- regional shared aircraft snapshots so nearby users do not independently hit ADS-B providers
+- request pacing, bounded retry and provider failover for aircraft data
+- last-known-good aircraft snapshots within the accepted data-age window
+- bounded process-local caches for weather, airports and other reusable data
+- production preloading of static astronomy/airport resources
+
+See [`docs/CURRENT_ARCHITECTURE.md`](docs/CURRENT_ARCHITECTURE.md) and [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md).
+
+## Repository layout
+
+- `web/` — production browser frontend deployed to `nightazimuth.co.uk`
+- `src/nightazimuth/` — Python/FastAPI backend and astronomy/data logic
+- `tests/` — automated regression and API tests
+- `docs/` — current user, architecture, status and security-related documentation
+- `docs/archive/` — historical implementation-stage and release documentation
+- `.github/workflows/` — CI, CodeQL, Pages and production smoke validation
+- `render.yaml` — Render API deployment definition
+- `build_windows.ps1` — legacy desktop build helper; not the recommended product path
 
 ## Documentation
 
-- [`docs/NightAzimuth_User_Guide.md`](docs/NightAzimuth_User_Guide.md) — end-user installation, configuration, privacy, terrain and operating guide. This guide is also copied into the Windows release output by `build_windows.ps1`.
-- [`docs/STAGE_1_REQUIREMENTS.md`](docs/STAGE_1_REQUIREMENTS.md) — approved product requirements.
-- [`docs/STAGE_3_IMPLEMENTATION.md`](docs/STAGE_3_IMPLEMENTATION.md) — core-tracking implementation.
-- [`docs/STAGE_4_IMPLEMENTATION.md`](docs/STAGE_4_IMPLEMENTATION.md) — astronomical visibility, pass prediction, CelesTrak behaviour, and Windows EXE build support.
-- [`docs/STAGE_5_IMPLEMENTATION.md`](docs/STAGE_5_IMPLEMENTATION.md) — Windows GUI shell and saved location profiles.
-- [`docs/STAGE_6_IMPLEMENTATION.md`](docs/STAGE_6_IMPLEMENTATION.md) — live satellite and pass data inside the GUI.
-- [`docs/STAGE_7_IMPLEMENTATION.md`](docs/STAGE_7_IMPLEMENTATION.md) — all-sky and forward-looking Live view work.
-- [`docs/STAGE_8_IMPLEMENTATION.md`](docs/STAGE_8_IMPLEMENTATION.md) — original practical Live-view elevation/zoom work.
-- [`docs/STAGE_9_IMPLEMENTATION.md`](docs/STAGE_9_IMPLEMENTATION.md) — short projected tracks and direction of travel.
-- [`docs/STAGE_10_IMPLEMENTATION.md`](docs/STAGE_10_IMPLEMENTATION.md) — real Hipparcos star field and constellation reference layer.
-- [`docs/STAGE_11_IMPLEMENTATION.md`](docs/STAGE_11_IMPLEMENTATION.md) — major planet labels and click-to-reveal fainter star names.
-- [`docs/STAGE_13_IMPLEMENTATION.md`](docs/STAGE_13_IMPLEMENTATION.md) — live finder redesign, broad satellite coverage, fast-mover ranking and smooth animation.
-- [`docs/STAGE_14_IMPLEMENTATION.md`](docs/STAGE_14_IMPLEMENTATION.md) — twilight observing state and local countdowns.
-- [`docs/STAGE_15_IMPLEMENTATION.md`](docs/STAGE_15_IMPLEMENTATION.md) — point weather and the initial weather map.
-- [`docs/STAGE_16_IMPLEMENTATION.md`](docs/STAGE_16_IMPLEMENTATION.md) — spatial cloud imagery, observed history and forecast guidance.
-- [`docs/STAGE_17_IMPLEMENTATION.md`](docs/STAGE_17_IMPLEMENTATION.md) — phase geometry and source-labelled satellite brightness estimates.
-- [`docs/STAGE_18_IMPLEMENTATION.md`](docs/STAGE_18_IMPLEMENTATION.md) — responsive maps, forecast-tab layout and animation performance.
-- [`docs/TERRAIN_HORIZON_PROTOTYPE.md`](docs/TERRAIN_HORIZON_PROTOTYPE.md) — terrain-horizon architecture, privacy model, cache/import behaviour and current limitations.
-- [`CREDITS.md`](CREDITS.md) — creator and third-party credits.
+Start here:
 
-## Windows GUI
+- [`docs/NightAzimuth_User_Guide.md`](docs/NightAzimuth_User_Guide.md) — current web user guide
+- [`docs/CURRENT_ARCHITECTURE.md`](docs/CURRENT_ARCHITECTURE.md) — current hosted architecture and data flow
+- [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) — completed performance/scalability work and present project state
+- [`docs/LEGACY_DESKTOP.md`](docs/LEGACY_DESKTOP.md) — status of the old Windows executable
+- [`SECURITY.md`](SECURITY.md) — security/privacy policy
+- [`CREDITS.md`](CREDITS.md) — third-party software/data attribution
 
-From `C:\git\NightAzimuth`:
+Historical stage documents and old desktop release notes are kept under `docs/archive/` for project history and should not be read as current operating instructions.
 
-```powershell
-git checkout main
-git pull
-.\build_windows.ps1
-.\dist\NightAzimuth.exe
-```
+## Development and quality gates
 
-The build produces:
+Changes should pass the repository quality gates before reaching `main`:
 
-```text
-dist\NightAzimuth.exe
-dist\NightAzimuth_User_Guide.md
-```
+- Python compile checks
+- Ruff correctness checks
+- hosted JavaScript syntax validation
+- hosted DOM contract smoke tests
+- pytest regression suite
+- Windows legacy packaging check where still retained by CI
+- CodeQL analysis
+- exact-commit production API smoke validation for hosted API changes
 
-The GUI provides:
+Production load testing is performed cautiously and only when a measured capacity question justifies it.
 
-- saved observing locations
-- quick location switching
-- automatic terrain-horizon generation for the selected location
-- terrain masking for sky objects below the calculated local skyline
-- optional import of compatible local Terrarium terrain packs
-- live radar-style all-sky map
-- separate forward-looking Live finder
-- full 0–90° Live-view elevation range, including zenith
-- click-and-drag sky panning horizontally and vertically
-- facing direction by compass point or 0–359° bearing
-- selectable horizontal field of view from 30° to 180°
-- mouse-wheel zoom
-- + / − zoom buttons
-- Reset view control
-- broad live satellite tracking using CelesTrak VISUAL + ACTIVE catalogues
-- default fast-mover ranking in the current field of view
-- sunlit twilight satellite candidates after sunset before the dark-sky threshold is reached
-- small named satellite markers with apparent angular speed when available
-- optional All tracked diagnostic mode
-- smooth satellite motion using one-second orbital samples interpolated at about 20 fps
-- short 3-minute projected satellite paths sampled every second
-- location-aware sunset, civil twilight, nautical twilight and complete-darkness countdowns
-- current Sun altitude and sky-state display
-- offline local time-zone resolution for the selected observing location
-- Live-view background colour that follows daylight/twilight/dark state
-- real Hipparcos star-field background
-- Vega emphasised as a blue-white visual reference with live azimuth/elevation
-- bright named reference stars labelled automatically, with more labels appearing as you zoom in
-- fainter stars identified when clicked
-- optional Stellarium constellation lines with adaptive Auto, Subtle and Strong contrast modes
-- System, Light and Dark appearance settings
-- Mercury, Venus, Mars, Jupiter, Saturn, Uranus and Neptune positioned from the Skyfield ephemeris and labelled when in view
-- named galaxy references for M31, M33, M81, M82, M51, M101 and M104
-- clickable satellite markers
-- selected satellite details including projected azimuth/elevation movement
-- live satellites above the horizon
-- azimuth, elevation, and range
-- sunlit and dark-sky indicators
-- potential astronomical visibility
-- point weather, cloud layers, fog, wind and precipitation guidance
-- responsive Weather map with EUMETSAT cloud imagery and RainViewer radar
-- automatic looping observed-weather history covering the previous 24 hours
-- separate Forecast tab with next-24-hour and 7-day observing guidance
-- selected-satellite phase angle and source-labelled OneWeb brightness ranges where supported
-- explicit Unknown and Not sunlit brightness states where an estimate is not justified
-- upcoming VISUAL-group passes for the next 24 hours
-- rise, peak, set time, and maximum elevation
-- manual refresh
-- automatic live refresh
+## Data and privacy principles
 
-Changing the selected location refreshes satellite, celestial, terrain, sunset/twilight and time-zone calculations for that observer position. NightAzimuth suppresses the previous location's stellar and terrain snapshots while replacement data is calculated.
+- No real user location is hard-coded into the application.
+- Browser/API requests use the observer coordinates required to calculate the requested view.
+- Do not commit API keys, credentials, private coordinates or personal runtime data.
+- External data providers may infer the geographic area represented by a location-dependent request.
+- NightAzimuth does not need user accounts for the current read-only public API.
 
-## Saved application data
+## Accuracy boundaries
 
-Location profiles are stored under:
+NightAzimuth is an identification and observing aid, not an authoritative aviation, navigation or safety service.
 
-```text
-%APPDATA%\NightAzimuth\locations.json
-```
+A satellite being above the horizon, sunlit and actually visible to the naked eye are different claims. Aircraft route and timing information may be incomplete or delayed. Weather and visibility remain subject to local conditions that a remote data source cannot fully represent.
 
-Orbital, Skyfield, Hipparcos, and constellation cache data are stored under:
+## Historical desktop application
 
-```text
-%APPDATA%\NightAzimuth\cache\
-```
+The repository still contains Tkinter/PyInstaller desktop code and `build_windows.ps1` because they are part of NightAzimuth's development history and may still be useful for experimentation.
 
-Terrain tiles generated for user-entered locations are cached under:
-
-```text
-%APPDATA%\NightAzimuth\terrain\terrarium\
-```
-
-A fresh release does not include saved user locations or personal terrain/cache data. Terrain tile requests are derived from the location the user enters, so the terrain provider can infer the geographic area represented by those requested tiles; the saved NightAzimuth profile file and profile name are not uploaded.
-
-Sunset/twilight and time-zone calculations are performed locally from the selected observing location. No paid sunset or timezone API is used.
-
-## Visibility terminology
-
-`Potential` means the satellite is illuminated by the Sun while the observer's sky is sufficiently dark. It does **not** mean guaranteed naked-eye visibility.
-
-The Live finder can also show sunlit satellites during civil twilight after sunset. These are observing candidates, but they do not receive the stricter `Potential` status until the dark-sky threshold is met.
-
-The `Potential` flag remains deliberately limited to sunlight and dark-sky geometry. Weather/cloud context and supported brightness estimates are displayed separately; haze, moonlight, camera sensitivity, buildings, trees and other non-terrain obstructions are not folded into that flag.
-
-Fast-mover ranking prioritises apparent movement across the current Live view. It improves practical identification but is not a brightness model.
-
-The star, planet and galaxy layers are positional observing references. A plotted object is not a guarantee that local conditions make it visible to the unaided eye.
-
-## Development principles
-
-- Accuracy before features.
-- Preserve the distinction between a satellite being geometrically above the horizon and actually being visible.
-- Use modern OMM orbital data rather than assuming legacy TLE-only identifiers.
-- Keep external data providers replaceable where practical.
-- Never embed API keys or other secrets in source control.
-- Never bundle saved user locations, personal runtime data, or caches in a release.
-- Make data age and confidence clear when displaying time-sensitive information.
-- Add camera integration only after the core satellite tracker is reliable.
-- Progress one approved stage at a time.
-
-## Technology baseline
-
-The current implementation uses Python 3.11+, Tkinter for the native desktop GUI, Skyfield for satellite, stellar, planetary, solar and deep-sky coordinate calculations, `timezonefinder` for offline coordinate-to-time-zone lookup, Pandas for Hipparcos catalogue loading, HTTPX for orbital/terrain data retrieval, Pillow for Terrarium elevation-tile decoding, and PyInstaller for Windows EXE packaging.
-
-## Credits
-
-**Created by Logic Lurker © 2026**
-
-See [`CREDITS.md`](CREDITS.md) for project and third-party attribution information.
+New public releases should **not** automatically publish a Windows EXE unless the desktop product is deliberately brought back to feature parity with the web application. Existing EXE releases remain available as historical artifacts.
 
 ## Licence
 
-No licence has been selected yet.
+No project licence has been selected yet.

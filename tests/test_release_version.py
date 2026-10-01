@@ -10,4 +10,8 @@ def test_runtime_and_package_versions_match() -> None:
 
 
 def test_release_notes_exist_for_current_version() -> None:
-    assert Path(f"RELEASE_NOTES_v{__version__}.md").is_file()
+    web_release_notes = Path(f"docs/releases/v{__version__}.md")
+    archived_release_notes = Path(
+        f"docs/archive/releases/RELEASE_NOTES_v{__version__}.md"
+    )
+    assert web_release_notes.is_file() or archived_release_notes.is_file()

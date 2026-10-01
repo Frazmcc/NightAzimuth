@@ -50,10 +50,6 @@ jobs:
           $scripts = @(Get-ChildItem .\web -Filter *.js)
           $createdIds = [System.Collections.Generic.HashSet[string]]::new()
 
-          # Some UI helpers intentionally create controls in one script and use
-          # them from a later script. Build one page-wide set of dynamically
-          # created IDs before validating references so those legitimate
-          # cross-script contracts are recognised.
           foreach ($script in $scripts) {
             $source = Get-Content $script.FullName -Raw
             [regex]::Matches($source, '\.id\s*=\s*["'']([^"'']+)["'']') | ForEach-Object {
@@ -81,16 +77,19 @@ jobs:
       - name: Pytest
         run: python -m pytest -q
 
-      - name: Build Windows release output
+      # The Windows/Tkinter client is legacy. Keep one packaging check so the
+      # historical build remains reproducible, but do not treat it as the
+      # supported product or a release artifact.
+      - name: Build legacy Windows desktop output
         shell: pwsh
         run: |
           .\build_windows.ps1
           if ($LASTEXITCODE -ne 0) {
-            throw "Windows build failed with exit code $LASTEXITCODE"
+            throw "Legacy Windows build failed with exit code $LASTEXITCODE"
           }
           if (-not (Test-Path .\dist\NightAzimuth.exe)) {
-            throw "NightAzimuth.exe was not produced"
+            throw "Legacy NightAzimuth.exe was not produced"
           }
-          if (-not (Test-Path .\dist\NightAzimuth_User_Guide.md)) {
-            throw "NightAzimuth user guide was not included in the release output"
+          if (-not (Test-Path .\dist\NightAzimuth_Legacy_Desktop.md)) {
+            throw "Legacy desktop status notice was not included in the build output"
           }

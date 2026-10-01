@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nightazimuth"
 version = "1.1.0-rc1"
-description = "Location-based live satellite tracking with directional sky identification and observing guidance."
+description = "Observer-centred live sky tracking for satellites, aircraft and astronomy, with a hosted web frontend and API."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Logic Lurker" }]
@@ -18,6 +18,11 @@ dependencies = [
   "skyfield>=1.55,<2",
   "timezonefinder>=6.5,<10",
 ]
+
+[project.urls]
+Homepage = "https://nightazimuth.co.uk"
+Repository = "https://github.com/Frazmcc/NightAzimuth"
+API = "https://api.nightazimuth.co.uk"
 
 [project.optional-dependencies]
 api = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]

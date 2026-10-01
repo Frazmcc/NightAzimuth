@@ -10,92 +10,56 @@ permissions:
 
 jobs:
   release:
-    runs-on: windows-latest
-    timeout-minutes: 25
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Check out tagged source
         uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.11"
-          cache: pip
-
-      - name: Build validated Windows release output
-        shell: pwsh
-        run: .\build_windows.ps1
-
       - name: Verify tag matches application version
-        shell: pwsh
+        shell: bash
         run: |
-          $tag = "${{ github.ref_name }}"
-          $displayVersion = $tag.Substring(1)
-          $versionLine = '__version__ = "' + $displayVersion + '"'
-          $initText = Get-Content .\src\nightazimuth\__init__.py -Raw
-          if (-not $initText.Contains($versionLine)) {
-            throw "Tag $tag does not match NightAzimuth application version $displayVersion"
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          grep -Fq "__version__ = \"${version}\"" src/nightazimuth/__init__.py || {
+            echo "Tag ${tag} does not match NightAzimuth application version ${version}." >&2
+            exit 1
           }
 
-      - name: Prepare release assets and checksums
-        shell: pwsh
+      - name: Verify release notes
+        shell: bash
         run: |
-          $tag = "${{ github.ref_name }}"
-          $releaseDir = Join-Path $PWD "release"
-          if (Test-Path $releaseDir) {
-            Remove-Item $releaseDir -Recurse -Force
-          }
-          New-Item -ItemType Directory -Path $releaseDir | Out-Null
-
-          $exeName = "NightAzimuth-$tag-Windows-x64.exe"
-          $guideName = "NightAzimuth-$tag-User-Guide.md"
-          $checksumName = "NightAzimuth-$tag-SHA256.txt"
-
-          Copy-Item .\dist\NightAzimuth.exe (Join-Path $releaseDir $exeName)
-          Copy-Item .\dist\NightAzimuth_User_Guide.md (Join-Path $releaseDir $guideName)
-
-          $exeHash = (Get-FileHash (Join-Path $releaseDir $exeName) -Algorithm SHA256).Hash.ToLowerInvariant()
-          $guideHash = (Get-FileHash (Join-Path $releaseDir $guideName) -Algorithm SHA256).Hash.ToLowerInvariant()
-          @(
-            "$exeHash  $exeName"
-            "$guideHash  $guideName"
-          ) | Set-Content (Join-Path $releaseDir $checksumName) -Encoding ascii
-
-          $approved = @($exeName, $guideName, $checksumName)
-          $unexpected = Get-ChildItem $releaseDir -Force | Where-Object { $_.Name -notin $approved }
-          if ($unexpected) {
-            throw "Unexpected release asset(s): $($unexpected.Name -join ', ')"
-          }
-          if ((Get-ChildItem $releaseDir -File).Count -ne 3) {
-            throw "Release asset validation expected exactly three files."
-          }
+          set -euo pipefail
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [[ ! -f "$notes" ]]; then
+            echo "Release notes were not found at ${notes}." >&2
+            echo "Create the web-first release notes before pushing the tag." >&2
+            exit 1
+          fi
 
       - name: Publish GitHub release
-        shell: pwsh
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $notes = ".\RELEASE_NOTES_$tag.md"
-          if (-not (Test-Path $notes)) {
-            throw "Release notes were not found at $notes"
-          }
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          notes="docs/releases/${tag}.md"
 
-          $releaseArgs = @(
-            "release", "create", $tag,
-            "--title", "NightAzimuth $tag",
-            "--notes-file", $notes
+          args=(
+            release create "$tag"
+            --title "NightAzimuth $tag"
+            --notes-file "$notes"
           )
-          if ($tag -match '-(alpha|beta|rc)[0-9.]*$') {
-            $releaseArgs += "--prerelease"
-          }
-          $releaseArgs += @(
-            ".\release\NightAzimuth-$tag-Windows-x64.exe",
-            ".\release\NightAzimuth-$tag-User-Guide.md",
-            ".\release\NightAzimuth-$tag-SHA256.txt"
-          )
-          & gh @releaseArgs
-          if ($LASTEXITCODE -ne 0) {
-            throw "GitHub release publishing failed with exit code $LASTEXITCODE"
-          }
+
+          if [[ "$tag" =~ -(alpha|beta|rc)[0-9.]*$ ]]; then
+            args+=(--prerelease)
+          fi
+
+          gh "${args[@]}"
+
+          echo "Published web-first release ${tag}."
+          echo "No Windows executable is attached automatically."
+          echo "The supported product is https://nightazimuth.co.uk"
