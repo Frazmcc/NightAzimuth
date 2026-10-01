@@ -355,7 +355,7 @@ function drawPerspectiveAircraft(aircraft,state,w,h){
   const stroke=selected?"#ffffff":special?"#ffd166":"#8be9ff",glow=selected?"#ffffff":special?"#f59e0b":"#42d9ff";
   const size=modelSize(state.rangeKm,selected),camera=cameraBasis(state.azimuth,state.elevation),basis=aircraftBasis(state.heading,state.flightPathDeg,state.roll),kind=aircraftKind(aircraft),profile=aircraftProfile(aircraft);
   const coasting=aircraft?.position_state==="coasting"||aircraft?.continuity_state==="coasting";
-  const alpha=selected?1:(coasting?.62:1);
+  const alpha=selected?1:(coasting ? .62 : 1);
   let bounds;
   aircraftCtx.save();aircraftCtx.globalAlpha=alpha;
   if(kind==="helicopter"){
