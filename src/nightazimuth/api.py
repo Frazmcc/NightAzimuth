@@ -122,6 +122,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET"],
     allow_headers=["Accept"],
+    expose_headers=["Server-Timing"],
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 app.include_router(satellites_router)
