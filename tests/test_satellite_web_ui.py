@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 SATELLITE_JS = Path("web/satellite-motion.js").read_text(encoding="utf-8")
+HTML = Path("web/index.html").read_text(encoding="utf-8")
 
 
 def test_satellites_use_small_point_source_markers() -> None:
@@ -87,3 +88,7 @@ def test_satellite_orbit_detail_is_derived_from_existing_payload() -> None:
     assert 'orbitClass="LEO"' in SATELLITE_JS
     assert 'orbitClass="MEO"' in SATELLITE_JS
     assert '?"GEO":"GSO"' in SATELLITE_JS
+
+
+def test_satellite_renderer_asset_is_cache_busted() -> None:
+    assert 'satellite-motion.js?v=21.11.18' in HTML
