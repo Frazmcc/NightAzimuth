@@ -38,4 +38,21 @@ const videoSources=document.createElement("script");
 videoSources.src="./video-source-integration.js?v=21.11.26";
 videoSources.async=false;
 document.head.append(videoSources);
+
+// live-sky-layout.js runs after this module in index.html. Load the depth layer
+// only once that projection helper is available so it can replace the legacy
+// rectangular projection without racing application startup.
+function loadDepthWhenReady(){
+  if(typeof verticalFovFor!=="function"||typeof skyXY!=="function"){
+    requestAnimationFrame(loadDepthWhenReady);
+    return;
+  }
+  if(document.querySelector('script[data-nightazimuth-depth]'))return;
+  const depth=document.createElement("script");
+  depth.dataset.nightazimuthDepth="true";
+  depth.src="./live-sky-depth.js?v=22.2.0";
+  depth.async=false;
+  document.head.append(depth);
+}
+requestAnimationFrame(loadDepthWhenReady);
 })();
