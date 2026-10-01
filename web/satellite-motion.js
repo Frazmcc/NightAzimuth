@@ -161,18 +161,19 @@
     if(typeof layers!=="undefined"&&layers.satellites===false)return;
     satelliteCtx.save();
     satelliteCtx.lineWidth=.8;
+    const nowMs=Date.now();
     for(const satellite of skySatellites){
       if(!trackedSatellite(satellite)&&!skyXY(Number(satellite.azimuth_deg),Number(satellite.elevation_deg),w,h))continue;
       if(!trackedSatellite(satellite))continue;
-      const track=Array.isArray(satellite.track)?satellite.track:[];
-      if(track.length<2)continue;
+      const track=preparedTrack(satellite).filter(point=>point.time>=nowMs);
+      if(track.length<1)continue;
       satelliteCtx.strokeStyle=satelliteStatus(satellite).trail;
       satelliteCtx.beginPath();
       const current=skyXY(Number(satellite.azimuth_deg),Number(satellite.elevation_deg),w,h);
       let drawing=false;
       if(current){satelliteCtx.moveTo(current[0],current[1]);drawing=true}
       for(const point of track){
-        const xy=skyXY(Number(point.azimuth_deg),Number(point.elevation_deg),w,h);
+        const xy=skyXY(point.azimuth,point.elevation,w,h);
         if(!xy){drawing=false;continue}
         if(!drawing){satelliteCtx.moveTo(xy[0],xy[1]);drawing=true}else satelliteCtx.lineTo(xy[0],xy[1]);
       }
@@ -204,7 +205,7 @@
       satelliteCtx.textAlign="left";satelliteCtx.fillText(satellite.name||"SAT",x+7,y-6);
     }
     satelliteCtx.restore();
-    return Math.max(8,halo+3);
+    return Math.max(12,halo+3);
   }
 
   function drawSatelliteLayer(){
