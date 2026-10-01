@@ -1,4 +1,6 @@
+import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 ROADSTER_JS = Path("web/roadster-deep-space.js").read_text(encoding="utf-8")
@@ -58,13 +60,29 @@ def test_roadster_click_opens_relevant_live_contacts_detail() -> None:
 
 
 def test_roadster_media_is_historical_public_domain_and_not_presented_as_live() -> None:
-    assert "upload.wikimedia.org" in ROADSTER_JS
+    media_match = re.search(r'const MEDIA_URL="([^"]+)"', ROADSTER_JS)
+    assert media_match is not None
+    media_url = urlsplit(media_match.group(1))
+    assert media_url.scheme == "https"
+    assert media_url.netloc == "upload.wikimedia.org"
+
+    csp_match = re.search(
+        r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">',
+        HTML,
+    )
+    assert csp_match is not None
+    directives = {
+        parts[0]: parts[1:]
+        for directive in csp_match.group(1).split(";")
+        if (parts := directive.strip().split())
+    }
+    assert directives["img-src"] == ["'self'", "data:", "https://upload.wikimedia.org"]
+
     assert "Historical SpaceX onboard view" in ROADSTER_JS
     assert "CC0/public domain" in ROADSTER_JS
     assert "not live" in ROADSTER_JS
     assert "roadster-media-drift" in CSS
     assert "prefers-reduced-motion:reduce" in CSS
-    assert "img-src 'self' data: https://upload.wikimedia.org" in HTML
 
 
 def test_roadster_assets_are_loaded_in_safe_order_and_cache_busted() -> None:
