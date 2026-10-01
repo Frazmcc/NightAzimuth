@@ -56,6 +56,13 @@ const networkUrlLabel=sourceSection.querySelector("#network-url-label");
 const networkUrlInput=sourceSection.querySelector("#network-playback-url");
 const help=sourceSection.querySelector("#video-source-help");
 if(!modeSelect||!protocolLabel||!protocolSelect||!networkUrlLabel||!networkUrlInput||!help)return;
+// Explicit IDs keep the hosted DOM contract checker aware of dynamically-created controls.
+modeSelect.id="video-source-mode";
+protocolLabel.id="network-protocol-label";
+protocolSelect.id="network-source-protocol";
+networkUrlLabel.id="network-url-label";
+networkUrlInput.id="network-playback-url";
+help.id="video-source-help";
 
 function selectedMode(){return modeSelect.value||"direct"}
 function isYoloLabel(text){return YOLO_PATTERN.test(String(text||""))}
