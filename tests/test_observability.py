@@ -5,7 +5,7 @@ from nightazimuth.observability import ObservabilityStore
 
 
 def test_observability_store_summarises_requests_without_query_data() -> None:
-    store = ObservabilityStore(max_requests=10)
+    store = ObservabilityStore(max_latency_samples=10)
     store.record_request(path="/api/v1/aircraft", status_code=200, duration_ms=40.0)
     store.record_request(path="/api/v1/aircraft", status_code=503, duration_ms=120.0)
     store.record_request(path="/api/v1/weather", status_code=200, duration_ms=20.0)
@@ -19,25 +19,25 @@ def test_observability_store_summarises_requests_without_query_data() -> None:
     assert "?" not in payload["api"]["top_endpoints"][0]["path"]
 
 
-def test_observability_store_tracks_aircraft_source_state() -> None:
-    store = ObservabilityStore()
-    store.record_aircraft(
-        source_id="adsb-lol",
-        source_label="adsb.lol",
-        source_state="fresh",
-        source_observation_count=120,
-        returned_count=14,
-        fresh_contact_count=13,
-        cache_hit=True,
-        fallback_used=False,
-        provider_failover_used=False,
-    )
+def test_observability_counts_are_not_truncated_by_latency_sample_capacity() -> None:
+    store = ObservabilityStore(max_latency_samples=2)
+    for _ in range(7):
+        store.record_request(path="/api/v1/sky", status_code=200, duration_ms=10.0)
 
-    aircraft = store.snapshot()["aircraft"]
-    assert aircraft["source_id"] == "adsb-lol"
-    assert aircraft["source_observation_count"] == 120
-    assert aircraft["cache_hit"] is True
-    assert aircraft["last_success_at"] is not None
+    payload = store.snapshot()["api"]
+    assert payload["requests_last_minute"] == 7
+    assert payload["requests_last_5_minutes"] == 7
+    assert payload["top_endpoints"][0]["requests"] == 7
+    assert payload["latency_sample_count"] == 2
+    assert payload["latency_samples_truncated"] is True
+
+
+def test_observability_treats_4xx_as_errors() -> None:
+    store = ObservabilityStore()
+    store.record_request(path="/api/v1/sky", status_code=414, duration_ms=1.0)
+    payload = store.snapshot()["api"]
+    assert payload["success_rate"] == 0.0
+    assert payload["error_rate"] == 100.0
 
 
 def test_observability_endpoint_is_public_read_only_telemetry() -> None:
@@ -50,4 +50,4 @@ def test_observability_endpoint_is_public_read_only_telemetry() -> None:
     assert "application_version" in payload
     assert "process_uptime_seconds" in payload
     assert "api" in payload
-    assert "aircraft" in payload
+    assert "aircraft" not in payload
