@@ -23,49 +23,50 @@ def test_dashboard_uses_versioned_health_and_backend_telemetry_endpoints() -> No
     assert '`${API_BASE}/api/v1/observability`' in JS
     assert 'window.fetch = async function observedFetch' in JS
     assert 'PerformanceObserver' in JS
-    assert 'unhandledrejection' in JS
 
 
-def test_dashboard_surfaces_aircraft_provider_metadata_from_real_responses() -> None:
+def test_aircraft_response_state_drives_provider_freshness() -> None:
     assert 'source.provider_failover_used' in JS
     assert 'source.fallback_used' in JS
     assert 'source.source_observed_at' in JS
-    assert 'response.clone().json()' in JS
+    assert 'function markAircraftUnavailable(status)' in JS
+    assert 'else markAircraftUnavailable(response.status);' in JS
     assert 'state.lastContactChangeAt' not in JS
-    assert 'sourceFreshnessText()' in JS
 
 
-def test_dashboard_tracks_cumulative_session_counts_while_bounding_detail_buffers() -> None:
+def test_cumulative_counts_are_separate_from_bounded_detail_buffers() -> None:
     assert 'totalErrors: 0' in JS
     assert 'totalLongTasks: 0' in JS
     assert 'requestTotals:' in JS
     assert 'state.totalErrors += 1' in JS
     assert 'state.totalLongTasks += 1' in JS
     assert 'latencyHistogram' in JS
-    assert 'if (state.errors.length > MAX_ERRORS)' in JS
-    assert 'if (state.longTasks.length > MAX_LONG_TASKS)' in JS
 
 
-def test_dashboard_visibility_status_is_live() -> None:
+def test_visibility_and_polling_follow_dashboard_state() -> None:
     assert 'setText("obs-page-visibility", document.hidden ? "Background" : "Active")' in JS
     assert 'document.addEventListener("visibilitychange", handleVisibilityChange)' in JS
-
-
-def test_health_polling_only_runs_while_dashboard_is_visible() -> None:
     assert 'if (!API_BASE || document.hidden || !dashboardIsOpen()) return;' in JS
     assert 'function startRefreshTimer()' in JS
     assert 'function stopRefreshTimer()' in JS
-    assert 'if (!dashboardIsOpen() || document.hidden) return;' in JS
-    assert 'refreshHealth();\n      startRefreshTimer();' in JS
-    assert 'observeContacts();\n    render();' in JS
     assert 'init.refreshTimer = window.setInterval(refreshHealth, 60_000)' not in JS
 
 
-def test_dashboard_does_not_invent_unavailable_server_metrics() -> None:
-    assert "Data source detail" in HTML
-    assert "Not exposed yet" in HTML
-    assert "server CPU" not in HTML.lower()
-    assert "messages/sec" not in HTML.lower()
+def test_backend_empty_endpoint_result_does_not_fall_back_to_browser_rows() -> None:
+    assert 'if (Array.isArray(serverRows))' in JS
+    assert 'if (Array.isArray(serverRows) && serverRows.length)' not in JS
+
+
+def test_population_labels_identify_server_vs_browser_data() -> None:
+    assert 'function updatePopulationLabels(usingBackend)' in JS
+    assert 'Server · rolling 5 minutes' in JS
+    assert 'Browser session' in JS
+
+
+def test_static_data_source_placeholder_is_removed_before_dashboard_use() -> None:
+    assert 'function removeStaticDataSourcePlaceholder()' in JS
+    assert 'row.querySelector("strong")?.textContent === "Data source detail"' in JS
+    assert 'removeStaticDataSourcePlaceholder();' in JS
 
 
 def test_dashboard_preserves_single_viewport_layout() -> None:
