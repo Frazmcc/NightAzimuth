@@ -1,6 +1,7 @@
 from pathlib import Path
 
 
+APP_JS = Path("web/app.js").read_text(encoding="utf-8")
 SATELLITE_JS = Path("web/satellite-motion.js").read_text(encoding="utf-8")
 LAYOUT_JS = Path("web/live-sky-layout.js").read_text(encoding="utf-8")
 CONTACTS_JS = Path("web/live-contacts-view.js").read_text(encoding="utf-8")
@@ -108,6 +109,7 @@ def test_airports_share_distance_units_and_are_limited_to_50_miles() -> None:
         "}:params;",
     )
 
+    assert 'getJson("/api/v1/airports",{...pos,radius_km:80.4672,limit:12}' in APP_JS
     assert "const AIRPORT_RADIUS_MILES=50" in LAYOUT_JS
     assert "const AIRPORT_RADIUS_KM=AIRPORT_RADIUS_MILES*KM_PER_MILE" in LAYOUT_JS
     assert 'localStorage.getItem("nightazimuth.distanceUnit")==="km"?"km":"miles"' in LAYOUT_JS
@@ -115,6 +117,7 @@ def test_airports_share_distance_units_and_are_limited_to_50_miles() -> None:
     assert "distanceKm>AIRPORT_RADIUS_KM" in LAYOUT_JS
     assert "Math.round(km/KM_PER_MILE)" in LAYOUT_JS
     assert 'window.addEventListener("nightazimuth:distance-unit",()=>drawSky())' in LAYOUT_JS
+    assert "app.js?v=21.11.23" in HTML
     assert "live-sky-layout.js?v=21.11.22" in HTML
 
 
