@@ -42,6 +42,10 @@
     }
   }
 
+  function isAircraftFeedEndpoint(endpoint) {
+    return endpoint === "/api/v1/aircraft" || endpoint.startsWith("/api/v1/aircraft?");
+  }
+
   function captureAircraftTelemetry(payload) {
     const source = payload?.source;
     if (!source || typeof source !== "object") return;
@@ -114,14 +118,14 @@
       const response = await nativeFetch(input, init);
       record.status = response.status;
       record.ok = response.ok;
-      if (endpoint.startsWith("/api/v1/aircraft")) {
+      if (isAircraftFeedEndpoint(endpoint)) {
         if (response.ok) response.clone().json().then(captureAircraftTelemetry).catch(() => {});
         else markAircraftUnavailable(response.status);
       }
       return response;
     } catch (error) {
       record.error = error?.message || String(error);
-      if (endpoint.startsWith("/api/v1/aircraft")) markAircraftUnavailable(0);
+      if (isAircraftFeedEndpoint(endpoint)) markAircraftUnavailable(0);
       throw error;
     } finally {
       record.durationMs = Math.max(0, performance.now() - started);
