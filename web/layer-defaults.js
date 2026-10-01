@@ -56,8 +56,8 @@ function loadDepthWhenReady(){
 }
 
 // The perspective aircraft layer must attach after the base aircraft renderer,
-// layout projection and satellite wrapper are present. It still consumes the
-// same aircraft payload; no additional provider/API request is introduced.
+// layout projection and satellite wrapper are present. It consumes the same
+// aircraft payload and now owns a transparent animation canvas above Live Sky.
 function loadPerspectiveAircraftWhenReady(){
   if(typeof verticalFovFor!=="function"||typeof skyXY!=="function"||typeof drawContacts!=="function"){
     requestAnimationFrame(loadPerspectiveAircraftWhenReady);
@@ -66,7 +66,7 @@ function loadPerspectiveAircraftWhenReady(){
   if(document.querySelector('script[data-nightazimuth-aircraft-perspective]'))return;
   const perspective=document.createElement("script");
   perspective.dataset.nightazimuthAircraftPerspective="true";
-  perspective.src="./aircraft-perspective.js?v=22.3.0";
+  perspective.src="./aircraft-perspective.js?v=22.3.1";
   perspective.async=false;
   document.head.append(perspective);
 }

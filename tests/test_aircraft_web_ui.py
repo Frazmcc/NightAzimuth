@@ -156,15 +156,45 @@ def test_perspective_aircraft_depth_is_bounded_zero_to_fifty_miles() -> None:
 def test_perspective_aircraft_reuses_single_aircraft_payload() -> None:
     assert "getJson(" not in PERSPECTIVE_JS
     assert "fetch(" not in PERSPECTIVE_JS
-    assert 'perspective.src="./aircraft-perspective.js?v=22.3.0"' in LAYERS_JS
-    assert 'layer-defaults.js?v=21.11.16' in HTML
+    assert 'perspective.src="./aircraft-perspective.js?v=22.3.1"' in LAYERS_JS
+    assert 'layer-defaults.js?v=21.11.17' in HTML
 
 
-def test_perspective_aircraft_animation_is_bounded_and_pauses_when_hidden() -> None:
-    assert "const ANIMATION_INTERVAL_MS=100" in PERSPECTIVE_JS
+def test_aircraft_animation_uses_independent_transparent_overlay() -> None:
+    assert 'aircraftCanvas.id="aircraft-canvas"' in PERSPECTIVE_JS
+    assert 'skyCanvas.insertAdjacentElement("afterend",aircraftCanvas)' in PERSPECTIVE_JS
+    assert 'pointerEvents:"none"' in PERSPECTIVE_JS
+    assert "const aircraftCtx=aircraftCanvas.getContext(\"2d\")" in PERSPECTIVE_JS
+    assert "aircraftCtx.clearRect(0,0,w,h)" in PERSPECTIVE_JS
+    assert "try{layers.aircraft=false;baseDrawContacts(w,h)}finally{layers.aircraft=previous}" in PERSPECTIVE_JS
+
+
+def test_aircraft_animation_does_not_repaint_the_whole_sky() -> None:
+    animate_start = PERSPECTIVE_JS.index("function animate(){")
+    animate_end = PERSPECTIVE_JS.index("// The moving overlay", animate_start)
+    animate_body = PERSPECTIVE_JS[animate_start:animate_end]
+    assert "drawPerspectiveLayer();" in animate_body
+    assert "drawSky();" not in animate_body
+    assert "requestAnimationFrame(animate)" in animate_body
     assert "const MAX_PREDICTION_SECONDS=15" in PERSPECTIVE_JS
-    assert "if(!document.hidden&&perspectiveEnabled()" in PERSPECTIVE_JS
-    assert "requestAnimationFrame(animate)" in PERSPECTIVE_JS
+    assert "if(!document.hidden&&perspectiveEnabled()" in animate_body
+
+
+def test_fresh_provider_snapshots_are_eased_without_position_snaps() -> None:
+    assert "const HANDOFF_SECONDS=.45" in PERSPECTIVE_JS
+    assert "function blendState" in PERSPECTIVE_JS
+    assert "handoffFrom:previous" in PERSPECTIVE_JS
+    assert "elapsed/HANDOFF_SECONDS" in PERSPECTIVE_JS
+    assert "shortestAngle(from.azimuth,to.azimuth)" in PERSPECTIVE_JS
+    assert "shortestAngle(from.heading,to.heading)" in PERSPECTIVE_JS
+
+
+def test_aircraft_overlay_keeps_selection_clicks_on_main_canvas() -> None:
+    assert 'skyCanvas.addEventListener("click",event=>' in PERSPECTIVE_JS
+    assert "for(const target of aircraftHits)" in PERSPECTIVE_JS
+    assert "event.stopImmediatePropagation()" in PERSPECTIVE_JS
+    assert "toggleTracking(best)" in PERSPECTIVE_JS
+    assert "{capture:true}" in PERSPECTIVE_JS
 
 
 def test_live_contacts_are_humanised() -> None:
