@@ -56,4 +56,4 @@ def test_depth_module_loads_after_layout_with_versioned_assets() -> None:
     assert 'typeof verticalFovFor!=="function"||typeof skyXY!=="function"' in LAYERS_JS
     assert 'depth.src="./live-sky-depth.js?v=22.2.0"' in LAYERS_JS
     assert 'depth.dataset.nightazimuthDepth="true"' in LAYERS_JS
-    assert 'layer-defaults.js?v=21.11.17' in HTML
+    assert 'layer-defaults.js?v=21.11.18' in HTML
