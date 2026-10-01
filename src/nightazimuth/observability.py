@@ -9,6 +9,7 @@ from typing import Any
 
 
 _KNOWN_PREFIXES = (
+    "/api/v1/aircraft/route",
     "/api/v1/aircraft",
     "/api/v1/airports",
     "/api/v1/geojson",
