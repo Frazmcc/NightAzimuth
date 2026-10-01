@@ -38,6 +38,12 @@ def test_horizon_airlight_and_peripheral_depth_are_rendered() -> None:
     assert "perceptualXY((Number(facing)+off+360)%360,0,w,h)" in DEPTH_JS
 
 
+def test_depth_overlay_is_scheduled_after_batched_sky_paint() -> None:
+    assert "function scheduleAtmosphericDepth" in DEPTH_JS
+    assert "overlayFrame=requestAnimationFrame" in DEPTH_JS
+    assert "baseDrawSky();\n  scheduleAtmosphericDepth();" in DEPTH_JS
+
+
 def test_depth_metrics_expose_horizon_eccentricity_and_range_cues() -> None:
     assert "eccentricity" in DEPTH_JS
     assert "horizonProximity" in DEPTH_JS
