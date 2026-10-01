@@ -43,6 +43,10 @@ class SkyAircraft:
     ladd: bool = False
     selected_altitude_ft: float | None = None
     selected_heading_deg: float | None = None
+    true_heading_deg: float | None = None
+    magnetic_heading_deg: float | None = None
+    track_rate_deg_s: float | None = None
+    roll_deg: float | None = None
     latitude_deg: float | None = None
     longitude_deg: float | None = None
     future_track: tuple[AircraftSkyTrackPoint, ...] = ()
@@ -127,6 +131,10 @@ def build_sky_aircraft(
                 ladd=observation.ladd,
                 selected_altitude_ft=observation.selected_altitude_ft,
                 selected_heading_deg=observation.selected_heading_deg,
+                true_heading_deg=observation.true_heading_deg,
+                magnetic_heading_deg=observation.magnetic_heading_deg,
+                track_rate_deg_s=observation.track_rate_deg_s,
+                roll_deg=observation.roll_deg,
                 latitude_deg=resolved.latitude_deg,
                 longitude_deg=resolved.longitude_deg,
                 future_track=tuple(track_points),
