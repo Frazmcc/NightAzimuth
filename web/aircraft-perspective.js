@@ -1,5 +1,7 @@
 (()=>{
 if(typeof drawContacts!=="function"||typeof drawSky!=="function"||typeof skyXY!=="function")return;
+if(window.__nightAzimuthAircraftPerspectiveLoaded)return;
+window.__nightAzimuthAircraftPerspectiveLoaded=true;
 
 const skyCanvas=document.querySelector("#sky-canvas");
 if(!skyCanvas)return;
@@ -35,6 +37,31 @@ if(!aircraftCtx)return;
 
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const finite=value=>{const number=Number(value);return Number.isFinite(number)?number:null};
+function aircraftIdentity(aircraft,index=""){
+  const icao=String(aircraft?.icao24||"").trim().toLowerCase();
+  if(icao)return `icao:${icao}`;
+  const registration=String(aircraft?.registration||"").trim().toUpperCase();
+  if(registration)return `registration:${registration}`;
+  const callsign=String(aircraft?.callsign||"").trim().toUpperCase();
+  if(callsign)return `callsign:${callsign}`;
+  return `anonymous:${index}`;
+}
+function contactAgeSeconds(aircraft){
+  const age=finite(aircraft?.position_age_seconds);
+  return age===null?Number.POSITIVE_INFINITY:Math.max(0,age);
+}
+function uniqueAircraftContacts(contacts){
+  const unique=new Map();
+  for(let index=0;index<contacts.length;index++){
+    const aircraft=contacts[index];
+    const key=aircraftIdentity(aircraft,index);
+    const existing=unique.get(key);
+    if(!existing||contactAgeSeconds(aircraft)<contactAgeSeconds(existing.aircraft)){
+      unique.set(key,{aircraft,index});
+    }
+  }
+  return [...unique.values()].sort((a,b)=>a.index-b.index).map(entry=>entry.aircraft);
+}
 const shortestAngle=(from,to)=>((to-from+540)%360)-180;
 const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
@@ -122,7 +149,7 @@ function contactFingerprint(aircraft){
 }
 
 function motionEpoch(aircraft,nowMs){
-  const key=String(aircraft?.icao24||"").toLowerCase();
+  const key=aircraftIdentity(aircraft);
   const fingerprint=contactFingerprint(aircraft);
   let entry=motionEpochs.get(key);
   if(!entry||entry.fingerprint!==fingerprint){
@@ -384,21 +411,28 @@ function clearOverlay(){const{w,h}=ensureOverlaySize();aircraftCtx.clearRect(0,0
 function drawPerspectiveLayer(){
   const{w,h}=ensureOverlaySize();aircraftCtx.clearRect(0,0,w,h);aircraftHits=[];queuedLabels=[];
   const nowMs=Date.now();
-  const contacts=(Array.isArray(skyAircraft)?skyAircraft:[]).map(aircraft=>({aircraft,state:interpolateTrack(aircraft,nowMs)})).filter(item=>item.state.azimuth!==null&&item.state.elevation!==null&&item.state.rangeKm<=MAX_RANGE_KM).sort((a,b)=>b.state.rangeKm-a.state.rangeKm);
+  const contacts=uniqueAircraftContacts(Array.isArray(skyAircraft)?skyAircraft:[]).map(aircraft=>({aircraft,state:interpolateTrack(aircraft,nowMs)})).filter(item=>item.state.azimuth!==null&&item.state.elevation!==null&&item.state.rangeKm<=MAX_RANGE_KM).sort((a,b)=>b.state.rangeKm-a.state.rangeKm);
   for(const item of contacts){const target=drawPerspectiveAircraft(item.aircraft,item.state,w,h);if(target)aircraftHits.push(target)}
   drawAircraftLabels(w,h);
 }
 
 drawContacts=function(w,h){
-  if(!perspectiveEnabled()){clearOverlay();return baseDrawContacts(w,h)}
-  const aircraftVisible=typeof layers!=="undefined"&&layers.aircraft!==false;
-  if(!aircraftVisible){clearOverlay();return baseDrawContacts(w,h)}
-  const previous=layers.aircraft;try{layers.aircraft=false;baseDrawContacts(w,h)}finally{layers.aircraft=previous}
+  const originalSkyAircraft=skyAircraft;
+  const unique=uniqueAircraftContacts(Array.isArray(originalSkyAircraft)?originalSkyAircraft:[]);
+  skyAircraft=unique;
+  try{
+    if(!perspectiveEnabled()){clearOverlay();return baseDrawContacts(w,h)}
+    const aircraftVisible=typeof layers!=="undefined"&&layers.aircraft!==false;
+    if(!aircraftVisible){clearOverlay();return baseDrawContacts(w,h)}
+    const previous=layers.aircraft;try{layers.aircraft=false;baseDrawContacts(w,h)}finally{layers.aircraft=previous}
+  }finally{
+    skyAircraft=originalSkyAircraft;
+  }
 };
 
 function cleanupMotionEpochs(nowMs){
   if(nowMs-lastCleanup<5000)return;
-  const active=new Set((Array.isArray(skyAircraft)?skyAircraft:[]).map(contact=>String(contact?.icao24||"").toLowerCase()));
+  const active=new Set(uniqueAircraftContacts(Array.isArray(skyAircraft)?skyAircraft:[]).map((contact,index)=>aircraftIdentity(contact,index)));
   for(const[key,entry]of motionEpochs){if(!active.has(key)||nowMs-entry.lastSeenAt>60000){motionEpochs.delete(key);renderedStates.delete(key)}}
   lastCleanup=nowMs;
 }
@@ -427,6 +461,6 @@ if(markerSelect){
   if(help)help.textContent="Perspective aircraft use real heading, roll, turn rate and sky motion with readable view-dependent shapes, type-aware proportions, navigation lights and 0–50 mile depth scaling. Switch to dots for the lightweight simple view.";
 }
 
-window.NightAzimuthAircraftPerspective={modelSize,interpolateTrack,cameraBasis,aircraftBasis,aircraftProfile,projectionFrame,blendState,drawPerspectiveLayer};
+window.NightAzimuthAircraftPerspective={active:true,modelSize,interpolateTrack,cameraBasis,aircraftBasis,aircraftProfile,projectionFrame,blendState,uniqueAircraftContacts,aircraftIdentity,drawPerspectiveLayer};
 requestAnimationFrame(animate);
 })();
