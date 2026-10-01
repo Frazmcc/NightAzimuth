@@ -14,8 +14,10 @@ def test_observability_is_reachable_from_settings() -> None:
 
 def test_observability_assets_load_before_application_requests_start() -> None:
     assert 'observability.css?v=22.0.0' in HTML
-    assert 'observability.js?v=22.0.0' in HTML
-    assert HTML.index('observability.js?v=22.0.0') < HTML.index('app.js?v=21.11.7')
+    assert 'observability-latency.js?v=22.1.2' in HTML
+    assert 'observability.js?v=22.1.2' in HTML
+    assert HTML.index('observability-latency.js?v=22.1.2') < HTML.index('observability.js?v=22.1.2')
+    assert HTML.index('observability.js?v=22.1.2') < HTML.index('app.js?v=21.11.7')
 
 
 def test_dashboard_uses_versioned_health_and_backend_telemetry_endpoints() -> None:
@@ -30,6 +32,7 @@ def test_aircraft_response_state_drives_provider_freshness() -> None:
     assert 'source.fallback_used' in JS
     assert 'source.source_observed_at' in JS
     assert 'function markAircraftUnavailable(status)' in JS
+    assert 'sourceCount: 0' in JS
     assert 'else markAircraftUnavailable(response.status);' in JS
     assert 'state.lastContactChangeAt' not in JS
 
