@@ -200,7 +200,7 @@ def test_aircraft_labels_follow_model_bounds_and_avoid_each_other() -> None:
 def test_coasting_aircraft_are_softened_without_stopping_animation() -> None:
     assert 'aircraft?.position_state==="coasting"' in PERSPECTIVE_JS
     assert 'aircraft?.continuity_state==="coasting"' in PERSPECTIVE_JS
-    assert "const alpha=selected?1:coasting?.62:1" in PERSPECTIVE_JS
+    assert "const alpha=selected?1:(coasting ? .62 : 1)" in PERSPECTIVE_JS
 
 
 def test_aircraft_animation_uses_independent_transparent_overlay() -> None:
