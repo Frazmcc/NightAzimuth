@@ -335,7 +335,7 @@ function drawAircraftLabels(w,h){
     aircraftCtx.globalAlpha=label.alpha;
     aircraftCtx.strokeStyle=label.selected?"rgba(255,255,255,.45)":"rgba(139,233,255,.28)";aircraftCtx.lineWidth=.8;
     const anchorX=chosen.side==="right"?label.bounds.maxX:label.bounds.minX;
-    const textEdgeX=chosen.side==="right"?chosen.x:chosen.x;
+    const textEdgeX=chosen.x;
     aircraftCtx.beginPath();aircraftCtx.moveTo(anchorX,(label.bounds.minY+label.bounds.maxY)/2);aircraftCtx.lineTo(textEdgeX,chosen.y);aircraftCtx.stroke();
     aircraftCtx.fillStyle=label.selected?"#ffffff":"#dff8ff";aircraftCtx.textAlign=chosen.side==="right"?"left":"right";aircraftCtx.fillText(label.text,chosen.x,chosen.y);
     aircraftCtx.restore();
@@ -355,7 +355,7 @@ function drawPerspectiveAircraft(aircraft,state,w,h){
   const stroke=selected?"#ffffff":special?"#ffd166":"#8be9ff",glow=selected?"#ffffff":special?"#f59e0b":"#42d9ff";
   const size=modelSize(state.rangeKm,selected),camera=cameraBasis(state.azimuth,state.elevation),basis=aircraftBasis(state.heading,state.flightPathDeg,state.roll),kind=aircraftKind(aircraft),profile=aircraftProfile(aircraft);
   const coasting=aircraft?.position_state==="coasting"||aircraft?.continuity_state==="coasting";
-  const alpha=selected?1:coasting?.62:1;
+  const alpha=selected?1:(coasting?.62:1);
   let bounds;
   aircraftCtx.save();aircraftCtx.globalAlpha=alpha;
   if(kind==="helicopter"){
