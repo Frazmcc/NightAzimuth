@@ -69,7 +69,7 @@ def test_heavy_astronomy_requests_are_progressively_scheduled() -> None:
     assert "let astronomyTail=Promise.resolve()" in LAYOUT_JS
     assert 'path==="/api/v1/satellites"?250:0' in LAYOUT_JS
     assert "observerSpreadMs(params)" in LAYOUT_JS
-    assert "scheduleRequest(path,params" in LAYOUT_JS
+    assert "scheduleRequest(path,requestParams" in LAYOUT_JS
 
 
 def test_location_change_invalidates_an_inflight_refresh() -> None:
