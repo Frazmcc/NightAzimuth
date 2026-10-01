@@ -1,0 +1,162 @@
+.observability-launch {
+  width: 100%;
+  margin-top: .75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .85rem 1rem;
+  border: 1px solid rgba(91, 173, 255, .28);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(16, 48, 78, .72), rgba(7, 18, 31, .88));
+  color: #e8f4ff;
+  cursor: pointer;
+}
+
+.observability-launch span {
+  color: #8db7d9;
+  font-size: .78rem;
+}
+
+.observability-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background:
+    radial-gradient(circle at 20% 0%, rgba(0, 139, 255, .12), transparent 34%),
+    radial-gradient(circle at 100% 100%, rgba(52, 211, 153, .08), transparent 34%),
+    #030914;
+  color: #e9f3fb;
+  overflow: hidden;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.observability-screen[hidden] { display: none; }
+
+.observability-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .72rem 1rem;
+  border-bottom: 1px solid rgba(116, 168, 205, .17);
+  background: rgba(5, 13, 24, .94);
+  backdrop-filter: blur(18px);
+}
+
+.observability-brand { display: flex; align-items: center; gap: .75rem; min-width: 0; }
+.observability-mark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: linear-gradient(145deg, #0a84ff, #45c7ff);
+  box-shadow: 0 0 30px rgba(10, 132, 255, .25);
+  font-size: 1.1rem;
+}
+.observability-brand h1 { margin: 0; font-size: 1rem; letter-spacing: .01em; }
+.observability-brand p { margin: .08rem 0 0; color: #7894ac; font-size: .68rem; }
+
+.observability-actions { display: flex; align-items: center; gap: .5rem; }
+.observability-actions button,
+.observability-actions select {
+  min-height: 34px;
+  padding: .4rem .68rem;
+  border: 1px solid rgba(116, 168, 205, .22);
+  border-radius: 9px;
+  background: #081321;
+  color: #d8e8f5;
+}
+
+.observability-grid {
+  min-height: 0;
+  padding: .72rem;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: .72fr 1.45fr 1.25fr 1.2fr;
+  gap: .62rem;
+}
+
+.obs-card {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: .72rem;
+  border: 1px solid rgba(116, 168, 205, .15);
+  border-radius: 13px;
+  background: linear-gradient(180deg, rgba(12, 28, 46, .92), rgba(6, 17, 29, .96));
+  box-shadow: inset 0 1px rgba(255,255,255,.025), 0 12px 35px rgba(0,0,0,.15);
+}
+
+.obs-card h2,
+.obs-card h3 { margin: 0; font-size: .82rem; font-weight: 650; }
+.obs-subtle { color: #7894ac; font-size: .67rem; }
+.obs-good { color: #39df91; }
+.obs-warn { color: #ffbf47; }
+.obs-bad { color: #ff626e; }
+.obs-blue { color: #54a8ff; }
+
+.obs-kpi { grid-column: span 2; display: flex; flex-direction: column; justify-content: space-between; }
+.obs-kpi-label { color: #9db2c4; font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; }
+.obs-kpi-value { margin-top: .16rem; font-size: clamp(1rem, 1.65vw, 1.7rem); font-weight: 760; line-height: 1; }
+.obs-kpi-foot { color: #7894ac; font-size: .62rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.obs-span-3 { grid-column: span 3; }
+.obs-span-4 { grid-column: span 4; }
+.obs-span-5 { grid-column: span 5; }
+.obs-span-6 { grid-column: span 6; }
+.obs-span-7 { grid-column: span 7; }
+.obs-span-8 { grid-column: span 8; }
+.obs-span-12 { grid-column: span 12; }
+
+.obs-card-head { display: flex; justify-content: space-between; gap: .75rem; align-items: center; margin-bottom: .5rem; }
+.obs-pill { padding: .2rem .48rem; border-radius: 999px; font-size: .62rem; background: rgba(57,223,145,.1); border: 1px solid rgba(57,223,145,.22); color: #51e79d; }
+.obs-pill.warn { color: #ffc45b; border-color: rgba(255,196,91,.24); background: rgba(255,196,91,.08); }
+.obs-pill.bad { color: #ff7982; border-color: rgba(255,121,130,.24); background: rgba(255,121,130,.08); }
+
+.obs-chart { width: 100%; height: calc(100% - 1.25rem); display: block; }
+.obs-chart-grid { stroke: rgba(143,179,207,.11); stroke-width: 1; }
+.obs-chart-line { fill: none; stroke: #4ea4ff; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.obs-chart-line.secondary { stroke: #39df91; }
+.obs-chart-fill { fill: url(#obsAreaFill); opacity: .3; }
+
+.obs-list { display: grid; gap: .34rem; font-size: .69rem; }
+.obs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .7rem; padding: .32rem .42rem; border-radius: 8px; background: rgba(255,255,255,.018); }
+.obs-row strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.obs-row span { color: #9cb0c2; white-space: nowrap; }
+
+.obs-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: .64rem; }
+.obs-table th { color: #7390a8; font-weight: 600; text-align: left; padding: .3rem .35rem; border-bottom: 1px solid rgba(116,168,205,.14); }
+.obs-table td { padding: .34rem .35rem; border-bottom: 1px solid rgba(116,168,205,.07); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.obs-table tr:last-child td { border-bottom: 0; }
+.obs-table .num { text-align: right; }
+
+.obs-status-stack { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: .45rem; }
+.obs-status-box { padding: .5rem; border-radius: 10px; background: rgba(255,255,255,.022); }
+.obs-status-box .label { color: #7894ac; font-size: .61rem; }
+.obs-status-box .value { margin-top: .12rem; font-size: .86rem; font-weight: 700; }
+
+.obs-error-empty { display: grid; place-items: center; height: calc(100% - 1.5rem); color: #66849d; font-size: .72rem; }
+
+@media (max-width: 1050px) {
+  .observability-grid { gap: .45rem; padding: .5rem; }
+  .obs-card { padding: .55rem; }
+  .obs-kpi-foot { display: none; }
+}
+
+@media (max-width: 760px) {
+  .observability-topbar { padding: .45rem .55rem; }
+  .observability-brand p { display: none; }
+  .observability-actions select { display: none; }
+  .observability-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: .72fr .72fr 1.2fr 1.2fr 1.2fr 1.2fr;
+  }
+  .obs-kpi { grid-column: span 2; }
+  .obs-span-3, .obs-span-4, .obs-span-5, .obs-span-6, .obs-span-7, .obs-span-8 { grid-column: span 3; }
+  .obs-span-12 { grid-column: span 6; }
+  .obs-table { font-size: .58rem; }
+}
