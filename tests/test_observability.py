@@ -40,19 +40,21 @@ def test_observability_treats_4xx_as_errors() -> None:
     assert payload["error_rate"] == 100.0
 
 
-def test_observability_normalises_unknown_paths_to_bound_cardinality() -> None:
+def test_observability_bounds_unknown_path_cardinality() -> None:
     store = ObservabilityStore()
     for index in range(100):
-        store.record_request(
-            path=f"/api/v1/not-a-route-{index}",
-            status_code=404,
-            duration_ms=1.0,
-        )
+        store.record_request(path=f"/api/v1/not-real/{index}", status_code=404, duration_ms=1.0)
+    paths = {row["path"] for row in store.snapshot()["api"]["top_endpoints"]}
+    assert paths == {"/api/other"}
 
-    endpoints = store.snapshot()["api"]["top_endpoints"]
-    assert len(endpoints) == 1
-    assert endpoints[0]["path"] == "/api/other"
-    assert endpoints[0]["requests"] == 100
+
+def test_observability_keeps_aircraft_route_separate_from_feed() -> None:
+    store = ObservabilityStore()
+    store.record_request(path="/api/v1/aircraft", status_code=200, duration_ms=10.0)
+    store.record_request(path="/api/v1/aircraft/route/BAW123", status_code=200, duration_ms=20.0)
+    rows = {row["path"]: row for row in store.snapshot()["api"]["top_endpoints"]}
+    assert rows["/api/v1/aircraft"]["requests"] == 1
+    assert rows["/api/v1/aircraft/route"]["requests"] == 1
 
 
 def test_observability_endpoint_is_public_read_only_telemetry() -> None:
