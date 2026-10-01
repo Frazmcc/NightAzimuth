@@ -82,9 +82,19 @@ def test_non_retryable_provider_failure_is_not_retried(monkeypatch):
 
 
 def test_provider_start_spacing_is_observable(monkeypatch):
+    clock = [100.0]
+
+    def fake_monotonic() -> float:
+        return clock[0]
+
+    def fake_sleep(seconds: float) -> None:
+        clock[0] += seconds
+
     monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_MIN_START_INTERVAL_SECONDS", 0.02)
     monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_RETRY_DELAY_SECONDS", 0.0)
     monkeypatch.setattr(aircraft_adsb_lol, "_PROVIDER_NEXT_REQUEST_AT", 0.0)
+    monkeypatch.setattr(aircraft_adsb_lol, "monotonic", fake_monotonic)
+    monkeypatch.setattr(aircraft_adsb_lol, "sleep", fake_sleep)
 
     client = httpx.Client(
         transport=httpx.MockTransport(lambda request: httpx.Response(200, json=_live_payload()))
@@ -96,8 +106,8 @@ def test_provider_start_spacing_is_observable(monkeypatch):
     second.fetch_snapshot(AircraftObserver(52.0, -0.2), 100.0)
     client.close()
 
-    assert first.last_timings["provider_throttle_ms"] >= 0.0
-    assert second.last_timings["provider_throttle_ms"] >= 10.0
+    assert first.last_timings["provider_throttle_ms"] == 0.0
+    assert second.last_timings["provider_throttle_ms"] == 20.0
 
 
 def test_retry_backoff_releases_gate_for_other_region(monkeypatch):
