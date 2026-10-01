@@ -55,10 +55,8 @@
     if (status >= 400 || status === 0) stats.errors += 1;
     stats.durations.push(durationMs);
     if (stats.durations.length > MAX_SAMPLES_PER_ENDPOINT) stats.durations.shift();
-    if (serverTiming.length) {
-      stats.timings.push(serverTiming);
-      if (stats.timings.length > MAX_TIMING_SNAPSHOTS) stats.timings.shift();
-    }
+    stats.timings.push(serverTiming);
+    if (stats.timings.length > MAX_TIMING_SNAPSHOTS) stats.timings.shift();
     render();
   }
 
@@ -104,14 +102,6 @@
       .replace(/\b\w/g, (char) => char.toUpperCase());
   }
 
-  function slowestEndpoint() {
-    const rows = [...endpointStats.entries()]
-      .filter(([path, stats]) => path !== "/api/v1/health" && path !== "/api/v1/observability" && stats.durations.length)
-      .map(([path, stats]) => ({ path, p95: percentile(stats.durations, 95) }))
-      .sort((a, b) => b.p95 - a.p95);
-    return rows[0] || null;
-  }
-
   function installPanel() {
     if (document.getElementById("obs-endpoint-health")) return;
     const table = document.getElementById("obs-endpoints-body")?.closest("table");
@@ -143,27 +133,8 @@
     card.append(panel);
   }
 
-  function updateHeadline() {
-    const slowest = slowestEndpoint();
-    if (!slowest) return;
-    const value = document.getElementById("obs-api-p95");
-    const card = value?.closest(".obs-card");
-    const label = card?.querySelector(".obs-kpi-label");
-    const foot = card?.querySelector(".obs-kpi-foot");
-    if (!value || !label || !foot) return;
-
-    label.textContent = "Slowest API endpoint";
-    value.textContent = `${Math.round(slowest.p95)} ms`;
-    const name = slowest.path.replace("/api/v1/", "") || slowest.path;
-    foot.textContent = `${name} · browser p95`;
-    const state = latencyState(slowest.p95);
-    value.classList.remove("obs-good", "obs-warn", "obs-bad", "obs-blue");
-    value.classList.add(state.cls);
-  }
-
   function render() {
     installPanel();
-    updateHeadline();
 
     const rowsEl = document.getElementById("obs-latency-rows");
     const breakdownEl = document.getElementById("obs-timing-breakdown");
