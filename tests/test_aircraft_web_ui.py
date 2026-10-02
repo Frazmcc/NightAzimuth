@@ -5,7 +5,10 @@ from nightazimuth.aircraft_adsb_lol import _normalise_record
 
 
 HTML = Path("web/index.html").read_text(encoding="utf-8")
+APP_JS = Path("web/app.js").read_text(encoding="utf-8")
 CONTACTS_JS = Path("web/live-contacts-view.js").read_text(encoding="utf-8")
+SENSITIVITY_JS = Path("web/aircraft-sensitivity.js").read_text(encoding="utf-8")
+RADAR_JS = Path("web/aircraft-radar.js").read_text(encoding="utf-8")
 PERSPECTIVE_JS = Path("web/aircraft-perspective.js").read_text(encoding="utf-8")
 LAYERS_JS = Path("web/layer-defaults.js").read_text(encoding="utf-8")
 
@@ -122,9 +125,32 @@ def test_aircraft_marker_style_is_configurable_and_cache_busted() -> None:
     assert '<option value="silhouette" selected>Perspective aircraft</option>' in HTML
     assert '<option value="dot">Simple dots</option>' in HTML
     assert 'localStorage.getItem("nightazimuth.aircraftMarkerStyle")' in CONTACTS_JS
-    assert "function drawSilhouettePath" in CONTACTS_JS
-    assert "function markerSize" in CONTACTS_JS
-    assert "live-contacts-view.js?v=21.11.25" in HTML
+    assert "function drawDotAircraft" in PERSPECTIVE_JS
+    assert "function drawPerspectiveAircraft" in PERSPECTIVE_JS
+    assert "live-contacts-view.js?v=21.11.26" in HTML
+
+
+def test_live_sky_has_one_aircraft_render_owner() -> None:
+    app_start = APP_JS.index("function drawContacts(w,h){")
+    app_end = APP_JS.index("function renderContacts(data){", app_start)
+    app_draw = APP_JS[app_start:app_end]
+    contacts_start = CONTACTS_JS.index("drawContacts=function(w,h){")
+    contacts_end = CONTACTS_JS.index("const markerSelect=", contacts_start)
+    contacts_draw = CONTACTS_JS[contacts_start:contacts_end]
+
+    assert "skyAircraft" not in app_draw
+    assert 'hit("aircraft"' not in app_draw
+    assert "skyAircraft" not in contacts_draw
+    assert 'hit("aircraft"' not in contacts_draw
+    assert "function drawAircraftMarker" not in CONTACTS_JS
+    assert "function drawSilhouettePath" not in CONTACTS_JS
+    assert "const baseDrawContacts" not in SENSITIVITY_JS
+    assert 'aircraftCanvas.id="aircraft-canvas"' in PERSPECTIVE_JS
+    assert "function drawPerspectiveAircraft" in PERSPECTIVE_JS
+    assert "function drawDotAircraft" in PERSPECTIVE_JS
+    assert "const drawAircraft=perspectiveEnabled()?drawPerspectiveAircraft:drawDotAircraft" in PERSPECTIVE_JS
+    # The local radar is intentionally a separate instrument, not a Live Sky layer.
+    assert 'querySelector("#aircraft-radar-canvas")' in RADAR_JS
 
 
 def test_perspective_aircraft_uses_real_attitude_and_world_track() -> None:
@@ -161,8 +187,7 @@ def test_aircraft_renderer_draws_one_contact_per_identity() -> None:
     assert "position_age_seconds" in PERSPECTIVE_JS
     assert "contactAgeSeconds(aircraft)<contactAgeSeconds(existing.aircraft)" in PERSPECTIVE_JS
     assert "uniqueAircraftContacts(Array.isArray(skyAircraft)?skyAircraft:[])" in PERSPECTIVE_JS
-    assert "skyAircraft=unique" in PERSPECTIVE_JS
-    assert "skyAircraft=originalSkyAircraft" in PERSPECTIVE_JS
+    assert "const drawAircraft=perspectiveEnabled()?drawPerspectiveAircraft:drawDotAircraft" in PERSPECTIVE_JS
 
 
 def test_perspective_aircraft_reuses_single_aircraft_payload() -> None:
@@ -237,7 +262,7 @@ def test_aircraft_animation_does_not_repaint_the_whole_sky() -> None:
     assert "drawSky();" not in animate_body
     assert "requestAnimationFrame(animate)" in animate_body
     assert "const MAX_PREDICTION_SECONDS=15" in PERSPECTIVE_JS
-    assert "if(!document.hidden&&perspectiveEnabled()" in animate_body
+    assert 'if(!document.hidden&&typeof layers!=="undefined"&&layers.aircraft!==false' in animate_body
 
 
 def test_fresh_provider_snapshots_are_eased_without_position_snaps() -> None:
