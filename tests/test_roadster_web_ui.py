@@ -76,7 +76,13 @@ def test_roadster_media_is_historical_public_domain_and_not_presented_as_live() 
         for directive in csp_match.group(1).split(";")
         if (parts := directive.strip().split())
     }
-    assert directives["img-src"] == ["'self'", "data:", "https://upload.wikimedia.org"]
+    assert directives["img-src"] == [
+        "'self'",
+        "data:",
+        "https://upload.wikimedia.org",
+        "https://commons.wikimedia.org",
+        "https://alasky.cds.unistra.fr",
+    ]
 
     assert "Historical SpaceX onboard view" in ROADSTER_JS
     assert "CC0/public domain" in ROADSTER_JS
