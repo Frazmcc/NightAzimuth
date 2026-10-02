@@ -193,7 +193,7 @@ def test_aircraft_renderer_draws_one_contact_per_identity() -> None:
 def test_perspective_aircraft_reuses_single_aircraft_payload() -> None:
     assert "getJson(" not in PERSPECTIVE_JS
     assert "fetch(" not in PERSPECTIVE_JS
-    assert 'perspective.src="./aircraft-perspective.js?v=22.3.5"' in LAYERS_JS
+    assert 'perspective.src="./aircraft-perspective.js?v=22.4.0"' in LAYERS_JS
     assert 'layer-defaults.js?v=21.11.20' in HTML
 
 
@@ -280,13 +280,14 @@ def test_aircraft_motion_matches_satellite_frame_pacing_and_track_preparation() 
     assert 'window.matchMedia?.("(prefers-reduced-motion: reduce)")' in PERSPECTIVE_JS
 
 
-def test_fresh_provider_snapshots_are_eased_without_position_snaps() -> None:
-    assert "const HANDOFF_SECONDS=.45" in PERSPECTIVE_JS
-    assert "function blendState" in PERSPECTIVE_JS
-    assert "handoffFrom:previous" in PERSPECTIVE_JS
-    assert "elapsed/HANDOFF_SECONDS" in PERSPECTIVE_JS
-    assert "shortestAngle(from.azimuth,to.azimuth)" in PERSPECTIVE_JS
-    assert "shortestAngle(from.heading,to.heading)" in PERSPECTIVE_JS
+def test_fresh_provider_snapshots_correct_without_interrupting_motion() -> None:
+    assert "const SNAPSHOT_CORRECTION_SECONDS=.75" in PERSPECTIVE_JS
+    assert "function snapshotCorrection" in PERSPECTIVE_JS
+    assert "function applySnapshotCorrection" in PERSPECTIVE_JS
+    assert "correctionFrom:previous" in PERSPECTIVE_JS
+    assert "const remaining=1-(t*t*(3-2*t))" in PERSPECTIVE_JS
+    assert "target.azimuth+correction.azimuth*remaining" in PERSPECTIVE_JS
+    assert "target.heading+correction.heading*remaining" in PERSPECTIVE_JS
 
 
 def test_aircraft_overlay_keeps_selection_clicks_on_main_canvas() -> None:
