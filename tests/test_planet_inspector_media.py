@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 HTML = Path("web/index.html").read_text(encoding="utf-8")
@@ -50,3 +51,23 @@ def test_star_inspector_uses_real_dss2_survey_imagery_when_coordinates_exist() -
     assert 'Real sky-survey image · DSS2 / CDS' in APP
     assert 'Number.isFinite(Number(item.ra_deg))' in APP
     assert 'Number.isFinite(Number(item.dec_deg))' in APP
+
+
+def test_csp_allows_planet_and_star_image_sources() -> None:
+    csp_match = re.search(
+        r'<meta http-equiv="Content-Security-Policy" content="([^"]+)">',
+        HTML,
+    )
+    assert csp_match is not None
+    directives = {
+        parts[0]: parts[1:]
+        for directive in csp_match.group(1).split(";")
+        if (parts := directive.strip().split())
+    }
+    assert directives["img-src"] == [
+        "'self'",
+        "data:",
+        "https://upload.wikimedia.org",
+        "https://commons.wikimedia.org",
+        "https://alasky.cds.unistra.fr",
+    ]
