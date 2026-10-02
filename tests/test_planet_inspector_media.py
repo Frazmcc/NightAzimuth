@@ -42,8 +42,10 @@ def test_star_points_expose_equatorial_coordinates_for_real_survey_images() -> N
 
 
 def test_star_inspector_uses_real_dss2_survey_imagery_when_coordinates_exist() -> None:
-    assert 'target.kind==="star"' in APP
+    assert 'target.kind==="star"&&item.hip_id!=null' in APP
     assert 'hips:"CDS/P/DSS2/color"' in APP
+    assert 'width:"500",height:"300"' in APP
+    assert 'params.object="HIP "+item.hip_id' in APP
     assert 'https://alasky.cds.unistra.fr/hips-image-services/hips2fits?' in APP
     assert 'Real sky-survey image · DSS2 / CDS' in APP
     assert 'Number.isFinite(Number(item.ra_deg))' in APP
