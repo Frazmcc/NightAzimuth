@@ -62,7 +62,7 @@ def build_sky_aircraft(
     include_ground: bool = False,
     include_stale: bool = False,
     maximum_position_age_seconds: float | None = None,
-    projection_seconds: tuple[float, ...] = (5.0, 10.0, 15.0),
+    projection_seconds: tuple[float, ...] = tuple(float(second) for second in range(1, 16)),
 ) -> list[SkyAircraft]:
     moment = _utc(at)
     if maximum_position_age_seconds is not None and maximum_position_age_seconds <= 0:
