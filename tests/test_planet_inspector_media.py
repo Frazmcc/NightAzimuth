@@ -31,3 +31,20 @@ def test_non_planet_objects_hide_planet_media_and_failed_images_fail_closed() ->
     assert 'if(!media){mediaRoot.hidden=true;image.removeAttribute("src");image.alt="";return}' in APP
     assert 'image.onerror=()=>{mediaRoot.hidden=true;image.removeAttribute("src")}' in APP
     assert "updateInspectorMedia(target,item)" in APP
+
+
+def test_star_points_expose_equatorial_coordinates_for_real_survey_images() -> None:
+    star_field = Path("src/nightazimuth/star_field.py").read_text(encoding="utf-8")
+    assert "ra_deg: float | None = None" in star_field
+    assert "dec_deg: float | None = None" in star_field
+    assert 'ra_deg=float(self._catalogue.at[hip_id, "ra_degrees"])' in star_field
+    assert 'dec_deg=float(self._catalogue.at[hip_id, "dec_degrees"])' in star_field
+
+
+def test_star_inspector_uses_real_dss2_survey_imagery_when_coordinates_exist() -> None:
+    assert 'target.kind==="star"' in APP
+    assert 'hips:"CDS/P/DSS2/color"' in APP
+    assert 'https://alasky.cds.unistra.fr/hips-image-services/hips2fits?' in APP
+    assert 'Real sky-survey image · DSS2 / CDS' in APP
+    assert 'Number.isFinite(Number(item.ra_deg))' in APP
+    assert 'Number.isFinite(Number(item.dec_deg))' in APP
