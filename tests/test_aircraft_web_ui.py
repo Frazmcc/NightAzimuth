@@ -246,7 +246,7 @@ def test_aircraft_animation_uses_independent_transparent_overlay() -> None:
     assert 'pointerEvents:"none"' in PERSPECTIVE_JS
     assert "const aircraftCtx=aircraftCanvas.getContext(\"2d\")" in PERSPECTIVE_JS
     assert "aircraftCtx.clearRect(0,0,w,h)" in PERSPECTIVE_JS
-    assert "try{layers.aircraft=false;baseDrawContacts(w,h)}finally{layers.aircraft=previous}" in PERSPECTIVE_JS
+    assert "try{layers.aircraft=false;return baseDrawContacts(w,h)}finally{layers.aircraft=previous}" in PERSPECTIVE_JS
 
 
 def test_perspective_renderer_clears_preexisting_legacy_aircraft_once() -> None:
