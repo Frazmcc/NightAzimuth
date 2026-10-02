@@ -17,7 +17,7 @@ def test_observability_assets_load_before_application_requests_start() -> None:
     assert 'observability-latency.js?v=22.1.2' in HTML
     assert 'observability.js?v=22.1.2' in HTML
     assert HTML.index('observability-latency.js?v=22.1.2') < HTML.index('observability.js?v=22.1.2')
-    assert HTML.index('observability.js?v=22.1.2') < HTML.index('app.js?v=21.11.23')
+    assert HTML.index('observability.js?v=22.1.2') < HTML.index('app.js?v=21.11.24')
 
 
 def test_dashboard_uses_versioned_health_and_backend_telemetry_endpoints() -> None:
