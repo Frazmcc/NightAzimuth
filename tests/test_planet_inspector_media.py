@@ -50,3 +50,9 @@ def test_star_inspector_uses_real_dss2_survey_imagery_when_coordinates_exist() -
     assert 'Real sky-survey image · DSS2 / CDS' in APP
     assert 'Number.isFinite(Number(item.ra_deg))' in APP
     assert 'Number.isFinite(Number(item.dec_deg))' in APP
+
+
+def test_csp_allows_planet_and_star_image_sources() -> None:
+    assert "https://upload.wikimedia.org" in HTML
+    assert "https://commons.wikimedia.org" in HTML
+    assert "https://alasky.cds.unistra.fr" in HTML
