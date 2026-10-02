@@ -374,19 +374,6 @@ function drawAircraftMarker(aircraft,x,y,selected,special){
 }
 
 drawContacts=function(w,h){
-  if(layers.aircraft)for(const aircraft of skyAircraft){
-    const az=Number(aircraft.azimuth_deg),el=Number(aircraft.elevation_deg);
-    if(!Number.isFinite(az)||!Number.isFinite(el))continue;
-    const point=skyXY(az,el,w,h);if(!point)continue;
-    const [x,y]=point;
-    const special=aircraft.display?.special||aircraft.military||aircraft.squawk_alert;
-    const selected=trackedObject?.kind==="aircraft"&&trackedObject.key===aircraft.icao24;
-    drawAircraftMarker(aircraft,x,y,selected,special);
-    ctx.fillStyle=selected?"#ffffff":"#dff8ff";
-    ctx.textAlign="left";ctx.font=selected?"bold 10px ui-monospace,monospace":"10px ui-monospace,monospace";
-    if(labels.aircraft)ctx.fillText((aircraft.display?.role?`${aircraft.display.role} · `:"")+(aircraft.callsign||aircraft.registration||aircraft.icao24||"AIR"),x+12,y-8);
-    hit("aircraft",aircraft,[x,y],Math.max(14,markerSize(aircraft.range_km,selected)+7));
-  }
   if(layers.satellites)for(const satellite of skySatellites){
     const az=Number(satellite.azimuth_deg),el=Number(satellite.elevation_deg);
     if(!Number.isFinite(az)||!Number.isFinite(el))continue;
