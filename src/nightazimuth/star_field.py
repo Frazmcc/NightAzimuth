@@ -41,6 +41,8 @@ class StarPoint:
     elevation_deg: float
     magnitude: float
     name: str | None = None
+    ra_deg: float | None = None
+    dec_deg: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +219,8 @@ class StarFieldEngine:
                     elevation_deg=position[1],
                     magnitude=magnitude,
                     name=self._proper_names.get(hip_id) or FORCED_STAR_NAMES.get(hip_id),
+                    ra_deg=float(self._catalogue.at[hip_id, "ra_degrees"]),
+                    dec_deg=float(self._catalogue.at[hip_id, "dec_degrees"]),
                 )
             )
 
