@@ -13,6 +13,8 @@ const MIN_MODEL_SIZE=7.5;
 const MAX_MODEL_SIZE=24;
 const MAX_PREDICTION_SECONDS=15;
 const HANDOFF_SECONDS=.45;
+const FRAME_INTERVAL_MS=33;
+const REDUCED_MOTION_INTERVAL_MS=100;
 const MIN_FORWARD_PROJECTION=.18;
 const MIN_LATERAL_PROJECTION=.34;
 const MIN_VERTICAL_PROJECTION=.16;
@@ -20,7 +22,9 @@ const DEG=Math.PI/180;
 const baseDrawContacts=drawContacts;
 const motionEpochs=new Map();
 const renderedStates=new Map();
+const preparedTracks=new WeakMap();
 let lastCleanup=0;
+let lastDraw=0;
 let aircraftHits=[];
 let queuedLabels=[];
 let labelBoxes=[];
@@ -168,11 +172,23 @@ function blendState(from,to,ratio){
   return{...to,azimuth:(from.azimuth+shortestAngle(from.azimuth,to.azimuth)*eased+360)%360,elevation:lerp(from.elevation,to.elevation),rangeKm:lerp(from.rangeKm,to.rangeKm),heading:(from.heading+shortestAngle(from.heading,to.heading)*eased+360)%360,roll:lerp(from.roll,to.roll),flightPathDeg:lerp(from.flightPathDeg,to.flightPathDeg)};
 }
 
+function preparedTrack(aircraft){
+  const source=Array.isArray(aircraft?.future_track)?aircraft.future_track:[];
+  const cached=preparedTracks.get(aircraft);
+  if(cached&&cached.source===source)return cached.points;
+  const points=source.map(point=>({
+    seconds:finite(point?.seconds_from_now),
+    azimuth:finite(point?.azimuth_deg),
+    elevation:finite(point?.elevation_deg)
+  })).filter(point=>point.seconds!==null&&point.azimuth!==null&&point.elevation!==null).sort((a,b)=>a.seconds-b.seconds);
+  preparedTracks.set(aircraft,{source,points});
+  return points;
+}
+
 function interpolateTrack(aircraft,nowMs){
   const{key,entry}=motionEpoch(aircraft,nowMs);
   const elapsed=clamp((nowMs-entry.receivedAt)/1000,0,MAX_PREDICTION_SECONDS);
-  const source=Array.isArray(aircraft?.future_track)?aircraft.future_track:[];
-  const points=source.map(point=>({seconds:finite(point?.seconds_from_now),azimuth:finite(point?.azimuth_deg),elevation:finite(point?.elevation_deg)})).filter(point=>point.seconds!==null&&point.azimuth!==null&&point.elevation!==null).sort((a,b)=>a.seconds-b.seconds);
+  const points=preparedTrack(aircraft);
   let azimuth=finite(aircraft?.azimuth_deg),elevation=finite(aircraft?.elevation_deg);
   if(points.length){
     if(elapsed<=points[0].seconds){azimuth=points[0].azimuth;elevation=points[0].elevation}
@@ -453,10 +469,16 @@ function cleanupMotionEpochs(nowMs){
   lastCleanup=nowMs;
 }
 
-function animate(){
-  if(!document.hidden&&typeof layers!=="undefined"&&layers.aircraft!==false&&Array.isArray(skyAircraft)&&skyAircraft.length)drawPerspectiveLayer();
-  else clearOverlay();
-  cleanupMotionEpochs(Date.now());requestAnimationFrame(animate);
+function animate(now){
+  const reduced=window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  const interval=reduced?REDUCED_MOTION_INTERVAL_MS:FRAME_INTERVAL_MS;
+  if(now-lastDraw>=interval){
+    if(!document.hidden&&typeof layers!=="undefined"&&layers.aircraft!==false&&Array.isArray(skyAircraft)&&skyAircraft.length)drawPerspectiveLayer();
+    else clearOverlay();
+    cleanupMotionEpochs(Date.now());
+    lastDraw=now;
+  }
+  requestAnimationFrame(animate);
 }
 
 skyCanvas.addEventListener("click",event=>{
@@ -477,7 +499,7 @@ if(markerSelect){
   if(help)help.textContent="Perspective aircraft use real heading, roll, turn rate and sky motion with readable view-dependent shapes, type-aware proportions, navigation lights and 0–50 mile depth scaling. Switch to dots for the lightweight simple view.";
 }
 
-window.NightAzimuthAircraftPerspective={active:true,modelSize,interpolateTrack,cameraBasis,aircraftBasis,aircraftProfile,projectionFrame,blendState,uniqueAircraftContacts,aircraftIdentity,drawDotAircraft,drawPerspectiveLayer};
+window.NightAzimuthAircraftPerspective={active:true,modelSize,preparedTrack,interpolateTrack,cameraBasis,aircraftBasis,aircraftProfile,projectionFrame,blendState,uniqueAircraftContacts,aircraftIdentity,drawDotAircraft,drawPerspectiveLayer};
 // Repaint the base sky once after taking ownership so a legacy silhouette already
 // painted on the main canvas cannot remain behind the animated overlay.
 requestAnimationFrame(()=>{if(typeof drawSky==="function")drawSky()});
