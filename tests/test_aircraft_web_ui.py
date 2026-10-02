@@ -5,7 +5,10 @@ from nightazimuth.aircraft_adsb_lol import _normalise_record
 
 
 HTML = Path("web/index.html").read_text(encoding="utf-8")
+APP_JS = Path("web/app.js").read_text(encoding="utf-8")
 CONTACTS_JS = Path("web/live-contacts-view.js").read_text(encoding="utf-8")
+SENSITIVITY_JS = Path("web/aircraft-sensitivity.js").read_text(encoding="utf-8")
+RADAR_JS = Path("web/aircraft-radar.js").read_text(encoding="utf-8")
 PERSPECTIVE_JS = Path("web/aircraft-perspective.js").read_text(encoding="utf-8")
 LAYERS_JS = Path("web/layer-defaults.js").read_text(encoding="utf-8")
 
@@ -122,9 +125,32 @@ def test_aircraft_marker_style_is_configurable_and_cache_busted() -> None:
     assert '<option value="silhouette" selected>Perspective aircraft</option>' in HTML
     assert '<option value="dot">Simple dots</option>' in HTML
     assert 'localStorage.getItem("nightazimuth.aircraftMarkerStyle")' in CONTACTS_JS
-    assert "function drawSilhouettePath" in CONTACTS_JS
-    assert "function markerSize" in CONTACTS_JS
-    assert "live-contacts-view.js?v=21.11.25" in HTML
+    assert "function drawDotAircraft" in PERSPECTIVE_JS
+    assert "function drawPerspectiveAircraft" in PERSPECTIVE_JS
+    assert "live-contacts-view.js?v=21.11.26" in HTML
+
+
+def test_live_sky_has_one_aircraft_render_owner() -> None:
+    app_start = APP_JS.index("function drawContacts(w,h){")
+    app_end = APP_JS.index("function renderContacts(data){", app_start)
+    app_draw = APP_JS[app_start:app_end]
+    contacts_start = CONTACTS_JS.index("drawContacts=function(w,h){")
+    contacts_end = CONTACTS_JS.index("const markerSelect=", contacts_start)
+    contacts_draw = CONTACTS_JS[contacts_start:contacts_end]
+
+    assert "skyAircraft" not in app_draw
+    assert 'hit("aircraft"' not in app_draw
+    assert "skyAircraft" not in contacts_draw
+    assert 'hit("aircraft"' not in contacts_draw
+    assert "function drawAircraftMarker" not in CONTACTS_JS
+    assert "function drawSilhouettePath" not in CONTACTS_JS
+    assert "const baseDrawContacts" not in SENSITIVITY_JS
+    assert 'aircraftCanvas.id="aircraft-canvas"' in PERSPECTIVE_JS
+    assert "function drawPerspectiveAircraft" in PERSPECTIVE_JS
+    assert "function drawDotAircraft" in PERSPECTIVE_JS
+    assert "const drawAircraft=perspectiveEnabled()?drawPerspectiveAircraft:drawDotAircraft" in PERSPECTIVE_JS
+    # The local radar is intentionally a separate instrument, not a Live Sky layer.
+    assert 'querySelector("#aircraft-radar-canvas")' in RADAR_JS
 
 
 def test_perspective_aircraft_uses_real_attitude_and_world_track() -> None:
@@ -153,11 +179,22 @@ def test_perspective_aircraft_depth_is_bounded_zero_to_fifty_miles() -> None:
     assert ".sort((a,b)=>b.state.rangeKm-a.state.rangeKm)" in PERSPECTIVE_JS
 
 
+def test_aircraft_renderer_draws_one_contact_per_identity() -> None:
+    assert "if(window.__nightAzimuthAircraftPerspectiveLoaded)return;" in PERSPECTIVE_JS
+    assert "window.__nightAzimuthAircraftPerspectiveLoaded=true;" in PERSPECTIVE_JS
+    assert "function aircraftIdentity" in PERSPECTIVE_JS
+    assert "function uniqueAircraftContacts" in PERSPECTIVE_JS
+    assert "position_age_seconds" in PERSPECTIVE_JS
+    assert "contactAgeSeconds(aircraft)<contactAgeSeconds(existing.aircraft)" in PERSPECTIVE_JS
+    assert "uniqueAircraftContacts(Array.isArray(skyAircraft)?skyAircraft:[])" in PERSPECTIVE_JS
+    assert "const drawAircraft=perspectiveEnabled()?drawPerspectiveAircraft:drawDotAircraft" in PERSPECTIVE_JS
+
+
 def test_perspective_aircraft_reuses_single_aircraft_payload() -> None:
     assert "getJson(" not in PERSPECTIVE_JS
     assert "fetch(" not in PERSPECTIVE_JS
-    assert 'perspective.src="./aircraft-perspective.js?v=22.3.3"' in LAYERS_JS
-    assert 'layer-defaults.js?v=21.11.19' in HTML
+    assert 'perspective.src="./aircraft-perspective.js?v=22.3.5"' in LAYERS_JS
+    assert 'layer-defaults.js?v=21.11.20' in HTML
 
 
 def test_perspective_geometry_does_not_double_apply_depth_distortion() -> None:
@@ -209,18 +246,38 @@ def test_aircraft_animation_uses_independent_transparent_overlay() -> None:
     assert 'pointerEvents:"none"' in PERSPECTIVE_JS
     assert "const aircraftCtx=aircraftCanvas.getContext(\"2d\")" in PERSPECTIVE_JS
     assert "aircraftCtx.clearRect(0,0,w,h)" in PERSPECTIVE_JS
-    assert "try{layers.aircraft=false;baseDrawContacts(w,h)}finally{layers.aircraft=previous}" in PERSPECTIVE_JS
+    assert "try{layers.aircraft=false;return baseDrawContacts(w,h)}finally{layers.aircraft=previous}" in PERSPECTIVE_JS
+
+
+def test_perspective_renderer_clears_preexisting_legacy_aircraft_once() -> None:
+    assert "legacy silhouette already" in PERSPECTIVE_JS
+    assert 'requestAnimationFrame(()=>{if(typeof drawSky==="function")drawSky()})' in PERSPECTIVE_JS
 
 
 def test_aircraft_animation_does_not_repaint_the_whole_sky() -> None:
-    animate_start = PERSPECTIVE_JS.index("function animate(){")
+    animate_start = PERSPECTIVE_JS.index("function animate(now){")
     animate_end = PERSPECTIVE_JS.index("skyCanvas.addEventListener", animate_start)
     animate_body = PERSPECTIVE_JS[animate_start:animate_end]
     assert "drawPerspectiveLayer()" in animate_body
     assert "drawSky();" not in animate_body
     assert "requestAnimationFrame(animate)" in animate_body
     assert "const MAX_PREDICTION_SECONDS=15" in PERSPECTIVE_JS
-    assert "if(!document.hidden&&perspectiveEnabled()" in animate_body
+    assert 'if(!document.hidden&&typeof layers!=="undefined"&&layers.aircraft!==false' in animate_body
+
+
+def test_aircraft_motion_matches_satellite_frame_pacing_and_track_preparation() -> None:
+    assert "const FRAME_INTERVAL_MS=33" in PERSPECTIVE_JS
+    assert "const REDUCED_MOTION_INTERVAL_MS=100" in PERSPECTIVE_JS
+    assert "const preparedTracks=new WeakMap()" in PERSPECTIVE_JS
+    assert "function preparedTrack(aircraft)" in PERSPECTIVE_JS
+    assert "if(cached&&cached.source===source)return cached.points" in PERSPECTIVE_JS
+    interpolate_start = PERSPECTIVE_JS.index("function interpolateTrack(aircraft,nowMs){")
+    interpolate_end = PERSPECTIVE_JS.index("function cameraBasis", interpolate_start)
+    interpolate_body = PERSPECTIVE_JS[interpolate_start:interpolate_end]
+    assert "const points=preparedTrack(aircraft)" in interpolate_body
+    assert ".map(point=>" not in interpolate_body
+    assert "now-lastDraw>=interval" in PERSPECTIVE_JS
+    assert 'window.matchMedia?.("(prefers-reduced-motion: reduce)")' in PERSPECTIVE_JS
 
 
 def test_fresh_provider_snapshots_are_eased_without_position_snaps() -> None:

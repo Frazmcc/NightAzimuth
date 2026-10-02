@@ -1,5 +1,7 @@
 (()=>{
 if(typeof drawContacts!=="function"||typeof drawSky!=="function"||typeof skyXY!=="function")return;
+if(window.__nightAzimuthAircraftPerspectiveLoaded)return;
+window.__nightAzimuthAircraftPerspectiveLoaded=true;
 
 const skyCanvas=document.querySelector("#sky-canvas");
 if(!skyCanvas)return;
@@ -11,6 +13,8 @@ const MIN_MODEL_SIZE=7.5;
 const MAX_MODEL_SIZE=24;
 const MAX_PREDICTION_SECONDS=15;
 const HANDOFF_SECONDS=.45;
+const FRAME_INTERVAL_MS=33;
+const REDUCED_MOTION_INTERVAL_MS=100;
 const MIN_FORWARD_PROJECTION=.18;
 const MIN_LATERAL_PROJECTION=.34;
 const MIN_VERTICAL_PROJECTION=.16;
@@ -18,7 +22,9 @@ const DEG=Math.PI/180;
 const baseDrawContacts=drawContacts;
 const motionEpochs=new Map();
 const renderedStates=new Map();
+const preparedTracks=new WeakMap();
 let lastCleanup=0;
+let lastDraw=0;
 let aircraftHits=[];
 let queuedLabels=[];
 let labelBoxes=[];
@@ -35,6 +41,31 @@ if(!aircraftCtx)return;
 
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const finite=value=>{const number=Number(value);return Number.isFinite(number)?number:null};
+function aircraftIdentity(aircraft,index=""){
+  const icao=String(aircraft?.icao24||"").trim().toLowerCase();
+  if(icao)return `icao:${icao}`;
+  const registration=String(aircraft?.registration||"").trim().toUpperCase();
+  if(registration)return `registration:${registration}`;
+  const callsign=String(aircraft?.callsign||"").trim().toUpperCase();
+  if(callsign)return `callsign:${callsign}`;
+  return `anonymous:${index}`;
+}
+function contactAgeSeconds(aircraft){
+  const age=finite(aircraft?.position_age_seconds);
+  return age===null?Number.POSITIVE_INFINITY:Math.max(0,age);
+}
+function uniqueAircraftContacts(contacts){
+  const unique=new Map();
+  for(let index=0;index<contacts.length;index++){
+    const aircraft=contacts[index];
+    const key=aircraftIdentity(aircraft,index);
+    const existing=unique.get(key);
+    if(!existing||contactAgeSeconds(aircraft)<contactAgeSeconds(existing.aircraft)){
+      unique.set(key,{aircraft,index});
+    }
+  }
+  return [...unique.values()].sort((a,b)=>a.index-b.index).map(entry=>entry.aircraft);
+}
 const shortestAngle=(from,to)=>((to-from+540)%360)-180;
 const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
@@ -122,7 +153,7 @@ function contactFingerprint(aircraft){
 }
 
 function motionEpoch(aircraft,nowMs){
-  const key=String(aircraft?.icao24||"").toLowerCase();
+  const key=aircraftIdentity(aircraft);
   const fingerprint=contactFingerprint(aircraft);
   let entry=motionEpochs.get(key);
   if(!entry||entry.fingerprint!==fingerprint){
@@ -141,11 +172,23 @@ function blendState(from,to,ratio){
   return{...to,azimuth:(from.azimuth+shortestAngle(from.azimuth,to.azimuth)*eased+360)%360,elevation:lerp(from.elevation,to.elevation),rangeKm:lerp(from.rangeKm,to.rangeKm),heading:(from.heading+shortestAngle(from.heading,to.heading)*eased+360)%360,roll:lerp(from.roll,to.roll),flightPathDeg:lerp(from.flightPathDeg,to.flightPathDeg)};
 }
 
+function preparedTrack(aircraft){
+  const source=Array.isArray(aircraft?.future_track)?aircraft.future_track:[];
+  const cached=preparedTracks.get(aircraft);
+  if(cached&&cached.source===source)return cached.points;
+  const points=source.map(point=>({
+    seconds:finite(point?.seconds_from_now),
+    azimuth:finite(point?.azimuth_deg),
+    elevation:finite(point?.elevation_deg)
+  })).filter(point=>point.seconds!==null&&point.azimuth!==null&&point.elevation!==null).sort((a,b)=>a.seconds-b.seconds);
+  preparedTracks.set(aircraft,{source,points});
+  return points;
+}
+
 function interpolateTrack(aircraft,nowMs){
   const{key,entry}=motionEpoch(aircraft,nowMs);
   const elapsed=clamp((nowMs-entry.receivedAt)/1000,0,MAX_PREDICTION_SECONDS);
-  const source=Array.isArray(aircraft?.future_track)?aircraft.future_track:[];
-  const points=source.map(point=>({seconds:finite(point?.seconds_from_now),azimuth:finite(point?.azimuth_deg),elevation:finite(point?.elevation_deg)})).filter(point=>point.seconds!==null&&point.azimuth!==null&&point.elevation!==null).sort((a,b)=>a.seconds-b.seconds);
+  const points=preparedTrack(aircraft);
   let azimuth=finite(aircraft?.azimuth_deg),elevation=finite(aircraft?.elevation_deg);
   if(points.length){
     if(elapsed<=points[0].seconds){azimuth=points[0].azimuth;elevation=points[0].elevation}
@@ -373,6 +416,29 @@ function drawPerspectiveAircraft(aircraft,state,w,h){
   return{kind:"aircraft",item:aircraft,x,y,r:Math.max(15,size*1.35)};
 }
 
+function drawDotAircraft(aircraft,state,w,h){
+  if(state.azimuth===null||state.elevation===null)return null;
+  const point=skyXY(state.azimuth,state.elevation,w,h);if(!point)return null;
+  const[x,y]=point;
+  const selected=typeof trackedObject!=="undefined"&&trackedObject?.kind==="aircraft"&&trackedObject.key===aircraft.icao24;
+  const special=aircraft.display?.special||aircraft.military||aircraft.squawk_alert;
+  const stroke=selected?"#ffffff":special?"#ffd166":"#8be9ff",glow=selected?"#ffffff":special?"#f59e0b":"#42d9ff";
+  const coasting=aircraft?.position_state==="coasting"||aircraft?.continuity_state==="coasting";
+  const alpha=selected?1:(coasting ? .62 : 1);
+  const radius=selected?6:4;
+  aircraftCtx.save();
+  aircraftCtx.globalAlpha=alpha;
+  aircraftCtx.shadowBlur=selected?16:8;aircraftCtx.shadowColor=glow;
+  aircraftCtx.fillStyle="rgba(3,7,13,.78)";aircraftCtx.strokeStyle=stroke;aircraftCtx.lineWidth=selected?2:1.35;
+  aircraftCtx.beginPath();aircraftCtx.arc(x,y,radius,0,Math.PI*2);aircraftCtx.fill();aircraftCtx.stroke();
+  aircraftCtx.restore();
+  const bounds={minX:x-radius,maxX:x+radius,minY:y-radius,maxY:y+radius};
+  if(typeof labels!=="undefined"&&labels.aircraft){
+    queuedLabels.push({text:(aircraft.display?.role?`${aircraft.display.role} · `:"")+(aircraft.callsign||aircraft.registration||aircraft.icao24||"AIR"),bounds,selected,alpha});
+  }
+  return{kind:"aircraft",item:aircraft,x,y,r:15};
+}
+
 function ensureOverlaySize(){
   const w=skyCanvas.clientWidth||innerWidth,h=skyCanvas.clientHeight||innerHeight,dpr=Math.min(window.devicePixelRatio||1,2),pixelWidth=Math.max(1,Math.round(w*dpr)),pixelHeight=Math.max(1,Math.round(h*dpr));
   if(aircraftCanvas.width!==pixelWidth||aircraftCanvas.height!==pixelHeight){aircraftCanvas.width=pixelWidth;aircraftCanvas.height=pixelHeight}
@@ -384,33 +450,39 @@ function clearOverlay(){const{w,h}=ensureOverlaySize();aircraftCtx.clearRect(0,0
 function drawPerspectiveLayer(){
   const{w,h}=ensureOverlaySize();aircraftCtx.clearRect(0,0,w,h);aircraftHits=[];queuedLabels=[];
   const nowMs=Date.now();
-  const contacts=(Array.isArray(skyAircraft)?skyAircraft:[]).map(aircraft=>({aircraft,state:interpolateTrack(aircraft,nowMs)})).filter(item=>item.state.azimuth!==null&&item.state.elevation!==null&&item.state.rangeKm<=MAX_RANGE_KM).sort((a,b)=>b.state.rangeKm-a.state.rangeKm);
-  for(const item of contacts){const target=drawPerspectiveAircraft(item.aircraft,item.state,w,h);if(target)aircraftHits.push(target)}
+  const contacts=uniqueAircraftContacts(Array.isArray(skyAircraft)?skyAircraft:[]).map(aircraft=>({aircraft,state:interpolateTrack(aircraft,nowMs)})).filter(item=>item.state.azimuth!==null&&item.state.elevation!==null&&item.state.rangeKm<=MAX_RANGE_KM).sort((a,b)=>b.state.rangeKm-a.state.rangeKm);
+  const drawAircraft=perspectiveEnabled()?drawPerspectiveAircraft:drawDotAircraft;
+  for(const item of contacts){const target=drawAircraft(item.aircraft,item.state,w,h);if(target)aircraftHits.push(target)}
   drawAircraftLabels(w,h);
 }
 
 drawContacts=function(w,h){
-  if(!perspectiveEnabled()){clearOverlay();return baseDrawContacts(w,h)}
-  const aircraftVisible=typeof layers!=="undefined"&&layers.aircraft!==false;
-  if(!aircraftVisible){clearOverlay();return baseDrawContacts(w,h)}
-  const previous=layers.aircraft;try{layers.aircraft=false;baseDrawContacts(w,h)}finally{layers.aircraft=previous}
+  if(typeof layers==="undefined")return baseDrawContacts(w,h);
+  const previous=layers.aircraft;
+  try{layers.aircraft=false;return baseDrawContacts(w,h)}finally{layers.aircraft=previous}
 };
 
 function cleanupMotionEpochs(nowMs){
   if(nowMs-lastCleanup<5000)return;
-  const active=new Set((Array.isArray(skyAircraft)?skyAircraft:[]).map(contact=>String(contact?.icao24||"").toLowerCase()));
+  const active=new Set(uniqueAircraftContacts(Array.isArray(skyAircraft)?skyAircraft:[]).map((contact,index)=>aircraftIdentity(contact,index)));
   for(const[key,entry]of motionEpochs){if(!active.has(key)||nowMs-entry.lastSeenAt>60000){motionEpochs.delete(key);renderedStates.delete(key)}}
   lastCleanup=nowMs;
 }
 
-function animate(){
-  if(!document.hidden&&perspectiveEnabled()&&typeof layers!=="undefined"&&layers.aircraft!==false&&Array.isArray(skyAircraft)&&skyAircraft.length)drawPerspectiveLayer();
-  else clearOverlay();
-  cleanupMotionEpochs(Date.now());requestAnimationFrame(animate);
+function animate(now){
+  const reduced=window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  const interval=reduced?REDUCED_MOTION_INTERVAL_MS:FRAME_INTERVAL_MS;
+  if(now-lastDraw>=interval){
+    if(!document.hidden&&typeof layers!=="undefined"&&layers.aircraft!==false&&Array.isArray(skyAircraft)&&skyAircraft.length)drawPerspectiveLayer();
+    else clearOverlay();
+    cleanupMotionEpochs(Date.now());
+    lastDraw=now;
+  }
+  requestAnimationFrame(animate);
 }
 
 skyCanvas.addEventListener("click",event=>{
-  if(!perspectiveEnabled()||typeof layers==="undefined"||layers.aircraft===false)return;
+  if(typeof layers==="undefined"||layers.aircraft===false)return;
   if(typeof dragMoved!=="undefined"&&dragMoved)return;
   const rect=skyCanvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
   let best=null,bestD=Infinity;
@@ -427,6 +499,9 @@ if(markerSelect){
   if(help)help.textContent="Perspective aircraft use real heading, roll, turn rate and sky motion with readable view-dependent shapes, type-aware proportions, navigation lights and 0–50 mile depth scaling. Switch to dots for the lightweight simple view.";
 }
 
-window.NightAzimuthAircraftPerspective={modelSize,interpolateTrack,cameraBasis,aircraftBasis,aircraftProfile,projectionFrame,blendState,drawPerspectiveLayer};
+window.NightAzimuthAircraftPerspective={active:true,modelSize,preparedTrack,interpolateTrack,cameraBasis,aircraftBasis,aircraftProfile,projectionFrame,blendState,uniqueAircraftContacts,aircraftIdentity,drawDotAircraft,drawPerspectiveLayer};
+// Repaint the base sky once after taking ownership so a legacy silhouette already
+// painted on the main canvas cannot remain behind the animated overlay.
+requestAnimationFrame(()=>{if(typeof drawSky==="function")drawSky()});
 requestAnimationFrame(animate);
 })();
