@@ -47,9 +47,14 @@ function updateInspectorMedia(target,item){
   if(!mediaRoot||!image||!credit||!link)return;
   const media=target.kind==="planet"?PLANET_MEDIA[item.name]:null;
   image.onerror=null;
-  if(target.kind==="star"&&Number.isFinite(Number(item.ra_deg))&&Number.isFinite(Number(item.dec_deg))){
-    const params=new URLSearchParams({hips:"CDS/P/DSS2/color",width:"700",height:"420",fov:"0.12",projection:"TAN",coordsys:"icrs",ra:String(item.ra_deg),dec:String(item.dec_deg),format:"jpg"});
-    const survey="https://alasky.cds.unistra.fr/hips-image-services/hips2fits?"+params.toString();
+  if(target.kind==="star"&&item.hip_id!=null){
+    const params={hips:"CDS/P/DSS2/color",width:"500",height:"300",fov:"0.12",projection:"TAN",coordsys:"icrs",format:"jpg"};
+    if(Number.isFinite(Number(item.ra_deg))&&Number.isFinite(Number(item.dec_deg))){
+      params.ra=String(item.ra_deg);params.dec=String(item.dec_deg)
+    }else{
+      params.object="HIP "+item.hip_id
+    }
+    const survey="https://alasky.cds.unistra.fr/hips-image-services/hips2fits?"+new URLSearchParams(params).toString();
     mediaRoot.hidden=false;credit.textContent="Real sky-survey image · DSS2 / CDS · HIP "+item.hip_id;link.href=survey;
     image.alt="Real sky-survey image centred on "+(item.name||("HIP "+item.hip_id));
     image.onerror=()=>{mediaRoot.hidden=true;image.removeAttribute("src")};
