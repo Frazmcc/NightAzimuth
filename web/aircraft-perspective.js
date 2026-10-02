@@ -12,7 +12,7 @@ const MAX_RANGE_KM=MAX_RANGE_MILES*KM_PER_MILE;
 const MIN_MODEL_SIZE=7.5;
 const MAX_MODEL_SIZE=24;
 const MAX_PREDICTION_SECONDS=15;
-const HANDOFF_SECONDS=.45;
+const SNAPSHOT_CORRECTION_SECONDS=.75;
 const FRAME_INTERVAL_MS=33;
 const REDUCED_MOTION_INTERVAL_MS=100;
 const MIN_FORWARD_PROJECTION=.18;
@@ -158,18 +158,37 @@ function motionEpoch(aircraft,nowMs){
   let entry=motionEpochs.get(key);
   if(!entry||entry.fingerprint!==fingerprint){
     const previous=renderedStates.get(key)||null;
-    entry={fingerprint,receivedAt:nowMs,lastSeenAt:nowMs,handoffFrom:previous};
+    entry={fingerprint,receivedAt:nowMs,lastSeenAt:nowMs,correctionFrom:previous,correction:null};
     motionEpochs.set(key,entry);
   }else entry.lastSeenAt=nowMs;
   return{key,entry};
 }
 
-function blendState(from,to,ratio){
-  if(!from)return to;
-  const t=clamp(ratio,0,1);
-  const eased=t*t*(3-2*t);
-  const lerp=(a,b)=>a+(b-a)*eased;
-  return{...to,azimuth:(from.azimuth+shortestAngle(from.azimuth,to.azimuth)*eased+360)%360,elevation:lerp(from.elevation,to.elevation),rangeKm:lerp(from.rangeKm,to.rangeKm),heading:(from.heading+shortestAngle(from.heading,to.heading)*eased+360)%360,roll:lerp(from.roll,to.roll),flightPathDeg:lerp(from.flightPathDeg,to.flightPathDeg)};
+function snapshotCorrection(from,target){
+  if(!from)return null;
+  return{
+    azimuth:shortestAngle(target.azimuth,from.azimuth),
+    elevation:from.elevation-target.elevation,
+    rangeKm:from.rangeKm-target.rangeKm,
+    heading:shortestAngle(target.heading,from.heading),
+    roll:from.roll-target.roll,
+    flightPathDeg:from.flightPathDeg-target.flightPathDeg
+  };
+}
+
+function applySnapshotCorrection(target,correction,elapsed){
+  if(!correction)return target;
+  const t=clamp(elapsed/SNAPSHOT_CORRECTION_SECONDS,0,1);
+  const remaining=1-(t*t*(3-2*t));
+  return{
+    ...target,
+    azimuth:(target.azimuth+correction.azimuth*remaining+360)%360,
+    elevation:target.elevation+correction.elevation*remaining,
+    rangeKm:target.rangeKm+correction.rangeKm*remaining,
+    heading:(target.heading+correction.heading*remaining+360)%360,
+    roll:target.roll+correction.roll*remaining,
+    flightPathDeg:target.flightPathDeg+correction.flightPathDeg*remaining
+  };
 }
 
 function preparedTrack(aircraft){
@@ -218,8 +237,9 @@ function interpolateTrack(aircraft,nowMs){
     rangeKm=clamp(rangeKm+(horizontalRadial*Math.cos(elevationRad)+verticalRadial)*elapsed/1000,0,MAX_RANGE_KM);
   }
   let state={azimuth,elevation,rangeKm,heading,roll:clamp(finite(aircraft?.roll_deg)??0,-89,89),flightPathDeg,elapsed};
-  if(entry.handoffFrom&&elapsed<HANDOFF_SECONDS)state=blendState(entry.handoffFrom,state,elapsed/HANDOFF_SECONDS);
-  else if(entry.handoffFrom)entry.handoffFrom=null;
+  if(entry.correctionFrom&&!entry.correction)entry.correction=snapshotCorrection(entry.correctionFrom,state);
+  if(entry.correction&&elapsed<SNAPSHOT_CORRECTION_SECONDS)state=applySnapshotCorrection(state,entry.correction,elapsed);
+  else if(entry.correction){entry.correction=null;entry.correctionFrom=null}
   if(state.azimuth!==null&&state.elevation!==null)renderedStates.set(key,{...state});
   return state;
 }
@@ -499,7 +519,7 @@ if(markerSelect){
   if(help)help.textContent="Perspective aircraft use real heading, roll, turn rate and sky motion with readable view-dependent shapes, type-aware proportions, navigation lights and 0–50 mile depth scaling. Switch to dots for the lightweight simple view.";
 }
 
-window.NightAzimuthAircraftPerspective={active:true,modelSize,preparedTrack,interpolateTrack,cameraBasis,aircraftBasis,aircraftProfile,projectionFrame,blendState,uniqueAircraftContacts,aircraftIdentity,drawDotAircraft,drawPerspectiveLayer};
+window.NightAzimuthAircraftPerspective={active:true,modelSize,preparedTrack,interpolateTrack,cameraBasis,aircraftBasis,aircraftProfile,projectionFrame,snapshotCorrection,applySnapshotCorrection,uniqueAircraftContacts,aircraftIdentity,drawDotAircraft,drawPerspectiveLayer};
 // Repaint the base sky once after taking ownership so a legacy silhouette already
 // painted on the main canvas cannot remain behind the animated overlay.
 requestAnimationFrame(()=>{if(typeof drawSky==="function")drawSky()});
