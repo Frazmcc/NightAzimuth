@@ -117,7 +117,7 @@ def test_airports_share_distance_units_and_are_limited_to_50_miles() -> None:
     assert "distanceKm>AIRPORT_RADIUS_KM" in LAYOUT_JS
     assert "Math.round(km/KM_PER_MILE)" in LAYOUT_JS
     assert 'window.addEventListener("nightazimuth:distance-unit"' in LAYOUT_JS
-    assert "app.js?v=22.5.1" in HTML
+    assert "app.js?v=22.5.2" in HTML
     assert "live-sky-layout.js?v=21.11.24" in HTML
 
 
