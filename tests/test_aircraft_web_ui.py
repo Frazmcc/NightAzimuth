@@ -193,7 +193,7 @@ def test_aircraft_renderer_draws_one_contact_per_identity() -> None:
 def test_perspective_aircraft_reuses_single_aircraft_payload() -> None:
     assert "getJson(" not in PERSPECTIVE_JS
     assert "fetch(" not in PERSPECTIVE_JS
-    assert 'perspective.src="./aircraft-perspective.js?v=22.3.4"' in LAYERS_JS
+    assert 'perspective.src="./aircraft-perspective.js?v=22.3.5"' in LAYERS_JS
     assert 'layer-defaults.js?v=21.11.20' in HTML
 
 
@@ -255,7 +255,7 @@ def test_perspective_renderer_clears_preexisting_legacy_aircraft_once() -> None:
 
 
 def test_aircraft_animation_does_not_repaint_the_whole_sky() -> None:
-    animate_start = PERSPECTIVE_JS.index("function animate(){")
+    animate_start = PERSPECTIVE_JS.index("function animate(now){")
     animate_end = PERSPECTIVE_JS.index("skyCanvas.addEventListener", animate_start)
     animate_body = PERSPECTIVE_JS[animate_start:animate_end]
     assert "drawPerspectiveLayer()" in animate_body
@@ -263,6 +263,21 @@ def test_aircraft_animation_does_not_repaint_the_whole_sky() -> None:
     assert "requestAnimationFrame(animate)" in animate_body
     assert "const MAX_PREDICTION_SECONDS=15" in PERSPECTIVE_JS
     assert 'if(!document.hidden&&typeof layers!=="undefined"&&layers.aircraft!==false' in animate_body
+
+
+def test_aircraft_motion_matches_satellite_frame_pacing_and_track_preparation() -> None:
+    assert "const FRAME_INTERVAL_MS=33" in PERSPECTIVE_JS
+    assert "const REDUCED_MOTION_INTERVAL_MS=100" in PERSPECTIVE_JS
+    assert "const preparedTracks=new WeakMap()" in PERSPECTIVE_JS
+    assert "function preparedTrack(aircraft)" in PERSPECTIVE_JS
+    assert "if(cached&&cached.source===source)return cached.points" in PERSPECTIVE_JS
+    interpolate_start = PERSPECTIVE_JS.index("function interpolateTrack(aircraft,nowMs){")
+    interpolate_end = PERSPECTIVE_JS.index("function cameraBasis", interpolate_start)
+    interpolate_body = PERSPECTIVE_JS[interpolate_start:interpolate_end]
+    assert "const points=preparedTrack(aircraft)" in interpolate_body
+    assert ".map(point=>" not in interpolate_body
+    assert "now-lastDraw>=interval" in PERSPECTIVE_JS
+    assert 'window.matchMedia?.("(prefers-reduced-motion: reduce)")' in PERSPECTIVE_JS
 
 
 def test_fresh_provider_snapshots_are_eased_without_position_snaps() -> None:
