@@ -90,7 +90,7 @@ def test_startup_populates_the_bounded_local_radar_without_waiting_for_first_int
     assert "const AIRCRAFT_RADIUS_KM=AIRCRAFT_RADIUS_MILES*1.609344" in AIRCRAFT_JS
     assert "minimum_elevation_deg:-90" in AIRCRAFT_JS
     assert "refreshAircraftFast();\nsetInterval(refreshAircraftFast,AIRCRAFT_REFRESH_MS)" in AIRCRAFT_JS
-    assert "aircraft-sensitivity.js?v=21.11.21" in HTML
+    assert "aircraft-sensitivity.js?v=21.11.22" in HTML
 
 
 def test_aircraft_distance_units_can_be_changed_in_settings() -> None:
@@ -117,7 +117,7 @@ def test_airports_share_distance_units_and_are_limited_to_50_miles() -> None:
     assert "distanceKm>AIRPORT_RADIUS_KM" in LAYOUT_JS
     assert "Math.round(km/KM_PER_MILE)" in LAYOUT_JS
     assert 'window.addEventListener("nightazimuth:distance-unit"' in LAYOUT_JS
-    assert "app.js?v=21.11.23" in HTML
+    assert "app.js?v=21.11.24" in HTML
     assert "live-sky-layout.js?v=21.11.24" in HTML
 
 
