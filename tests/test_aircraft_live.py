@@ -72,7 +72,7 @@ def test_builds_above_horizon_view_contact():
     assert contact.azimuth_deg > 89.0
     assert contact.elevation_deg > 0.0
     assert contact.future_track[0].seconds_from_now == 0.0
-    assert len(contact.future_track) >= 2
+    assert [point.seconds_from_now for point in contact.future_track] == [float(second) for second in range(16)]
 
 
 def test_projected_track_moves_east_for_eastbound_aircraft():
