@@ -43,32 +43,172 @@ const PLANET_MEDIA={
   Neptune:{file:"Neptune_Voyager2_color_calibrated.png",credit:"Voyager 2 · NASA"}
 };
 const PLANET_FACTS={
-  Moon:["Earth's only natural satellite.","It is tidally locked, so nearly the same hemisphere always faces Earth.","Its surface preserves impact craters, dark basaltic maria and bright highlands.","With almost no atmosphere, surface temperatures change dramatically between lunar day and night."],
-  Mercury:["The smallest planet in the Solar System and the closest planet to the Sun.","It completes an orbit in about 88 Earth days.","Mercury has no natural moons and only an extremely thin exosphere.","Its ancient surface is heavily cratered, including the vast Caloris impact basin."],
-  Venus:["The second planet from the Sun and similar in size to Earth.","A dense carbon-dioxide atmosphere and runaway greenhouse effect make it the hottest planet at the surface.","Venus rotates very slowly and in the opposite direction to most planets.","Its clouds are rich in sulfuric acid and it has no natural moons."],
-  Mars:["The fourth planet from the Sun; iron oxides give much of its surface a reddish appearance.","Its atmosphere is thin and dominated by carbon dioxide.","Mars contains Olympus Mons, the largest volcano known in the Solar System, and the immense Valles Marineris canyon system.","It has two small moons: Phobos and Deimos."],
-  Jupiter:["The largest planet in the Solar System and a gas giant composed mainly of hydrogen and helium.","The Great Red Spot is a long-lived giant storm in Jupiter's atmosphere.","Jupiter rotates in roughly ten hours, giving it the shortest day of any major planet.","It has a faint ring system and a large family of moons, including Io, Europa, Ganymede and Callisto."],
-  Saturn:["A gas giant best known for its extensive ring system, made largely of ice particles with rocky material and dust.","Saturn is the second-largest planet in the Solar System.","Its average density is lower than that of liquid water.","Titan, its largest moon, has a dense atmosphere and lakes and seas of liquid hydrocarbons."],
-  Uranus:["An ice giant with methane in its atmosphere contributing to its blue-green appearance.","Its rotation axis is tilted by about 98°, so the planet effectively rotates on its side.","Uranus has a system of dark rings as well as numerous moons.","Its atmosphere contains hydrogen, helium and methane above an interior rich in heavier volatile materials."],
-  Neptune:["The farthest major planet from the Sun and an ice giant.","Methane in its atmosphere contributes to its blue appearance.","Neptune has the fastest measured winds of any planet in the Solar System.","Its largest moon, Triton, orbits in the opposite direction to Neptune's rotation and is probably a captured Kuiper Belt object."]
+  Moon:[
+    "Size: mean diameter about 3,475 km.",
+    "Average distance from Earth: about 384,400 km.",
+    "Composition: rocky silicate crust and mantle surrounding a small iron-rich core.",
+    "Surface: heavily cratered highlands, basaltic maria and bright ejecta systems.",
+    "Atmosphere: only an extremely tenuous exosphere.",
+    "Day: one solar day lasts about 29.5 Earth days.",
+    "Temperature: roughly +127 °C in direct sunlight to about −173 °C at night.",
+    "Unusual: tidally locked, so nearly the same hemisphere always faces Earth."
+  ],
+  Mercury:[
+    "Size: diameter about 4,879 km — the smallest major planet.",
+    "Average distance from the Sun: 57.9 million km (0.39 AU).",
+    "Year: about 88 Earth days; solar day: about 176 Earth days.",
+    "Composition: unusually large iron-rich core with a rocky silicate mantle and crust.",
+    "Atmosphere: essentially none; it has a very thin exosphere.",
+    "Temperature: about +430 °C by day and −180 °C at night.",
+    "Moons: none.",
+    "Unusual: despite being closest to the Sun, it is not the hottest planet; permanently shadowed polar craters contain water ice."
+  ],
+  Venus:[
+    "Size: diameter about 12,104 km — only slightly smaller than Earth.",
+    "Average distance from the Sun: 108.2 million km (0.72 AU).",
+    "Year: about 224.7 Earth days; rotation period: about 243 Earth days.",
+    "Composition: rocky terrestrial planet with an iron core and silicate mantle/crust.",
+    "Atmosphere: about 96.5% carbon dioxide with clouds of sulfuric acid.",
+    "Surface temperature: about 465 °C on average — hotter than Mercury.",
+    "Moons: none.",
+    "Unusual: rotates backwards compared with most planets and has a runaway greenhouse atmosphere with surface pressure about 90 times Earth's."
+  ],
+  Mars:[
+    "Size: diameter about 6,779 km, roughly half Earth's diameter.",
+    "Average distance from the Sun: 227.9 million km (1.52 AU).",
+    "Year: about 687 Earth days; day: 24 h 39 min.",
+    "Composition: rocky planet rich in silicate minerals; iron oxides help give the surface its red colour.",
+    "Atmosphere: thin and dominated by carbon dioxide.",
+    "Average surface temperature: roughly −63 °C, with large local and seasonal variation.",
+    "Moons: Phobos and Deimos.",
+    "Unusual: home to Olympus Mons, the Solar System's largest known volcano, and Valles Marineris, one of its largest canyon systems."
+  ],
+  Jupiter:[
+    "Size: equatorial diameter about 142,984 km — around 11.2 Earth diameters.",
+    "Average distance from the Sun: 778.5 million km (5.20 AU).",
+    "Year: about 11.86 Earth years; day: just under 10 hours.",
+    "Composition: mostly hydrogen and helium, with no solid surface like Earth's.",
+    "Atmosphere: hydrogen/helium with ammonia, methane, water vapour and complex cloud chemistry.",
+    "Temperature: cloud tops average roughly −145 °C.",
+    "Moons: a very large moon system including Io, Europa, Ganymede and Callisto.",
+    "Unusual: the Great Red Spot is a giant long-lived storm; Jupiter also has the strongest planetary magnetic field in the Solar System."
+  ],
+  Saturn:[
+    "Size: equatorial diameter about 120,536 km — around 9.4 Earth diameters.",
+    "Average distance from the Sun: 1.43 billion km (9.58 AU).",
+    "Year: about 29.5 Earth years; day: roughly 10.7 hours.",
+    "Composition: mostly hydrogen and helium surrounding a dense interior.",
+    "Atmosphere: hydrogen/helium with ammonia and other trace compounds.",
+    "Temperature: cloud tops average roughly −178 °C.",
+    "Moons: a large system including Titan, Enceladus, Rhea and Iapetus.",
+    "Unusual: its rings are made largely of water-ice particles; Saturn's mean density is lower than liquid water."
+  ],
+  Uranus:[
+    "Size: diameter about 50,724 km — roughly four Earth diameters.",
+    "Average distance from the Sun: 2.87 billion km (19.2 AU).",
+    "Year: about 84 Earth years; day: about 17 hours.",
+    "Composition: an ice giant with water-, ammonia- and methane-rich material beneath a hydrogen/helium atmosphere.",
+    "Atmosphere: hydrogen, helium and methane; methane contributes to its blue-green appearance.",
+    "Temperature: minimum atmospheric temperatures can fall below −220 °C.",
+    "Moons and rings: numerous moons plus a system of dark narrow rings.",
+    "Unusual: its axis is tilted by about 98°, so Uranus effectively rotates on its side."
+  ],
+  Neptune:[
+    "Size: diameter about 49,244 km — a little smaller than Uranus.",
+    "Average distance from the Sun: 4.50 billion km (30.1 AU).",
+    "Year: about 164.8 Earth years; day: about 16 hours.",
+    "Composition: ice giant rich in water-, ammonia- and methane-bearing material around a rocky core.",
+    "Atmosphere: mostly hydrogen and helium with methane.",
+    "Temperature: cloud tops are around −200 °C.",
+    "Moons: Triton is the largest and follows a retrograde orbit.",
+    "Unusual: Neptune has the fastest measured planetary winds, exceeding 2,000 km/h in some regions."
+  ]
 };
+const STAR_NOTABLE_FACTS={
+  78527:[
+    "Identity: Theta Draconis (θ Dra), in the constellation Draco.",
+    "Type: an F8 IV–V primary star in a spectroscopic binary system; the primary is transitioning between main-sequence and subgiant stages.",
+    "Age: published estimates put the primary at roughly 2.1 ± 0.2 billion years.",
+    "Temperature: effective temperature about 6,390 K for the primary.",
+    "Companion: the known secondary has a mass around 0.62 times the Sun's; a possible third component has also been proposed.",
+    "Unusual: Theta Draconis rotates unusually quickly for a mature late-F star and has been detected as an X-ray source."
+  ],
+  91262:[
+    "Identity: Vega, one of the brightest stars visible from the Northern Hemisphere.",
+    "Type: A0 V main-sequence star, hotter and more massive than the Sun.",
+    "Age: roughly 450 million years.",
+    "Size: about 2.3 times the Sun's radius, with rapid rotation making the star noticeably oblate.",
+    "Composition/temperature: hydrogen-dominated stellar plasma with a surface temperature near 9,600 K.",
+    "Unusual: Vega is surrounded by a debris disk and was once the reference zero-point for the astronomical magnitude scale."
+  ],
+  32349:[
+    "Identity: Sirius, the brightest star in Earth's night sky.",
+    "System: a binary made of Sirius A and the white dwarf Sirius B.",
+    "Age: roughly a quarter of a billion years for the system.",
+    "Size: Sirius A is about 1.7 times the Sun's radius and roughly twice its mass.",
+    "Composition/temperature: Sirius A is an A-type hydrogen-burning star with a surface temperature close to 9,900 K.",
+    "Unusual: Sirius B is a white dwarf packing roughly a solar mass into a body comparable in size to Earth."
+  ],
+  27989:[
+    "Identity: Betelgeuse, the red supergiant marking Orion's shoulder.",
+    "Type: a massive evolved red supergiant nearing the end of its life.",
+    "Size: its radius is hundreds of times the Sun's and changes as the star pulsates.",
+    "Age: only around 8–10 million years despite being highly evolved, because massive stars burn fuel very quickly.",
+    "Composition/temperature: cool outer atmosphere around 3,500 K with strong molecular and dusty material around the star.",
+    "Unusual: Betelgeuse is irregularly variable and experienced the famous 'Great Dimming' in 2019–2020."
+  ],
+  11767:[
+    "Identity: Polaris, the current northern pole star.",
+    "System: Polaris is a multiple-star system whose dominant component is a yellow supergiant.",
+    "Size: the primary is dozens of times wider than the Sun.",
+    "Age: tens of millions of years rather than billions.",
+    "Unusual: Polaris is a classical Cepheid variable, making it part of a class of stars crucial for measuring cosmic distances."
+  ]
+};
+function formatLargeDistanceKm(km){
+  if(km>=1e9)return (km/1e9).toFixed(2)+" billion km";
+  if(km>=1e6)return (km/1e6).toFixed(2)+" million km";
+  return Math.round(km).toLocaleString()+" km";
+}
+function planetFacts(item){
+  const facts=[...(PLANET_FACTS[item.name]||[])];
+  const km=Number(item.distance_from_observer_km),au=Number(item.distance_from_observer_au),light=Number(item.light_time_minutes);
+  if(Number.isFinite(km)){
+    const auText=Number.isFinite(au)?" ("+au.toFixed(4)+" AU)":"";
+    facts.unshift("Current distance from your observing position: "+formatLargeDistanceKm(km)+auText+".");
+  }
+  if(Number.isFinite(light))facts.splice(1,0,"Light currently takes about "+(light<1?(light*60).toFixed(1)+" seconds":light.toFixed(1)+" minutes")+" to travel that distance.");
+  return facts;
+}
 function starFacts(item){
   const facts=[`Hipparcos catalogue identifier: HIP ${item.hip_id}.`];
   if(item.name)facts.push(`Proper name: ${item.name}.`);
+  const distanceLy=Number(item.distance_ly),distancePc=Number(item.distance_pc),parallax=Number(item.parallax_mas);
+  if(Number.isFinite(distanceLy)&&distanceLy>0){
+    const pcText=Number.isFinite(distancePc)?" ("+distancePc.toFixed(2)+" parsecs)":"";
+    facts.push("Distance from Earth: about "+distanceLy.toFixed(1)+" light-years"+pcText+". The light in the image left the star roughly "+Math.round(distanceLy)+" years ago.");
+  }
+  if(Number.isFinite(parallax)&&parallax>0)facts.push("Measured parallax: "+parallax.toFixed(2)+" milliarcseconds; NightAzimuth uses this Hipparcos parallax to estimate the distance.");
   const magnitude=Number(item.magnitude);
   if(Number.isFinite(magnitude)){
     const visibility=magnitude<=1?"one of the brighter stars in the night sky":magnitude<=2?"a bright naked-eye star":magnitude<=4?"readily visible to the naked eye under reasonably dark skies":"a relatively faint naked-eye star best seen from darker skies";
     facts.push(`Apparent magnitude ${magnitude.toFixed(2)} — ${visibility}. Lower magnitude numbers mean brighter objects.`);
   }
+  const absoluteMagnitude=Number(item.absolute_magnitude);
+  if(Number.isFinite(absoluteMagnitude))facts.push("Absolute magnitude: "+absoluteMagnitude.toFixed(2)+" — how bright the star would appear from a standard distance of 10 parsecs.");
+  const properMotion=Number(item.proper_motion_mas_per_year);
+  if(Number.isFinite(properMotion))facts.push("Proper motion across the sky: about "+properMotion.toFixed(1)+" milliarcseconds per year.");
   const ra=Number(item.ra_deg),dec=Number(item.dec_deg);
   if(Number.isFinite(ra)&&Number.isFinite(dec))facts.push(`Catalogue position: right ascension ${(ra/15).toFixed(2)} h, declination ${dec.toFixed(2)}°.`);
-  facts.push("Its position comes from the ESA Hipparcos astrometric catalogue; the image above is a real DSS2 sky-survey view centred on that position.");
+  if(STAR_NOTABLE_FACTS[item.hip_id])facts.push(...STAR_NOTABLE_FACTS[item.hip_id]);
+  else facts.push("Detailed age, radius, mass and chemical composition are not part of the Hipparcos astrometric catalogue, so NightAzimuth only shows those values when a reliable star-specific profile is available.");
+  facts.push("Astrometry: ESA Hipparcos catalogue. The image above is a real DSS2 sky-survey view centred on the catalogue position.");
   return facts;
 }
 function updateInspectorFacts(target,item){
   const root=document.querySelector("#inspector-facts"),list=document.querySelector("#inspector-facts-list");
   if(!root||!list)return;
-  const facts=target.kind==="planet"?(PLANET_FACTS[item.name]||[]):target.kind==="star"?starFacts(item):[];
+  const facts=target.kind==="planet"?planetFacts(item):target.kind==="star"?starFacts(item):[];
   list.replaceChildren(...facts.map(text=>{const p=document.createElement("p");p.className="muted";p.textContent=text;return p}));
   root.hidden=!facts.length;
 }
