@@ -89,7 +89,7 @@ def test_star_facts_are_catalogue_specific_and_not_placeholder_copy() -> None:
     assert "Hipparcos catalogue identifier" in APP
     assert "Apparent magnitude" in APP
     assert "right ascension" in APP
-    assert "ESA Hipparcos astrometric catalogue" in APP
+    assert "Astrometry: ESA Hipparcos catalogue" in APP
     assert "function updateInspectorFacts(target,item)" in APP
     assert "updateInspectorFacts(target,item)" in APP
 
