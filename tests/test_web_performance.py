@@ -99,7 +99,7 @@ def test_aircraft_distance_units_can_be_changed_in_settings() -> None:
     assert '<option value="km">Kilometres</option>' in HTML
     assert 'localStorage.setItem("nightazimuth.distanceUnit",unit)' in RADAR_JS
     assert 'unit==="km"?rangeValue:rangeValue*KM_PER_MILE' in RADAR_JS
-    assert "aircraft-radar.js?v=21.11.13" in HTML
+    assert "aircraft-radar.js?v=22.5.4" in HTML
 
 
 def test_airports_share_distance_units_and_are_limited_to_50_miles() -> None:
@@ -117,7 +117,7 @@ def test_airports_share_distance_units_and_are_limited_to_50_miles() -> None:
     assert "distanceKm>AIRPORT_RADIUS_KM" in LAYOUT_JS
     assert "Math.round(km/KM_PER_MILE)" in LAYOUT_JS
     assert 'window.addEventListener("nightazimuth:distance-unit"' in LAYOUT_JS
-    assert "app.js?v=22.5.3" in HTML
+    assert "app.js?v=22.5.4" in HTML
     assert "live-sky-layout.js?v=21.11.24" in HTML
 
 
