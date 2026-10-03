@@ -87,7 +87,7 @@ def test_fms_altitude_is_used_when_mcp_altitude_is_missing() -> None:
 def test_aircraft_selection_does_not_recentre_live_sky() -> None:
     assert "function selectAircraftWithoutRecentering" in CONTACTS_JS
     assert 'if(trackedObject?.kind==="aircraft")return;' in CONTACTS_JS
-    assert "focusAircraft=function(aircraft){selectAircraftWithoutRecentering(aircraft)}" in CONTACTS_JS
+    assert "focusAircraft=function(aircraft){return selectAircraftWithoutRecentering(aircraft)}" in CONTACTS_JS
     assert "facing=Number(aircraft.azimuth_deg)" not in CONTACTS_JS
     assert "elevationCentre=clampElevationCentre(Number(aircraft.elevation_deg))" not in CONTACTS_JS
 
