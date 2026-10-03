@@ -15,6 +15,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from . import __version__
 from .aircraft_adsb_lol import close_shared_adsb_http_client, prewarm_shared_adsb_http_client
 from .api_aircraft import router as aircraft_router
+from .api_aircraft_photo import router as aircraft_photo_router
 from .api_aircraft_route import router as aircraft_route_router
 from .api_airports import _PROVIDER as _AIRPORT_PROVIDER
 from .api_airports import router as airports_router
@@ -127,6 +128,7 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 app.include_router(satellites_router)
 app.include_router(aircraft_router)
+app.include_router(aircraft_photo_router)
 app.include_router(aircraft_route_router)
 app.include_router(airports_router)
 app.include_router(geojson_router)
