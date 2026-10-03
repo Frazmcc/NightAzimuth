@@ -70,6 +70,8 @@ def test_csp_allows_planet_and_star_image_sources() -> None:
         "https://upload.wikimedia.org",
         "https://commons.wikimedia.org",
         "https://alasky.cds.unistra.fr",
+        "https://cdn.planespotters.net",
+        "https://images.planespotters.net",
     ]
 
 
@@ -126,3 +128,8 @@ def test_facts_include_physical_orbital_and_notable_information() -> None:
     assert "Theta Draconis" in APP
     assert "spectroscopic binary" in APP
     assert "Great Dimming" in APP
+
+
+def test_aircraft_photo_hosts_are_allowed_by_csp() -> None:
+    assert "https://cdn.planespotters.net" in HTML
+    assert "https://images.planespotters.net" in HTML
