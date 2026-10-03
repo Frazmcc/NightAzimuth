@@ -29,8 +29,8 @@ def test_planet_inspector_has_real_spacecraft_image_catalogue() -> None:
 
 def test_non_planet_objects_hide_planet_media_and_failed_images_fail_closed() -> None:
     assert 'target.kind==="planet"?PLANET_MEDIA[item.name]:null' in APP
-    assert 'if(!media){mediaRoot.hidden=true;image.removeAttribute("src");image.alt="";return}' in APP
-    assert 'image.onerror=()=>{mediaRoot.hidden=true;image.removeAttribute("src")}' in APP
+    assert "if(!media)return;" in APP
+    assert 'if(generation===inspectorMediaGeneration){mediaRoot.hidden=true;image.removeAttribute("src")}' in APP
     assert "updateInspectorMedia(target,item)" in APP
 
 
