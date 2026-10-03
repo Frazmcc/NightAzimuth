@@ -71,3 +71,24 @@ def test_csp_allows_planet_and_star_image_sources() -> None:
         "https://commons.wikimedia.org",
         "https://alasky.cds.unistra.fr",
     ]
+
+
+def test_planet_and_star_inspector_has_facts_section_below_media() -> None:
+    media_pos = HTML.index('id="inspector-media"')
+    facts_pos = HTML.index('id="inspector-facts"')
+    type_pos = HTML.index('id="inspector-type"')
+    assert media_pos < facts_pos < type_pos
+    assert 'id="inspector-facts-list"' in HTML
+    assert "const PLANET_FACTS=" in APP
+    for body in ("Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"):
+        assert f"{body}:[" in APP
+
+
+def test_star_facts_are_catalogue_specific_and_not_placeholder_copy() -> None:
+    assert "function starFacts(item)" in APP
+    assert "Hipparcos catalogue identifier" in APP
+    assert "Apparent magnitude" in APP
+    assert "right ascension" in APP
+    assert "ESA Hipparcos astrometric catalogue" in APP
+    assert "function updateInspectorFacts(target,item)" in APP
+    assert "updateInspectorFacts(target,item)" in APP
