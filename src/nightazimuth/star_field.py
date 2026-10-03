@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import lru_cache
 from itertools import pairwise
+from math import hypot, isfinite, log10
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,11 @@ class StarPoint:
     name: str | None = None
     ra_deg: float | None = None
     dec_deg: float | None = None
+    parallax_mas: float | None = None
+    distance_pc: float | None = None
+    distance_ly: float | None = None
+    absolute_magnitude: float | None = None
+    proper_motion_mas_per_year: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +56,9 @@ class PlanetPoint:
     name: str
     azimuth_deg: float
     elevation_deg: float
+    distance_from_observer_km: float | None = None
+    distance_from_observer_au: float | None = None
+    light_time_minutes: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +221,22 @@ class StarFieldEngine:
             if position is None or position[1] < 0.0:
                 continue
             magnitude = float(self._catalogue.at[hip_id, "magnitude"])
+            parallax_raw = float(self._catalogue.at[hip_id, "parallax_mas"])
+            parallax_mas = parallax_raw if isfinite(parallax_raw) and parallax_raw > 0.0 else None
+            distance_pc = 1000.0 / parallax_mas if parallax_mas is not None else None
+            distance_ly = distance_pc * 3.26156 if distance_pc is not None else None
+            absolute_magnitude = (
+                magnitude - 5.0 * log10(distance_pc / 10.0)
+                if distance_pc is not None and distance_pc > 0.0
+                else None
+            )
+            pm_ra_raw = float(self._catalogue.at[hip_id, "ra_mas_per_year"])
+            pm_dec_raw = float(self._catalogue.at[hip_id, "dec_mas_per_year"])
+            proper_motion = (
+                hypot(pm_ra_raw, pm_dec_raw)
+                if isfinite(pm_ra_raw) and isfinite(pm_dec_raw)
+                else None
+            )
             stars.append(
                 StarPoint(
                     hip_id=hip_id,
@@ -221,6 +246,11 @@ class StarFieldEngine:
                     name=self._proper_names.get(hip_id) or FORCED_STAR_NAMES.get(hip_id),
                     ra_deg=float(self._catalogue.at[hip_id, "ra_degrees"]),
                     dec_deg=float(self._catalogue.at[hip_id, "dec_degrees"]),
+                    parallax_mas=parallax_mas,
+                    distance_pc=distance_pc,
+                    distance_ly=distance_ly,
+                    absolute_magnitude=absolute_magnitude,
+                    proper_motion_mas_per_year=proper_motion,
                 )
             )
 
@@ -237,8 +267,11 @@ class StarFieldEngine:
         planet_points: list[PlanetPoint] = []
         for display_name, target_name in planet_targets:
             apparent_planet = topocentric_observer.at(t).observe(self._ephemeris[target_name]).apparent()
-            planet_altitude, planet_azimuth, _planet_distance = apparent_planet.altaz()
+            planet_altitude, planet_azimuth, planet_distance = apparent_planet.altaz()
             elevation = float(planet_altitude.degrees)
+            distance_km = float(planet_distance.km)
+            distance_au = float(planet_distance.au)
+            light_time_minutes = distance_km / 299792.458 / 60.0
             if elevation < 0.0:
                 continue
             planet_points.append(
@@ -246,6 +279,9 @@ class StarFieldEngine:
                     name=display_name,
                     azimuth_deg=float(planet_azimuth.degrees) % 360.0,
                     elevation_deg=elevation,
+                    distance_from_observer_km=distance_km,
+                    distance_from_observer_au=distance_au,
+                    light_time_minutes=light_time_minutes,
                 )
             )
 

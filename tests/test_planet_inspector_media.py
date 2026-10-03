@@ -71,3 +71,58 @@ def test_csp_allows_planet_and_star_image_sources() -> None:
         "https://commons.wikimedia.org",
         "https://alasky.cds.unistra.fr",
     ]
+
+
+def test_planet_and_star_inspector_has_facts_section_below_media() -> None:
+    media_pos = HTML.index('id="inspector-media"')
+    facts_pos = HTML.index('id="inspector-facts"')
+    type_pos = HTML.index('id="inspector-type"')
+    assert media_pos < facts_pos < type_pos
+    assert 'id="inspector-facts-list"' in HTML
+    assert "const PLANET_FACTS=" in APP
+    for body in ("Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"):
+        assert f"{body}:[" in APP
+
+
+def test_star_facts_are_catalogue_specific_and_not_placeholder_copy() -> None:
+    assert "function starFacts(item)" in APP
+    assert "Hipparcos catalogue identifier" in APP
+    assert "Apparent magnitude" in APP
+    assert "right ascension" in APP
+    assert "Astrometry: ESA Hipparcos catalogue" in APP
+    assert "function updateInspectorFacts(target,item)" in APP
+    assert "updateInspectorFacts(target,item)" in APP
+
+
+def test_star_payload_exposes_distance_and_motion_facts() -> None:
+    star_field = Path("src/nightazimuth/star_field.py").read_text(encoding="utf-8")
+    assert "parallax_mas: float | None = None" in star_field
+    assert "distance_pc: float | None = None" in star_field
+    assert "distance_ly: float | None = None" in star_field
+    assert "absolute_magnitude: float | None = None" in star_field
+    assert "proper_motion_mas_per_year: float | None = None" in star_field
+    assert "1000.0 / parallax_mas" in star_field
+    assert "distance_pc * 3.26156" in star_field
+
+
+def test_planet_payload_exposes_current_distance_and_light_time() -> None:
+    star_field = Path("src/nightazimuth/star_field.py").read_text(encoding="utf-8")
+    assert "distance_from_observer_km: float | None = None" in star_field
+    assert "distance_from_observer_au: float | None = None" in star_field
+    assert "light_time_minutes: float | None = None" in star_field
+    assert "planet_distance.km" in star_field
+    assert "planet_distance.au" in star_field
+
+
+def test_facts_include_physical_orbital_and_notable_information() -> None:
+    assert "Size:" in APP
+    assert "Average distance from the Sun:" in APP
+    assert "Composition:" in APP
+    assert "Atmosphere:" in APP
+    assert "Temperature:" in APP
+    assert "Current distance from your observing position:" in APP
+    assert "STAR_NOTABLE_FACTS" in APP
+    assert "Age:" in APP
+    assert "Theta Draconis" in APP
+    assert "spectroscopic binary" in APP
+    assert "Great Dimming" in APP
