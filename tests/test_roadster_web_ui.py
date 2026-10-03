@@ -82,6 +82,8 @@ def test_roadster_media_is_historical_public_domain_and_not_presented_as_live() 
         "https://upload.wikimedia.org",
         "https://commons.wikimedia.org",
         "https://alasky.cds.unistra.fr",
+        "https://cdn.planespotters.net",
+        "https://images.planespotters.net",
     ]
 
     assert "Historical SpaceX onboard view" in ROADSTER_JS
