@@ -193,6 +193,9 @@ function renderAircraftInspector(raw,routeOverride=null){
   const inspector=document.querySelector("#object-inspector");
   const details=document.querySelector("#inspector-details");
   if(!inspector||!details)return;
+  if(typeof setSelectionPanels==="function")setSelectionPanels(true);
+  if(typeof updateInspectorFacts==="function")updateInspectorFacts({kind:"aircraft"},raw);
+  if(typeof updateInspectorMedia==="function")updateInspectorMedia({kind:"aircraft"},raw);
 
   setText("#inspector-type","AIRCRAFT");
   setText("#inspector-name",raw.callsign||raw.registration||raw.icao24||"Aircraft");
@@ -243,8 +246,13 @@ function renderSelectedWithCachedRoute(aircraft){
 }
 
 function selectAircraftWithoutRecentering(aircraft){
-  if(!aircraft)return;
-  trackedObject={kind:"aircraft",key:aircraft.icao24};
+  if(!aircraft)return false;
+  const key=aircraft.icao24;
+  if(trackedObject?.kind==="aircraft"&&trackedObject?.key===key){
+    if(typeof clearObjectSelection==="function")clearObjectSelection();else trackedObject=null;
+    lastRenderSignature=null;drawSky();queueRender();return false
+  }
+  trackedObject={kind:"aircraft",key};
   renderSelectedWithCachedRoute(aircraft);
   if(aircraft.callsign){
     lookupRoute(aircraft.callsign).then(route=>{
@@ -256,15 +264,15 @@ function selectAircraftWithoutRecentering(aircraft){
   lastRenderSignature=null;
   drawSky();
   queueRender();
+  return true
 }
 
-focusAircraft=function(aircraft){selectAircraftWithoutRecentering(aircraft)};
+focusAircraft=function(aircraft){return selectAircraftWithoutRecentering(aircraft)};
 
 if(baseToggleTracking){
   toggleTracking=function(target){
     if(target?.kind!=="aircraft")return baseToggleTracking(target);
-    selectAircraftWithoutRecentering(target.item);
-    return true;
+    return selectAircraftWithoutRecentering(target.item);
   };
 }
 
@@ -278,8 +286,8 @@ if(baseUpdateTrackedView){
 if(baseShowObject){
   showObject=function(target){
     if(target?.kind==="aircraft"){
-      const aircraft=target.item||{};
-      selectAircraftWithoutRecentering(aircraft);
+      const aircraft=target.item||{},key=aircraft.icao24;
+      if(trackedObject?.kind==="aircraft"&&trackedObject?.key===key)renderSelectedWithCachedRoute(aircraft);
       return;
     }
     baseShowObject(target);
