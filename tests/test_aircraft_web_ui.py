@@ -321,4 +321,5 @@ def test_aircraft_inspector_replaces_previous_star_or_planet_media_and_facts() -
     assert 'setSelectionPanels(true)' in CONTACTS_JS
     assert 'getJson("/api/v1/aircraft/photo/"' in APP_JS
     assert "Real aircraft photo" in APP_JS
-    assert "Planespotters.net" in APP_JS
+    assert "photo.photographer" in APP_JS
+    assert "photo.image_url" in APP_JS
