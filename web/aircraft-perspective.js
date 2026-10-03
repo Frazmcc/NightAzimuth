@@ -508,7 +508,7 @@ skyCanvas.addEventListener("click",event=>{
   let best=null,bestD=Infinity;
   for(const target of aircraftHits){const d=Math.hypot(x-target.x,y-target.y);if(d<=target.r&&d<bestD){best=target;bestD=d}}
   if(!best)return;
-  event.stopImmediatePropagation();if(typeof toggleTracking==="function")toggleTracking(best);if(typeof showObject==="function")showObject(best);drawSky();
+  event.stopImmediatePropagation();if(typeof toggleTracking==="function")toggleTracking(best);drawSky();
 },{capture:true});
 
 const markerSelect=document.querySelector("#aircraft-marker-style");
