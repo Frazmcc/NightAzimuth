@@ -37,4 +37,4 @@ def test_live_sky_startup_layer_defaults_match_basic_view() -> None:
     assert "constellations:false" in defaults
     assert "galaxies:false" in defaults
     assert "satellites:false" in defaults
-    assert '<script src="./layer-defaults.js?v=21.11.20"></script>' in html
+    assert '<script src="./layer-defaults.js?v=22.5.4"></script>' in html

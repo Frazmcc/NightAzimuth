@@ -87,7 +87,7 @@ def test_fms_altitude_is_used_when_mcp_altitude_is_missing() -> None:
 def test_aircraft_selection_does_not_recentre_live_sky() -> None:
     assert "function selectAircraftWithoutRecentering" in CONTACTS_JS
     assert 'if(trackedObject?.kind==="aircraft")return;' in CONTACTS_JS
-    assert "focusAircraft=function(aircraft){selectAircraftWithoutRecentering(aircraft)}" in CONTACTS_JS
+    assert "focusAircraft=function(aircraft){return selectAircraftWithoutRecentering(aircraft)}" in CONTACTS_JS
     assert "facing=Number(aircraft.azimuth_deg)" not in CONTACTS_JS
     assert "elevationCentre=clampElevationCentre(Number(aircraft.elevation_deg))" not in CONTACTS_JS
 
@@ -127,7 +127,7 @@ def test_aircraft_marker_style_is_configurable_and_cache_busted() -> None:
     assert 'localStorage.getItem("nightazimuth.aircraftMarkerStyle")' in CONTACTS_JS
     assert "function drawDotAircraft" in PERSPECTIVE_JS
     assert "function drawPerspectiveAircraft" in PERSPECTIVE_JS
-    assert "live-contacts-view.js?v=21.11.26" in HTML
+    assert "live-contacts-view.js?v=22.5.4" in HTML
 
 
 def test_live_sky_has_one_aircraft_render_owner() -> None:
@@ -193,8 +193,8 @@ def test_aircraft_renderer_draws_one_contact_per_identity() -> None:
 def test_perspective_aircraft_reuses_single_aircraft_payload() -> None:
     assert "getJson(" not in PERSPECTIVE_JS
     assert "fetch(" not in PERSPECTIVE_JS
-    assert 'perspective.src="./aircraft-perspective.js?v=22.4.0"' in LAYERS_JS
-    assert 'layer-defaults.js?v=21.11.20' in HTML
+    assert 'perspective.src="./aircraft-perspective.js?v=22.5.4"' in LAYERS_JS
+    assert 'layer-defaults.js?v=22.5.4' in HTML
 
 
 def test_perspective_geometry_does_not_double_apply_depth_distortion() -> None:
@@ -303,3 +303,23 @@ def test_live_contacts_are_humanised() -> None:
     assert "formatAltitudeFeet(aircraft.altitude_m)" in CONTACTS_JS
     assert "verticalState(aircraft.vertical_rate_mps)" in CONTACTS_JS
     assert 'aircraft.operator?`${aircraft.operator} · ${callsign}`:callsign' in CONTACTS_JS
+
+
+def test_selection_is_exclusive_and_clicking_selected_aircraft_deselects() -> None:
+    assert "function clearObjectSelection()" in APP_JS
+    assert 'const contactsPanel=document.querySelector(".contacts-panel")' in APP_JS
+    assert "contactsPanel.hidden=Boolean(selected)" in APP_JS
+    assert "if(trackedObject?.kind===target.kind&&trackedObject?.key===key){clearObjectSelection();return true}" in APP_JS
+    assert "if(trackedObject?.kind===\"aircraft\"&&trackedObject?.key===key)" in CONTACTS_JS
+    assert "clearObjectSelection" in CONTACTS_JS
+    assert 'event.stopImmediatePropagation();if(typeof toggleTracking==="function")toggleTracking(best);drawSky();' in PERSPECTIVE_JS
+
+
+def test_aircraft_inspector_replaces_previous_star_or_planet_media_and_facts() -> None:
+    assert 'updateInspectorFacts({kind:"aircraft"},raw)' in CONTACTS_JS
+    assert 'updateInspectorMedia({kind:"aircraft"},raw)' in CONTACTS_JS
+    assert 'setSelectionPanels(true)' in CONTACTS_JS
+    assert 'getJson("/api/v1/aircraft/photo/"' in APP_JS
+    assert "Real aircraft photo" in APP_JS
+    assert "photo.photographer" in APP_JS
+    assert "photo.image_url" in APP_JS

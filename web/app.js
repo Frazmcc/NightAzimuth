@@ -22,8 +22,8 @@ function trackingKey(kind,item){return kind==="aircraft"?item.icao24:kind==="sat
 function findTrackedItem(){if(!trackedObject)return null;const sources={aircraft:skyAircraft,satellite:skySatellites,star:celestialSky.stars||[],planet:celestialSky.planets||[]};return (sources[trackedObject.kind]||[]).find(item=>trackingKey(trackedObject.kind,item)===trackedObject.key)||null}
 function updateTrackedView(){const item=findTrackedItem();if(!item)return;const az=Number(item.azimuth_deg),el=Number(item.elevation_deg);if(Number.isFinite(az))facing=az;if(Number.isFinite(el))elevationCentre=clampElevationCentre(el);bearingInput.value=String(Math.round(facing)%360)}
 function pointerPosition(event){return{x:event.clientX,y:event.clientY}}
-canvas.addEventListener("pointerdown",event=>{if(trackedObject)trackedObject=null;dragMoved=false;drag={...pointerPosition(event),facing,elevationCentre};canvas.setPointerCapture(event.pointerId);canvas.style.cursor="grabbing"});
-canvas.addEventListener("pointermove",event=>{if(!drag)return;const p=pointerPosition(event);if(Math.hypot(p.x-drag.x,p.y-drag.y)>4)dragMoved=true;facing=(drag.facing-(p.x-drag.x)/Math.max(canvas.clientWidth,1)*fov+360)%360;const verticalFov=verticalFovFor(canvas.clientWidth,canvas.clientHeight);elevationCentre=clampElevationCentre(drag.elevationCentre+(p.y-drag.y)/Math.max(canvas.clientHeight,1)*verticalFov,canvas.clientWidth,canvas.clientHeight);bearingInput.value=String(Math.round(facing)%360);drawSky()});
+canvas.addEventListener("pointerdown",event=>{dragMoved=false;drag={...pointerPosition(event),facing,elevationCentre};canvas.setPointerCapture(event.pointerId);canvas.style.cursor="grabbing"});
+canvas.addEventListener("pointermove",event=>{if(!drag)return;const p=pointerPosition(event);if(Math.hypot(p.x-drag.x,p.y-drag.y)>4&&!dragMoved){dragMoved=true;clearObjectSelection()}facing=(drag.facing-(p.x-drag.x)/Math.max(canvas.clientWidth,1)*fov+360)%360;const verticalFov=verticalFovFor(canvas.clientWidth,canvas.clientHeight);elevationCentre=clampElevationCentre(drag.elevationCentre+(p.y-drag.y)/Math.max(canvas.clientHeight,1)*verticalFov,canvas.clientWidth,canvas.clientHeight);bearingInput.value=String(Math.round(facing)%360);drawSky()});
 function endDrag(event){if(!drag)return;drag=null;canvas.style.cursor="grab";try{canvas.releasePointerCapture(event.pointerId)}catch{}}
 canvas.addEventListener("pointerup",endDrag);canvas.addEventListener("pointercancel",endDrag);canvas.style.cursor="grab";
 document.querySelectorAll("[data-layer]").forEach(input=>input.addEventListener("change",()=>{layers[input.dataset.layer]=input.checked;drawSky()}));document.querySelectorAll("[data-label-layer]").forEach(input=>input.addEventListener("change",()=>{labels[input.dataset.labelLayer]=input.checked;drawSky()}));
@@ -32,7 +32,10 @@ function focusAircraft(aircraft){const key=trackingKey("aircraft",aircraft);if(t
 function zoomBy(delta){fov=Math.max(5,Math.min(180,fov*delta));elevationCentre=clampElevationCentre(elevationCentre);fovInput.value=String(Math.round(fov));setText("#fov-readout",`${Math.round(fov)}°`);drawSky()}
 canvas.addEventListener("wheel",event=>{event.preventDefault();zoomBy(event.deltaY<0?.85:1.18)},{passive:false});
 let pinchDistance=null;canvas.addEventListener("touchmove",event=>{if(event.touches.length!==2)return;const [a,b]=event.touches;const distance=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);if(pinchDistance)zoomBy(pinchDistance/distance);pinchDistance=distance},{passive:false});canvas.addEventListener("touchend",()=>{pinchDistance=null});
-const inspector=document.querySelector("#object-inspector");document.querySelector("#inspector-close").addEventListener("click",()=>inspector.hidden=true);
+const inspector=document.querySelector("#object-inspector");const contactsPanel=document.querySelector(".contacts-panel");let inspectorMediaGeneration=0;
+function setSelectionPanels(selected){if(contactsPanel)contactsPanel.hidden=Boolean(selected);if(!selected)inspector.hidden=true}
+function clearObjectSelection(){trackedObject=null;inspectorMediaGeneration+=1;inspector.hidden=true;if(contactsPanel)contactsPanel.hidden=false;const media=document.querySelector("#inspector-media"),image=document.querySelector("#inspector-image"),facts=document.querySelector("#inspector-facts"),details=document.querySelector("#inspector-details");if(media)media.hidden=true;if(image){image.onerror=null;image.removeAttribute("src");image.alt=""}if(facts)facts.hidden=true;if(details)details.replaceChildren();return true}
+document.querySelector("#inspector-close").addEventListener("click",()=>{clearObjectSelection();drawSky()});
 const PLANET_MEDIA={
   Mercury:{file:"Mercury_in_true_color.jpg",credit:"MESSENGER · NASA / JHUAPL"},
   Venus:{file:"Venus-real_color_(crop_tight).jpg",credit:"Mariner 10 · NASA"},
@@ -213,36 +216,45 @@ function updateInspectorFacts(target,item){
   root.hidden=!facts.length;
 }
 
-function updateInspectorMedia(target,item){
+async function updateInspectorMedia(target,item){
+  const generation=++inspectorMediaGeneration;
   const mediaRoot=document.querySelector("#inspector-media"),image=document.querySelector("#inspector-image"),credit=document.querySelector("#inspector-image-credit"),link=document.querySelector("#inspector-media-link");
   if(!mediaRoot||!image||!credit||!link)return;
-  const media=target.kind==="planet"?PLANET_MEDIA[item.name]:null;
-  image.onerror=null;
+  image.onerror=null;mediaRoot.hidden=true;image.removeAttribute("src");image.alt="";credit.textContent="";link.href="#";
+  if(target.kind==="aircraft"&&item.icao24){
+    const params={};if(item.registration)params.registration=item.registration;if(item.type_code)params.type_code=item.type_code;
+    try{
+      const photo=await getJson("/api/v1/aircraft/photo/"+encodeURIComponent(String(item.icao24).toLowerCase()),params,{timeoutMs:8000,retries:0});
+      if(generation!==inspectorMediaGeneration)return;
+      if(!photo?.available||!photo.image_url)return;
+      mediaRoot.hidden=false;credit.textContent="Real aircraft photo · "+(photo.photographer?photo.photographer+" · ":"")+"Planespotters.net";link.href=photo.link||"https://www.planespotters.net/";
+      image.alt="Photo of "+(item.registration||item.callsign||item.icao24);
+      image.onerror=()=>{if(generation===inspectorMediaGeneration){mediaRoot.hidden=true;image.removeAttribute("src")}};
+      image.src=photo.image_url;
+    }catch{if(generation===inspectorMediaGeneration)mediaRoot.hidden=true}
+    return
+  }
   if(target.kind==="star"&&item.hip_id!=null){
     const params={hips:"CDS/P/DSS2/color",width:"500",height:"300",fov:"0.12",projection:"TAN",coordsys:"icrs",format:"jpg"};
-    if(Number.isFinite(Number(item.ra_deg))&&Number.isFinite(Number(item.dec_deg))){
-      params.ra=String(item.ra_deg);params.dec=String(item.dec_deg)
-    }else{
-      params.object="HIP "+item.hip_id
-    }
+    if(Number.isFinite(Number(item.ra_deg))&&Number.isFinite(Number(item.dec_deg))){params.ra=String(item.ra_deg);params.dec=String(item.dec_deg)}else{params.object="HIP "+item.hip_id}
     const survey="https://alasky.cds.unistra.fr/hips-image-services/hips2fits?"+new URLSearchParams(params).toString();
     mediaRoot.hidden=false;credit.textContent="Real sky-survey image · DSS2 / CDS · HIP "+item.hip_id;link.href=survey;
     image.alt="Real sky-survey image centred on "+(item.name||("HIP "+item.hip_id));
-    image.onerror=()=>{mediaRoot.hidden=true;image.removeAttribute("src")};
+    image.onerror=()=>{if(generation===inspectorMediaGeneration){mediaRoot.hidden=true;image.removeAttribute("src")}};
     image.src=survey;return
   }
-  if(!media){mediaRoot.hidden=true;image.removeAttribute("src");image.alt="";return}
-  const encoded=encodeURIComponent(media.file);
-  const source=`https://commons.wikimedia.org/wiki/File:${encoded}`;
+  const media=target.kind==="planet"?PLANET_MEDIA[item.name]:null;
+  if(!media)return;
+  const encoded=encodeURIComponent(media.file),source=`https://commons.wikimedia.org/wiki/File:${encoded}`;
   mediaRoot.hidden=false;credit.textContent=`Real spacecraft image · ${media.credit} · Wikimedia Commons`;link.href=source;
   image.alt=`Real spacecraft image of ${item.name}`;
-  image.onerror=()=>{mediaRoot.hidden=true;image.removeAttribute("src")};
+  image.onerror=()=>{if(generation===inspectorMediaGeneration){mediaRoot.hidden=true;image.removeAttribute("src")}};
   image.src=`https://commons.wikimedia.org/wiki/Special:FilePath/${encoded}?width=700`;
 }
-function toggleTracking(target){if(!["aircraft","satellite","star","planet"].includes(target.kind))return false;const key=trackingKey(target.kind,target.item);if(key==null)return false;if(trackedObject?.kind===target.kind&&trackedObject?.key===key){trackedObject=null;return true}trackedObject={kind:target.kind,key};facing=Number(target.item.azimuth_deg);elevationCentre=clampElevationCentre(Number(target.item.elevation_deg));bearingInput.value=String(Math.round(facing)%360);return true}
-function showObject(target){const raw=target.item;const item=target.kind==="aircraft"?{...raw,role:raw.display?.role,make_model:raw.display?.make_model,capacity:raw.display?.capacity,special_squawk:raw.display?.squawk}:raw;updateInspectorMedia(target,item);updateInspectorFacts(target,item);setText("#inspector-type",target.kind.toUpperCase());setText("#inspector-name",item.name||item.callsign||item.registration||item.icao24||(`HIP ${item.hip_id||"—"}`));if(target.kind==="aircraft"){item.departure=item.route?.departure?`${item.route.departure.name} (${item.route.departure.display_code||item.route.departure.iata||item.route.departure.icao||"—"})`:null;item.arrival=item.route?.arrival?`${item.route.arrival.name} (${item.route.arrival.display_code||item.route.arrival.iata||item.route.arrival.icao||"—"})`:null}const labels={role:"Role",make_model:"Aircraft type / model",capacity:"Capacity",departure:"Departure airport",arrival:"Arrival airport",special_squawk:"Squawk / meaning",military:"Military",iata:"IATA",icao:"ICAO",bearing_deg:"Bearing",distance_km:"Distance (km)",azimuth_deg:"Azimuth",elevation_deg:"Elevation",magnitude:"Magnitude",callsign:"Callsign",icao24:"ICAO24",registration:"Registration",type_code:"ICAO aircraft type",type_description:"Description",operator:"Operator",altitude_m:"Altitude",ground_speed_mps:"Ground speed",track_deg:"Track",vertical_rate_mps:"Vertical rate",squawk:"Squawk",position_state:"Position state",position_age_seconds:"Position age (s)",source_label:"Data source",norad_id:"NORAD ID"};const details=document.querySelector("#inspector-details");details.replaceChildren(...Object.entries(labels).filter(([key])=>item[key]!=null).map(([key,label])=>{const row=document.createElement("div");const k=document.createElement("span");k.textContent=label;const v=document.createElement("strong");v.textContent=String(item[key]);row.append(k,v);return row}));inspector.hidden=false}
-canvas.addEventListener("click",event=>{if(dragMoved){dragMoved=false;return}const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;let best=null,bestD=Infinity;for(const target of hitTargets){const d=Math.hypot(x-target.x,y-target.y);if(d<=target.r&&d<bestD){best=target;bestD=d}}if(best){toggleTracking(best);showObject(best);drawSky()}});
-function applyBearing(){const value=Number(bearingInput.value);if(!Number.isFinite(value)||value<0||value>=360){bearingInput.setCustomValidity("Enter a facing from 0° to 359°.");bearingInput.reportValidity();return}bearingInput.setCustomValidity("");trackedObject=null;facing=value;drawSky()}
+function toggleTracking(target){if(!["aircraft","satellite","star","planet"].includes(target.kind))return false;const key=trackingKey(target.kind,target.item);if(key==null)return false;if(trackedObject?.kind===target.kind&&trackedObject?.key===key){clearObjectSelection();return true}trackedObject={kind:target.kind,key};facing=Number(target.item.azimuth_deg);elevationCentre=clampElevationCentre(Number(target.item.elevation_deg));bearingInput.value=String(Math.round(facing)%360);return true}
+function showObject(target){setSelectionPanels(true);const raw=target.item;const item=target.kind==="aircraft"?{...raw,role:raw.display?.role,make_model:raw.display?.make_model,capacity:raw.display?.capacity,special_squawk:raw.display?.squawk}:raw;updateInspectorMedia(target,item);updateInspectorFacts(target,item);setText("#inspector-type",target.kind.toUpperCase());setText("#inspector-name",item.name||item.callsign||item.registration||item.icao24||(`HIP ${item.hip_id||"—"}`));if(target.kind==="aircraft"){item.departure=item.route?.departure?`${item.route.departure.name} (${item.route.departure.display_code||item.route.departure.iata||item.route.departure.icao||"—"})`:null;item.arrival=item.route?.arrival?`${item.route.arrival.name} (${item.route.arrival.display_code||item.route.arrival.iata||item.route.arrival.icao||"—"})`:null}const labels={role:"Role",make_model:"Aircraft type / model",capacity:"Capacity",departure:"Departure airport",arrival:"Arrival airport",special_squawk:"Squawk / meaning",military:"Military",iata:"IATA",icao:"ICAO",bearing_deg:"Bearing",distance_km:"Distance (km)",azimuth_deg:"Azimuth",elevation_deg:"Elevation",magnitude:"Magnitude",callsign:"Callsign",icao24:"ICAO24",registration:"Registration",type_code:"ICAO aircraft type",type_description:"Description",operator:"Operator",altitude_m:"Altitude",ground_speed_mps:"Ground speed",track_deg:"Track",vertical_rate_mps:"Vertical rate",squawk:"Squawk",position_state:"Position state",position_age_seconds:"Position age (s)",source_label:"Data source",norad_id:"NORAD ID"};const details=document.querySelector("#inspector-details");details.replaceChildren(...Object.entries(labels).filter(([key])=>item[key]!=null).map(([key,label])=>{const row=document.createElement("div");const k=document.createElement("span");k.textContent=label;const v=document.createElement("strong");v.textContent=String(item[key]);row.append(k,v);return row}));inspector.hidden=false}
+canvas.addEventListener("click",event=>{if(dragMoved){dragMoved=false;return}const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;let best=null,bestD=Infinity;for(const target of hitTargets){const d=Math.hypot(x-target.x,y-target.y);if(d<=target.r&&d<bestD){best=target;bestD=d}}if(best){const key=trackingKey(best.kind,best.item);toggleTracking(best);if(trackedObject?.kind===best.kind&&trackedObject?.key===key)showObject(best);else clearObjectSelection();drawSky()}});
+function applyBearing(){const value=Number(bearingInput.value);if(!Number.isFinite(value)||value<0||value>=360){bearingInput.setCustomValidity("Enter a facing from 0° to 359°.");bearingInput.reportValidity();return}bearingInput.setCustomValidity("");clearObjectSelection();facing=value;drawSky()}
 function applyFov(){const value=Number(fovInput.value);if(!Number.isFinite(value)||value<5||value>180){fovInput.setCustomValidity("Enter a field of view from 5° to 180°.");fovInput.reportValidity();return}fovInput.setCustomValidity("");fov=value;elevationCentre=clampElevationCentre(elevationCentre);setText("#fov-readout",`${Math.round(fov)}°`);drawSky()}
 
 
