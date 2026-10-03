@@ -66,7 +66,7 @@ function loadPerspectiveAircraftWhenReady(){
   if(document.querySelector('script[data-nightazimuth-aircraft-perspective]'))return;
   const perspective=document.createElement("script");
   perspective.dataset.nightazimuthAircraftPerspective="true";
-  perspective.src="./aircraft-perspective.js?v=22.4.0";
+  perspective.src="./aircraft-perspective.js?v=22.5.4";
   perspective.async=false;
   document.head.append(perspective);
 }
