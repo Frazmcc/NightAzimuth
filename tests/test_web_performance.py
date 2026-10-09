@@ -117,7 +117,7 @@ def test_airports_share_distance_units_and_are_limited_to_50_miles() -> None:
     assert "distanceKm>AIRPORT_RADIUS_KM" in LAYOUT_JS
     assert "Math.round(km/KM_PER_MILE)" in LAYOUT_JS
     assert 'window.addEventListener("nightazimuth:distance-unit"' in LAYOUT_JS
-    assert "app.js?v=22.5.4" in HTML
+    assert "app.js?v=22.5.5" in HTML
     assert "live-sky-layout.js?v=21.11.24" in HTML
 
 
@@ -136,3 +136,20 @@ def test_changed_camera_runtime_is_cache_busted() -> None:
 def test_satellite_redraws_do_not_rebuild_unchanged_contact_rows() -> None:
     assert "lastRenderSignature" in CONTACTS_JS
     assert "if(signature===lastRenderSignature)return" in CONTACTS_JS
+
+
+def test_celestial_background_stays_frozen_between_user_view_changes() -> None:
+    assert "let displayedCelestialSky=celestialSky" in APP_JS
+    assert "let celestialFrameNeedsSync=true" in APP_JS
+    assert "function syncCelestialFrame()" in APP_JS
+    assert "displayedCelestialSky.stars||[]" in APP_JS
+    assert "displayedCelestialSky.planets||[]" in APP_JS
+    assert "displayedCelestialSky.constellation_lines||[]" in APP_JS
+    assert "celestialSky=data;if(celestialFrameNeedsSync||!(displayedCelestialSky.stars||[]).length)syncCelestialFrame();drawSky()" in APP_JS
+
+
+def test_user_view_changes_release_the_latest_celestial_frame() -> None:
+    assert 'canvas.addEventListener("pointermove",event=>{if(!drag)return;syncCelestialFrame();' in APP_JS
+    assert "function zoomBy(delta){syncCelestialFrame();" in APP_JS
+    assert 'requestCelestialFrameSync();displayedCelestialSky={stars:[],planets:[],galaxies:[],constellation_lines:[]}' in APP_JS
+    assert "app.js?v=22.5.5" in HTML

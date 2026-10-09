@@ -9,7 +9,7 @@ def test_latency_interceptor_loads_before_application_requests() -> None:
     assert 'observability-latency.js?v=22.1.2' in HTML
     assert 'observability.js?v=22.1.2' in HTML
     assert HTML.index('observability-latency.js?v=22.1.2') < HTML.index('observability.js?v=22.1.2')
-    assert HTML.index('observability.js?v=22.1.2') < HTML.index('app.js?v=22.5.4')
+    assert HTML.index('observability.js?v=22.1.2') < HTML.index('app.js?v=22.5.5')
     assert "const previousFetch = window.fetch.bind(window);" in LATENCY
     assert "window.fetch = async function latencyObservedFetch" in LATENCY
 
