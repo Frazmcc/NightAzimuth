@@ -139,3 +139,22 @@ def test_large_api_responses_support_gzip_compression() -> None:
     assert response.status_code == 200
     assert response.headers.get("content-encoding") == "gzip"
     assert int(response.headers.get("content-length", "0")) > 0
+
+
+def test_client_orientation_config_exposes_field_baseline_without_claiming_alignment() -> None:
+    response = TestClient(app).get("/api/v1/client-orientation-config")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == 1
+    assert payload["validation"]["device"] == "OnePlus Nord CE 3 Lite 5G"
+    assert payload["validation"]["motion_and_horizon"] == "user-confirmed"
+    assert payload["validation"]["astronomical_alignment"] == "not-validated"
+    assert payload["heading"]["jitter_deadband_deg"] == 1.0
+    assert payload["heading"]["max_step_deg_per_event"] == 5.0
+    assert payload["heading"]["requires_absolute_heading"] is True
+    assert payload["tilt"]["valid_beta_min_deg"] == 0.0
+    assert payload["tilt"]["valid_beta_max_deg"] == 180.0
+    assert payload["tilt"]["minimum_view_elevation_deg"] == 0.0
+    assert payload["tilt"]["level_calibration_elevation_deg"] == 0.0
+    assert payload["tilt"]["reverse_direction_user_control"] is True
+    assert response.headers["x-content-type-options"] == "nosniff"
