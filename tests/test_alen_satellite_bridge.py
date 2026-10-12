@@ -38,9 +38,8 @@ def test_bridge_preserves_alen_trajectory_and_wrap(monkeypatch):
             assert params["groups"] == "last-30-days,stations,visual"
             return Response()
     monkeypatch.setattr(bridge.httpx,"Client",Client)
-    result=TestClient(app).get("/api/v1/satellites/alen?lat=55.86&lon=-4.25")
-    assert result.status_code == 200
-    assert result.json() == payload
+    result=bridge.alen_satellites(lat=55.86,lon=-4.25,altitude_m=0.0,groups="last-30-days,stations,visual",limit=260)
+    assert result == payload
 
 
 def test_bridge_rejects_stale_and_invalid_trajectory():
