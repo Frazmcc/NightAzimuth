@@ -198,6 +198,53 @@ def health() -> dict[str, str]:
     }
 
 
+@app.get(f"/api/{API_VERSION}/client-orientation-config", tags=["system"])
+def client_orientation_config() -> dict[str, object]:
+    """Read-only ALEN field-tested mobile orientation baseline.
+
+    These are optional browser-client tuning values, not server-side astronomy
+    or a verified physical camera pose. No NightAzimuth client consumes this
+    endpoint automatically.
+    """
+    return {
+        "schema_version": 1,
+        "profile": "alen-android-portrait-field-baseline",
+        "validation": {
+            "device": "OnePlus Nord CE 3 Lite 5G",
+            "motion_and_horizon": "user-confirmed",
+            "astronomical_alignment": "not-validated",
+            "physical_camera_alignment": "not-validated",
+        },
+        "heading": {
+            "jitter_deadband_deg": 1.0,
+            "moderate_error_deg": 5.0,
+            "large_error_deg": 20.0,
+            "moderate_gain": 0.055,
+            "large_gain": 0.12,
+            "very_large_gain": 0.24,
+            "max_step_deg_per_event": 5.0,
+            "requires_absolute_heading": True,
+        },
+        "tilt": {
+            "portrait_screen_rotation_deg": 0,
+            "valid_beta_min_deg": 0.0,
+            "valid_beta_max_deg": 180.0,
+            "beta_reference_deg": 90.0,
+            "jitter_deadband_deg": 0.65,
+            "moderate_error_deg": 5.0,
+            "large_error_deg": 20.0,
+            "moderate_gain": 0.08,
+            "large_gain": 0.15,
+            "very_large_gain": 0.24,
+            "max_step_deg_per_event": 3.0,
+            "minimum_view_elevation_deg": 0.0,
+            "maximum_view_elevation_deg": 89.0,
+            "level_calibration_elevation_deg": 0.0,
+            "reverse_direction_user_control": True,
+        },
+    }
+
+
 @app.get(f"/api/{API_VERSION}/observability", tags=["system"])
 def observability() -> dict[str, object]:
     """Return bounded process-local operational telemetry for NightAzimuth."""
