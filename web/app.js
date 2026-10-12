@@ -1,4 +1,4 @@
-const config=window.NIGHTAZIMUTH_CONFIG||{};const apiBase=String(config.apiBaseUrl||"").replace(/\/$/,"");const statusEl=document.querySelector("#api-status");const fovForm=null;const fovInput=document.querySelector("#fov-input");const bearingForm=null;const bearingInput=document.querySelector("#bearing-input");const canvas=document.querySelector("#sky-canvas");const ctx=canvas.getContext("2d");let refreshGeneration=0;let aircraftFeatures=[];let skyAircraft=[];let skySatellites=[];let skyAirports=[];let celestialSky={stars:[],planets:[],galaxies:[],constellation_lines:[]};let displayedCelestialSky=celestialSky;let celestialFrameNeedsSync=true;let fov=120;let facing=0;let hitTargets=[];let elevationCentre=45;const layers={stars:true,constellations:true,galaxies:true,planets:true,airports:true,aircraft:true,satellites:true};const labels={stars:true,galaxies:true,planets:true,airports:true,aircraft:true,satellites:true};let drag=null;let dragMoved=false;let trackedObject=null;
+const config=window.NIGHTAZIMUTH_CONFIG||{};const apiBase=String(config.apiBaseUrl||"").replace(/\/$/,"");const statusEl=document.querySelector("#api-status");const fovForm=null;const fovInput=document.querySelector("#fov-input");const bearingForm=null;const bearingInput=document.querySelector("#bearing-input");const canvas=document.querySelector("#sky-canvas");const ctx=canvas.getContext("2d");let refreshGeneration=0;let aircraftFeatures=[];let skyAircraft=[];let skySatellites=[];let satelliteTrajectoryMode=false;let satellitePollInFlight=false;let lastLegacySatelliteFetch=0;let skyAirports=[];let celestialSky={stars:[],planets:[],galaxies:[],constellation_lines:[]};let displayedCelestialSky=celestialSky;let celestialFrameNeedsSync=true;let fov=120;let facing=0;let hitTargets=[];let elevationCentre=45;const layers={stars:true,constellations:true,galaxies:true,planets:true,airports:true,aircraft:true,satellites:true};const labels={stars:true,galaxies:true,planets:true,airports:true,aircraft:true,satellites:true};let drag=null;let dragMoved=false;let trackedObject=null;
 const latInput=document.querySelector("#settings-latitude");const lonInput=document.querySelector("#settings-longitude");const currentLocationButton=document.querySelector("#use-current-location");const locationStatus=document.querySelector("#location-status");
 currentLocationButton.addEventListener("click",()=>{if(!navigator.geolocation){locationStatus.textContent="Location is not supported by this browser.";return}currentLocationButton.disabled=true;locationStatus.textContent="Requesting location…";navigator.geolocation.getCurrentPosition(position=>{latInput.value=position.coords.latitude.toFixed(6);lonInput.value=position.coords.longitude.toFixed(6);locationStatus.textContent="Current location loaded. Save location to apply.";currentLocationButton.disabled=false},error=>{locationStatus.textContent=error.code===1?"Location permission was denied.":"Unable to determine current location.";currentLocationButton.disabled=false},{enableHighAccuracy:true,timeout:10000,maximumAge:60000})});
 function setText(s,v){const el=document.querySelector(s);if(el)el.textContent=v}
@@ -15,12 +15,43 @@ function hit(kind,item,p,r=10){hitTargets.push({kind,item,x:p[0],y:p[1],r})}
 function drawCelestial(w,h){ctx.save();if(layers.constellations)for(const line of displayedCelestialSky.constellation_lines||[]){const a=skyXY(line.start_azimuth_deg,line.start_elevation_deg,w,h),b=skyXY(line.end_azimuth_deg,line.end_elevation_deg,w,h);if(!a||!b)continue;ctx.strokeStyle="rgba(130,180,220,.18)";ctx.beginPath();ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke()}if(layers.stars)for(const s of displayedCelestialSky.stars||[]){const p=skyXY(s.azimuth_deg,s.elevation_deg,w,h);if(!p)continue;const r=Math.max(.7,3.2-(Number(s.magnitude)+1)*.38);ctx.fillStyle="rgba(225,242,255,.9)";ctx.beginPath();ctx.arc(p[0],p[1],r,0,Math.PI*2);ctx.fill();hit("star",s,p,Math.max(8,r+4))}if(layers.galaxies)for(const g of displayedCelestialSky.galaxies||[]){const p=skyXY(g.azimuth_deg,g.elevation_deg,w,h);if(!p)continue;ctx.strokeStyle="rgba(178,150,255,.75)";ctx.beginPath();ctx.ellipse(p[0],p[1],7,3,0,0,Math.PI*2);ctx.stroke();if(labels.galaxies){ctx.fillStyle="rgba(220,205,255,.85)";ctx.font="9px ui-monospace,monospace";ctx.fillText(g.name,p[0]+9,p[1]-5)}hit("galaxy",g,p,12)}if(layers.stars&&labels.stars)for(const s of displayedCelestialSky.stars||[]){if(!s.name)continue;const p=skyXY(s.azimuth_deg,s.elevation_deg,w,h);if(!p)continue;ctx.fillStyle="rgba(225,242,255,.92)";ctx.font="10px ui-monospace,monospace";ctx.fillText(s.name,p[0]+7,p[1]-6)}if(layers.planets)for(const pnt of displayedCelestialSky.planets||[]){const p=skyXY(pnt.azimuth_deg,pnt.elevation_deg,w,h);if(!p)continue;ctx.fillStyle="#fff0ad";ctx.beginPath();ctx.arc(p[0],p[1],4,0,Math.PI*2);ctx.fill();ctx.font="10px ui-monospace,monospace";if(labels.planets)ctx.fillText(pnt.name,p[0]+8,p[1]-6);hit("planet",pnt,p,12)}ctx.restore()}
 
 function drawAirports(w,h){if(!layers.airports)return;for(const airport of skyAirports){const off=angularDifference(Number(airport.bearing_deg),facing);if(Math.abs(off)>fov/2)continue;const horizon=skyXY(Number(airport.bearing_deg),0,w,h);if(!horizon)continue;const x=horizon[0],y=horizon[1];ctx.save();ctx.strokeStyle="rgba(112,255,191,.85)";ctx.fillStyle="rgba(190,255,225,.95)";ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y-16);ctx.stroke();ctx.beginPath();ctx.arc(x,y-18,3,0,Math.PI*2);ctx.fill();ctx.font="10px ui-monospace,monospace";ctx.textAlign="center";if(labels.airports)ctx.fillText((airport.iata||airport.icao)+" · "+Math.round(airport.distance_km)+"km",x,y-25);ctx.restore();hit("airport",airport,[x,y-18],16)}}
-function drawContacts(w,h){if(layers.satellites)for(const p of skySatellites){const az=Number(p.azimuth_deg);const el=Number(p.elevation_deg);if(!Number.isFinite(az)||!Number.isFinite(el))continue;const point=skyXY(az,el,w,h);if(!point)continue;const [x,y]=point;ctx.strokeStyle="#ffd76a";ctx.fillStyle="#ffd76a";ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y);ctx.lineTo(x,y+5);ctx.lineTo(x-5,y);ctx.closePath();ctx.stroke();ctx.font="10px ui-monospace,monospace";ctx.textAlign="left";if(labels.satellites)ctx.fillText(p.name||"SAT",x+8,y-7);hit("satellite",p,[x,y],12)}}
+// Sampled SGP4 positions from ALEN. Blend on the unit sphere to avoid a
+// false turn at north (359° -> 1°) or near the zenith.
+function satelliteViewPosition(sat,now=Date.now()){
+ if(!satelliteTrajectoryMode)return sat;
+ const sampled=Date.parse(sat.position_sample_at||"");
+ const trajectory=sat.trajectory;
+ if(!Number.isFinite(sampled)||!Array.isArray(trajectory)||trajectory.length<2)return null;
+ const elapsed=(now-sampled)/1000;
+ if(!Number.isFinite(elapsed)||elapsed< -2||elapsed>15)return null;
+ let a=trajectory[0],b=trajectory[1];
+ for(let i=1;i<trajectory.length;i++){
+  if(elapsed<=Number(trajectory[i].offset_seconds)){a=trajectory[i-1];b=trajectory[i];break}
+  a=trajectory[i-1];b=trajectory[i];
+ }
+ const last=Number(trajectory[trajectory.length-1].offset_seconds);
+ if(elapsed>last+1)return null;
+ const t=Math.max(0,Math.min(1,(elapsed-Number(a.offset_seconds))/Math.max(.001,Number(b.offset_seconds)-Number(a.offset_seconds))));
+ const v=p=>{
+  const az=Number(p.azimuth_deg)*Math.PI/180,el=Number(p.elevation_deg)*Math.PI/180;
+  return[Math.cos(el)*Math.sin(az),Math.cos(el)*Math.cos(az),Math.sin(el)];
+ };
+ const av=v(a),bv=v(b);
+ const dot=Math.max(-1,Math.min(1,av[0]*bv[0]+av[1]*bv[1]+av[2]*bv[2]));
+ const theta=Math.acos(dot),sin=Math.sin(theta);
+ const wa=sin>1e-7?Math.sin((1-t)*theta)/sin:1-t;
+ const wb=sin>1e-7?Math.sin(t*theta)/sin:t;
+ const x=av[0]*wa+bv[0]*wb,y=av[1]*wa+bv[1]*wb,z=av[2]*wa+bv[2]*wb;
+ return{...sat,azimuth_deg:((Math.atan2(x,y)*180/Math.PI)%360+360)%360,
+  elevation_deg:Math.atan2(z,Math.hypot(x,y))*180/Math.PI,
+  range_km:Number(a.range_km)*(1-t)+Number(b.range_km)*t};
+}
+function drawContacts(w,h){if(layers.satellites)for(const raw of skySatellites){const p=satelliteViewPosition(raw);if(!p)continue;const az=Number(p.azimuth_deg);const el=Number(p.elevation_deg);if(!Number.isFinite(az)||!Number.isFinite(el))continue;const point=skyXY(az,el,w,h);if(!point)continue;const [x,y]=point;ctx.strokeStyle="#ffd76a";ctx.fillStyle="#ffd76a";ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+5,y);ctx.lineTo(x,y+5);ctx.lineTo(x-5,y);ctx.closePath();ctx.stroke();ctx.font="10px ui-monospace,monospace";ctx.textAlign="left";if(labels.satellites)ctx.fillText(p.name||"SAT",x+8,y-7);hit("satellite",p,[x,y],12)}}
 function renderContacts(data){aircraftFeatures=data.features||[];drawSky();const root=document.querySelector("#contacts");if(!skyAircraft.length){root.textContent="No aircraft contacts returned for this area.";return}root.replaceChildren(...skyAircraft.slice(0,20).map(aircraft=>{const row=document.createElement("button");row.type="button";row.className="contact contact-button";const name=document.createElement("strong");name.textContent=(aircraft.display?.role?aircraft.display.role+" · ":"")+(aircraft.callsign||aircraft.registration||aircraft.icao24||"Unknown");const detail=document.createElement("span");const role=aircraft.display?.role||"Aircraft";detail.textContent=`${role} · ${Math.round(aircraft.altitude_m||0)} m · ${aircraft.display?.make_model||aircraft.type_description||aircraft.type_code||aircraft.position_state||"unknown"}`;row.append(name,detail);row.addEventListener("click",()=>focusAircraft(aircraft));return row}))}
 
 function trackingKey(kind,item){return kind==="aircraft"?item.icao24:kind==="satellite"?(item.norad_id||item.name):kind==="star"?(item.hip_id||item.name):kind==="planet"?item.name:null}
 function findTrackedItem(){if(!trackedObject)return null;const sources={aircraft:skyAircraft,satellite:skySatellites,star:celestialSky.stars||[],planet:celestialSky.planets||[]};return (sources[trackedObject.kind]||[]).find(item=>trackingKey(trackedObject.kind,item)===trackedObject.key)||null}
-function updateTrackedView(){const item=findTrackedItem();if(!item)return;const az=Number(item.azimuth_deg),el=Number(item.elevation_deg);if(Number.isFinite(az))facing=az;if(Number.isFinite(el))elevationCentre=clampElevationCentre(el);bearingInput.value=String(Math.round(facing)%360)}
+function updateTrackedView(){const tracked=findTrackedItem();if(!tracked)return;const item=trackedObject?.kind==="satellite"?satelliteViewPosition(tracked):tracked;if(!item)return;const az=Number(item.azimuth_deg),el=Number(item.elevation_deg);if(Number.isFinite(az))facing=az;if(Number.isFinite(el))elevationCentre=clampElevationCentre(el);bearingInput.value=String(Math.round(facing)%360)}
 function pointerPosition(event){return{x:event.clientX,y:event.clientY}}
 canvas.addEventListener("pointerdown",event=>{dragMoved=false;drag={...pointerPosition(event),facing,elevationCentre};canvas.setPointerCapture(event.pointerId);canvas.style.cursor="grabbing"});
 canvas.addEventListener("pointermove",event=>{if(!drag)return;syncCelestialFrame();const p=pointerPosition(event);if(Math.hypot(p.x-drag.x,p.y-drag.y)>4&&!dragMoved){dragMoved=true;clearObjectSelection()}facing=(drag.facing-(p.x-drag.x)/Math.max(canvas.clientWidth,1)*fov+360)%360;const verticalFov=verticalFovFor(canvas.clientWidth,canvas.clientHeight);elevationCentre=clampElevationCentre(drag.elevationCentre+(p.y-drag.y)/Math.max(canvas.clientHeight,1)*verticalFov,canvas.clientWidth,canvas.clientHeight);bearingInput.value=String(Math.round(facing)%360);drawSky()});
@@ -258,13 +289,42 @@ function applyBearing(){const value=Number(bearingInput.value);if(!Number.isFini
 function applyFov(){const value=Number(fovInput.value);if(!Number.isFinite(value)||value<5||value>180){fovInput.setCustomValidity("Enter a field of view from 5° to 180°.");fovInput.reportValidity();return}fovInput.setCustomValidity("");syncCelestialFrame();fov=value;elevationCentre=clampElevationCentre(elevationCentre);setText("#fov-readout",`${Math.round(fov)}°`);drawSky()}
 
 
-let refreshInFlight=false;async function refresh(){if(refreshInFlight)return;if(!latInput.value||!lonInput.value){statusEl.textContent="LOCATION REQUIRED";setText("#aircraft-detail","Set observer location in Settings.");setText("#updated","Location not set");return}refreshInFlight=true;const generation=++refreshGeneration;if(!apiBase){statusEl.textContent="Set apiBaseUrl in config.js";refreshInFlight=false;return}statusEl.textContent="SYNCING";const pos=observer();const failedServices=[];const fail=service=>failedServices.push(service);const tasks=[
+let refreshInFlight=false;async function refreshSatelliteTrajectories(pos,generation){
+ if(satellitePollInFlight||!apiBase)return;
+ satellitePollInFlight=true;
+ try{
+  const data=await getJson("/api/v1/satellites/alen",{lat:pos.latitude,lon:pos.longitude,altitude_m:pos.altitude_m??0},{timeoutMs:13000,retries:0});
+  if(generation!==refreshGeneration)return;
+  const sampleAt=data.diagnostics?.position_sample_at;
+  if(!Number.isFinite(Date.parse(sampleAt||"")))throw Error("Invalid ALEN sample time");
+  skySatellites=(data.satellites||[]).map(p=>({...p,norad_id:p.norad,position_sample_at:sampleAt}));
+  satelliteTrajectoryMode=true;
+  setText("#satellite-count",skySatellites.length);
+  drawSky();
+ }catch(error){
+  if(generation!==refreshGeneration)return;
+  // Retry ALEN without hammering the original expensive ACTIVE catalogue.
+  if(Date.now()-lastLegacySatelliteFetch<60000)return;
+  lastLegacySatelliteFetch=Date.now();
+  try{
+   const fallback=await getJson("/api/v1/satellites",{...pos,minimum_elevation_deg:0},{timeoutMs:30000,retries:0});
+   if(generation!==refreshGeneration)return;
+   skySatellites=fallback.satellites||[];
+   satelliteTrajectoryMode=false;
+   setText("#satellite-count",(fallback.count??skySatellites.length)+" · fallback");
+   drawSky();
+  }catch{
+   setText("#satellite-count",skySatellites.length?String(skySatellites.length)+" stale":"—");
+  }
+ }finally{satellitePollInFlight=false}
+}
+async function refresh(){if(refreshInFlight)return;if(!latInput.value||!lonInput.value){statusEl.textContent="LOCATION REQUIRED";setText("#aircraft-detail","Set observer location in Settings.");setText("#updated","Location not set");return}refreshInFlight=true;const generation=++refreshGeneration;if(!apiBase){statusEl.textContent="Set apiBaseUrl in config.js";refreshInFlight=false;return}statusEl.textContent="SYNCING";const pos=observer();const failedServices=[];const fail=service=>failedServices.push(service);const tasks=[
 getJson("/api/v1/aircraft",{...pos,radius_km:200,minimum_elevation_deg:0,include_ground:false},{timeoutMs:20000,retries:0}).then(data=>{if(generation!==refreshGeneration)return;skyAircraft=data.aircraft||[];setText("#aircraft-count",data.count??skyAircraft.length);setText("#aircraft-detail",data.source?.label||"Live aircraft");setText("#updated",data.observed_at||"Loaded");renderContacts(data.geojson||{features:[]});drawSky()}).catch(()=>{fail("aircraft");setText("#aircraft-count","—");setText("#aircraft-detail","Aircraft unavailable")}),
 getJson("/api/v1/airports",{...pos,radius_km:80.4672,limit:12},{timeoutMs:12000,retries:0}).then(data=>{if(generation!==refreshGeneration)return;skyAirports=data.airports||[];drawSky()}).catch(()=>{fail("airports")}),
 getJson("/api/v1/weather",pos,{timeoutMs:20000,retries:0}).then(data=>{if(generation!==refreshGeneration)return;const current=data.current||{};setText("#weather-value",current.air_temperature_c==null?"LIVE":`${current.air_temperature_c}°C`);setText("#weather-detail",current.cloud_total_percent==null?"Weather snapshot available":`${current.cloud_total_percent}% cloud cover`)}).catch(()=>{fail("weather");setText("#weather-value","—");setText("#weather-detail","Weather unavailable")}),
 getJson("/api/v1/observing",pos,{timeoutMs:20000,retries:0}).then(data=>{if(generation!==refreshGeneration)return;const first=(data.guidance||[])[0];setText("#observing-value",first?.rating||"LIVE");setText("#observing-detail",first?.confidence?`Observing confidence: ${first.confidence}`:"Observing guidance available")}).catch(()=>{fail("observing");setText("#observing-value","—");setText("#observing-detail","Observing guidance unavailable")}),
 getJson("/api/v1/sky",pos,{timeoutMs:30000,retries:0}).then(data=>{if(generation!==refreshGeneration)return;celestialSky=data;if(celestialFrameNeedsSync||!(displayedCelestialSky.stars||[]).length)syncCelestialFrame();drawSky()}).catch(()=>{fail("sky")}),
-getJson("/api/v1/satellites",{...pos,minimum_elevation_deg:0},{timeoutMs:30000,retries:0}).then(data=>{if(generation!==refreshGeneration)return;skySatellites=data.satellites||[];setText("#satellite-count",data.count??skySatellites.length);drawSky()}).catch(()=>{fail("satellites");setText("#satellite-count",skySatellites.length?`${skySatellites.length} stale`:"—")})
+refreshSatelliteTrajectories(pos,generation).catch(()=>{fail("satellites")})
 ];await Promise.allSettled(tasks);if(generation===refreshGeneration)statusEl.textContent=failedServices.length===tasks.length?"API UNAVAILABLE":failedServices.length?`LIVE · ${failedServices.map(service=>service.toUpperCase()).join(" + ")} UNAVAILABLE`:"● LIVE";refreshInFlight=false}
 document.querySelector("#fov-apply").addEventListener("click",applyFov);document.querySelector("#bearing-apply").addEventListener("click",applyBearing);window.addEventListener("resize",resizeSky);resizeSky();
 
@@ -275,6 +335,12 @@ const settingsPanel=document.querySelector("#settings-panel");const openSettings
 if(!latInput.value)latInput.value=localStorage.getItem("nightazimuth.latitude")||"";if(!lonInput.value)lonInput.value=localStorage.getItem("nightazimuth.longitude")||"";
 if(latInput.value&&lonInput.value){refresh().catch(()=>{refreshInFlight=false;statusEl.textContent="API UNAVAILABLE"})}else{statusEl.textContent="LOCATION REQUIRED";setText("#aircraft-detail","Set observer location in Settings.");setText("#updated","Location not set")}
 setInterval(()=>refresh().catch(()=>{refreshInFlight=false;statusEl.textContent="API UNAVAILABLE"}),60000);
+setInterval(()=>{
+ if(document.hidden||!latInput.value||!lonInput.value)return;
+ refreshSatelliteTrajectories(observer(),refreshGeneration).catch(()=>{});
+},10000);
+setInterval(()=>{if(!document.hidden&&satelliteTrajectoryMode)drawSky()},200);
+
 
 const contactsBody=document.querySelector("#contacts-body"),contactsToggle=document.querySelector("#contacts-toggle");
 function setContactsCollapsed(collapsed){contactsBody.hidden=collapsed;contactsToggle.textContent=collapsed?"Show":"Hide";contactsToggle.setAttribute("aria-expanded",String(!collapsed));localStorage.setItem("nightazimuth.contactsCollapsed",String(collapsed))}
