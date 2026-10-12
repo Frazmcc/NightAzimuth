@@ -26,7 +26,7 @@ const sat={position_sample_at:"2026-10-12T12:00:00Z",trajectory:[
 ]};
 const half=satelliteViewPosition(sat,sampleTime+1000);
 function assert(x){if(!x)throw Error("trajectory contract failed")}
-assert(half&&Math.abs(half.azimuth_deg-0)<0.05);
+assert(half&&Math.min(Math.abs(half.azimuth_deg),Math.abs(360-half.azimuth_deg))<0.05);
 assert(half.elevation_deg>30&&half.elevation_deg<31);
 assert(satelliteViewPosition(sat,sampleTime+18000)===null);
 satelliteTrajectoryMode=false;
