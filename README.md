@@ -13,6 +13,21 @@ The hosted web application is the primary and recommended NightAzimuth experienc
 
 > The older Windows executable is retained only as a historical/legacy build. It is not feature-equivalent to the current web application and is no longer the recommended way to use NightAzimuth. See [`docs/LEGACY_DESKTOP.md`](docs/LEGACY_DESKTOP.md).
 
+## Optional mobile orientation configuration (API)
+
+`GET /api/v1/client-orientation-config` exposes a read-only, versioned baseline
+copied from ALEN's field-tested OnePlus Nord CE 3 Lite 5G browser orientation
+settings. It includes heading and pitch deadbands, gains, per-event movement
+limits, valid upright-portrait tilt range, horizon-level calibration and the
+availability of a user-controlled tilt reversal.
+
+The endpoint **does not alter NightAzimuth's existing frontend or server-side
+astronomical calculations**. A future browser client can opt into the values
+after implementing and testing compatible DeviceOrientation handling. The
+user confirmed comfortable sensor behaviour and a level horizon in ALEN;
+absolute astronomical pointing and camera-pixel alignment are **not yet
+physically validated**. The baseline is not a universal compass calibration.
+
 ## Current status
 
 NightAzimuth is actively developed and deployed as a static browser frontend backed by a versioned FastAPI service.
