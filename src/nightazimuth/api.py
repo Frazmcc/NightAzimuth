@@ -24,6 +24,7 @@ from .api_observing import _API_CACHE as _OBSERVING_API_CACHE
 from .api_observing import router as observing_router
 from .api_satellites import _SATELLITE_PIPELINE_LOCK, _build_satellite_snapshot
 from .api_satellites_cached import router as satellites_router
+from .api_satellites_alen import router as alen_satellites_router
 from .api_sky import router as sky_router
 from .api_weather import router as weather_router
 from .observability import OBSERVABILITY
@@ -127,6 +128,7 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
 app.include_router(satellites_router)
+app.include_router(alen_satellites_router)
 app.include_router(aircraft_router)
 app.include_router(aircraft_photo_router)
 app.include_router(aircraft_route_router)
