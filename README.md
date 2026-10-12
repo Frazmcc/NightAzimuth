@@ -38,8 +38,7 @@ its sampled SGP4 positions, including `diagnostics.position_sample_at` and
 per-satellite `trajectory[].offset_seconds`. The response is checked for
 malformed and stale samples; an unavailable ALEN service returns HTTP 503.
 The existing `GET /api/v1/satellites` response remains available unchanged.
-The new route depends on ALEN's availability, and clients should retain a
-fallback. This does not automatically change NightAzimuth's display.
+NightAzimuth's live web view now requests the ALEN-compatible feed every 10 seconds, interpolates validated trajectory samples on the sphere, and falls back to its legacy satellite endpoint if ALEN is unavailable. The fallback is rate-limited to once per minute. Its other astronomy and UI layers remain unchanged. This adds an upstream service dependency; the legacy endpoint remains available independently.
 
 ## Current status
 
