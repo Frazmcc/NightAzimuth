@@ -15,7 +15,9 @@ router = APIRouter(prefix="/api/v1/satellites", tags=["satellites"])
 _ALEN_URL = "https://alen-api-lquw.onrender.com/api/v1/satellites"
 _ALLOWED_GROUPS = frozenset((
     "last-30-days", "stations", "visual", "starlink", "oneweb",
-    "kuiper", "active", "weather", "resource", "science", "geodetic",
+    "kuiper", "gnss", "weather", "earth-resources", "science", "amateur",
+    "geo", "military", "cubesat", "fengyun-1c-debris",
+    "iridium-33-debris", "cosmos-2251-debris", "cosmos-1408-debris",
 ))
 
 
