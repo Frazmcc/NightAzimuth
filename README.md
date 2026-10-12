@@ -28,6 +28,19 @@ user confirmed comfortable sensor behaviour and a level horizon in ALEN;
 absolute astronomical pointing and camera-pixel alignment are **not yet
 physically validated**. The baseline is not a universal compass calibration.
 
+## ALEN-compatible satellite trajectory feed
+
+NightAzimuth now offers an opt-in, read-only satellite endpoint:
+`GET /api/v1/satellites/alen?lat=55.86&lon=-4.25`.
+
+This forwards ALEN's bounded satellite trajectory response without modifying
+its sampled SGP4 positions, including `diagnostics.position_sample_at` and
+per-satellite `trajectory[].offset_seconds`. The response is checked for
+malformed and stale samples; an unavailable ALEN service returns HTTP 503.
+The existing `GET /api/v1/satellites` response remains available unchanged.
+The new route depends on ALEN's availability, and clients should retain a
+fallback. This does not automatically change NightAzimuth's display.
+
 ## Current status
 
 NightAzimuth is actively developed and deployed as a static browser frontend backed by a versioned FastAPI service.
