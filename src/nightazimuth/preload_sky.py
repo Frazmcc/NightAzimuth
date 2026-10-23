@@ -41,7 +41,7 @@ SKY_RESOURCES = (
 def _git_blob_sha1(path: Path) -> str:
     """Verify fetched bytes against GitHub's immutable git-blob SHA-1."""
     digest = hashlib.sha1()  # noqa: S324 -- Git object identity, not a password
-    digest.update(f"blob {path.stat().st_size}\\0".encode())
+    digest.update(f"blob {path.stat().st_size}\0".encode())
     with path.open("rb") as source:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
