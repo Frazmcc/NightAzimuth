@@ -8,7 +8,8 @@ import json
 import math
 from pathlib import Path
 import time
-from xml.etree import ElementTree
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 
 import httpx
 from PIL import Image
@@ -148,7 +149,7 @@ class EumetViewCloudProvider:
             if times:
                 _write_time_cache(path, times)
                 return times
-        except (httpx.HTTPError, OSError, ValueError, ElementTree.ParseError):
+        except (httpx.HTTPError, OSError, ValueError, ElementTree.ParseError, DefusedXmlException):
             pass
 
         if path.exists():
