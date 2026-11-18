@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=84.1.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,10 +11,11 @@ requires-python = ">=3.11"
 authors = [{ name = "Logic Lurker" }]
 dependencies = [
   "httpx>=0.27,<1",
+  "defusedxml>=0.7.1,<1",
   "certifi>=2026.10.19",
   "numpy>=1.26,<3",
   "pandas>=2.2,<4",
-  "pillow>=10,<13",
+  "pillow>=13.0.0,<14",
   "sgp4>=2.24,<3",
   "skyfield>=1.55,<2",
   "timezonefinder>=6.5,<10",
@@ -27,7 +28,7 @@ API = "https://api.nightazimuth.co.uk"
 
 [project.optional-dependencies]
 api = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
-dev = ["pyinstaller>=6,<7", "pytest", "ruff", "fastapi>=0.115,<1"]
+dev = ["pyinstaller>=6,<7", "pytest>=9.0.3", "ruff", "fastapi>=0.115,<1"]
 
 [project.scripts]
 nightazimuth = "nightazimuth.cli:main"
